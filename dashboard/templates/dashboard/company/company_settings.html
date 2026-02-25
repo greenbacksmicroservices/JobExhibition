@@ -1,0 +1,79 @@
+{% extends "dashboard/company/company_base.html" %}
+{% load static %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<section class="page-hero company-hero">
+  <div>
+    <p class="eyebrow">Preferences</p>
+    <h2>Settings</h2>
+    <p class="muted">Manage your company settings and preferences.</p>
+  </div>
+</section>
+
+<div style="max-width: 700px;">
+  <div class="card">
+    <div class="card-header">
+      <h3>General Settings</h3>
+    </div>
+    <form method="post" style="padding: 20px; display: grid; gap: 18px;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="update_settings" />
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Company Name</label>
+        <input type="text" name="name" value="{{ company.name }}" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Email Address</label>
+        <input type="email" name="email" value="{{ company.email }}" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Phone Number</label>
+        <input type="tel" name="phone" value="{{ company.phone|default:'' }}" placeholder="+91 XXXXXXXXXX" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Location</label>
+        <input type="text" name="location" value="{{ company.location|default:'' }}" placeholder="City, Country" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">
+          <input type="checkbox" checked> Receive email notifications
+        </label>
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">
+          <input type="checkbox" checked> Receive SMS alerts
+        </label>
+      </div>
+      <div style="display: flex; gap: 10px;">
+        <button type="submit" class="btn primary">Save Changes</button>
+        <button type="reset" class="btn ghost">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" style="margin-top: 20px;">
+    <div class="card-header">
+      <h3>Password & Security</h3>
+    </div>
+    <form method="post" style="padding: 20px; display: grid; gap: 18px;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="change_password" />
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Current Password</label>
+        <input type="password" name="current_password" placeholder="Enter current password" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">New Password</label>
+        <input type="password" name="new_password" placeholder="Enter new password" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Confirm Password</label>
+        <input type="password" name="confirm_password" placeholder="Confirm new password" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+      </div>
+      <button type="submit" class="btn primary">Update Password</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

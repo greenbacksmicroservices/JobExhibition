@@ -1,0 +1,155 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Candidate Pool{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Candidate Pool</p>
+    <h2>Consultancy Talent Database</h2>
+    <p class="muted">Add candidates and assign them to relevant jobs.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Add Candidate</h3>
+      <p class="muted">Create candidate profile for submission.</p>
+    </div>
+  </div>
+  <form class="company-form-grid" method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="add_candidate" />
+    <div class="company-form-group">
+      <label>Candidate Name</label>
+      <input type="text" name="candidate_name" placeholder="Full name" />
+    </div>
+    <div class="company-form-group">
+      <label>Email</label>
+      <input type="email" name="candidate_email" placeholder="Email address" />
+    </div>
+    <div class="company-form-group">
+      <label>Experience</label>
+      <input type="text" name="experience" placeholder="e.g. 3-5 years" />
+    </div>
+    <div class="company-form-group">
+      <label>Skills</label>
+      <input type="text" name="skills" placeholder="Comma separated skills" />
+    </div>
+    <div class="company-form-group">
+      <label>Expected Salary</label>
+      <input type="text" name="expected_salary" placeholder="e.g. INR 8 LPA" />
+    </div>
+    <div class="company-form-group">
+      <label>Location</label>
+      <input type="text" name="location" placeholder="City / Remote" />
+    </div>
+    <div class="company-form-group">
+      <label>Status</label>
+      <select name="status">
+        <option value="Active">Active</option>
+        <option value="Shortlisted">Shortlisted</option>
+        <option value="Interview">Interview</option>
+        <option value="Placed">Placed</option>
+      </select>
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Upload Resume</label>
+      <input type="file" name="resume" />
+    </div>
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Add Candidate</button>
+      <button class="btn ghost" type="reset">Clear</button>
+    </div>
+  </form>
+</section>
+
+<section class="card section-block" id="submit-candidate">
+  <div class="card-header">
+    <div>
+      <h3>Submit Candidate</h3>
+      <p class="muted">Submit an existing candidate to an assigned job.</p>
+    </div>
+  </div>
+  <form class="company-form-grid" method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="submit_candidate" />
+    <div class="company-form-group">
+      <label>Select Candidate</label>
+      <select name="candidate_id" required>
+        <option value="">Choose candidate</option>
+        {% for candidate in candidates %}
+          <option value="{{ candidate.id }}">{{ candidate.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="company-form-group">
+      <label>Select Assigned Job</label>
+      <select name="assigned_job_id" required>
+        <option value="">Choose assigned job</option>
+        {% for assignment in assigned_jobs %}
+          <option value="{{ assignment.id }}" {% if selected_job_id == assignment.job.job_id %}selected{% endif %}>{{ assignment.job.title }} ({{ assignment.job.job_id }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Submission Notes</label>
+      <input type="text" name="notes" placeholder="Optional notes for the company" />
+    </div>
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Submit Candidate</button>
+      <button class="btn ghost" type="reset">Clear</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Candidate Pool</h3>
+      <p class="muted">Manage your consultancy candidates.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Experience</th>
+          <th>Skills</th>
+          <th>Expected Salary</th>
+          <th>Location</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if candidates %}
+          {% for candidate in candidates %}
+          <tr>
+            <td><strong>{{ candidate.name }}</strong></td>
+            <td>{{ candidate.experience }}</td>
+            <td>{{ candidate.skills }}</td>
+            <td>{{ candidate.salary }}</td>
+            <td>{{ candidate.location }}</td>
+            <td><span class="badge {% if candidate.status == 'Active' %}success{% elif candidate.status == 'Interview' %}info{% elif candidate.status == 'Shortlisted' %}warning{% else %}neutral{% endif %}">{{ candidate.status }}</span></td>
+            <td>
+              <div class="table-actions">
+                <a class="action-btn" href="#submit-candidate">Submit Candidate</a>
+                <a class="action-btn" href="{% url 'dashboard:consultancy_applications' %}">View Submissions</a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="7" class="muted" style="text-align:center; padding: 16px;">No candidates in your pool yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

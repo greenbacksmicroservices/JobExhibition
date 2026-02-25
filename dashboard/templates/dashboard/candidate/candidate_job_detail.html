@@ -1,0 +1,205 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}Job Details{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Job Details</p>
+    <h2>{{ job.title }}</h2>
+    <p class="muted">{{ job.company }} - {{ job.location }} - {{ job.job_type }}</p>
+    {% if job.recruiter_name %}
+    <p class="muted">Consultancy: {{ job.recruiter_name }}</p>
+    {% endif %}
+  </div>
+  <div class="page-actions">
+    {% if has_applied %}
+      <span class="badge success">Applied</span>
+      {% if chat_thread_id %}
+      <a class="btn primary" href="{% url 'dashboard:candidate_messages' %}?thread={{ chat_thread_id }}">Chat with Employer</a>
+      {% else %}
+      <button class="btn ghost" type="button" disabled>Chat available after apply</button>
+      {% endif %}
+      <button class="btn ghost" type="button" disabled>Application Submitted</button>
+    {% elif can_apply %}
+      <button class="btn primary" type="button" data-apply-toggle aria-expanded="false">Apply Now</button>
+    {% else %}
+      <button class="btn primary" type="button" disabled>Complete Profile to Apply</button>
+    {% endif %}
+    <button class="btn ghost" type="button">Save Job</button>
+  </div>
+</section>
+
+{% if has_applied %}
+<section class="card section-block apply-panel is-open">
+  <div class="notice-card success">
+    <strong>You have already applied.</strong>
+    <p class="muted">Track updates in My Applications.</p>
+  </div>
+</section>
+{% elif can_apply %}
+<section class="card section-block apply-panel" data-apply-panel>
+  <div class="card-header">
+    <div>
+      <h3>Quick Apply</h3>
+      <p class="muted">Share compensation expectations and attach your resume.</p>
+    </div>
+    <button class="btn ghost" type="button" data-apply-close>Close</button>
+  </div>
+  <form class="apply-form" method="post" enctype="multipart/form-data" data-loading-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="apply" />
+    <div class="apply-form-grid">
+      <div class="apply-form-group">
+        <label>Expected Salary</label>
+        <input type="text" name="expected_salary" value="{{ candidate.expected_salary }}" placeholder="e.g. 8 LPA" />
+      </div>
+      <div class="apply-form-group">
+        <label>Years of Experience</label>
+        <input type="text" name="years_experience" value="{{ candidate.experience }}" placeholder="e.g. 3-5 years" />
+      </div>
+      <div class="apply-form-group">
+        <label>Current Company</label>
+        <input type="text" name="current_company" placeholder="Company name" />
+      </div>
+      <div class="apply-form-group">
+        <label>Recent Salary</label>
+        <input type="text" name="recent_salary" placeholder="e.g. 6 LPA" />
+      </div>
+      <div class="apply-form-group">
+        <label>Resume Choice</label>
+        <select name="resume_choice">
+          <option value="jobexhibition" {% if ai_resume %}selected{% endif %}>Job Exhibition Resume (AI)</option>
+          {% if default_resume %}
+            <option value="default" {% if not ai_resume %}selected{% endif %}>Default Resume</option>
+          {% endif %}
+          {% for resume in candidate_resumes %}
+            {% if resume.title != "Job Exhibition Resume" %}
+              <option value="{{ resume.id }}">{{ resume.title|default:"Resume" }}{% if resume.is_default %} (Default){% endif %}</option>
+            {% endif %}
+          {% endfor %}
+          <option value="">Upload new resume</option>
+        </select>
+      </div>
+      <div class="apply-form-group apply-form-full">
+        <label>Upload Resume (PDF/DOC)</label>
+        <input type="file" name="resume" accept=".pdf,.doc,.docx" />
+        <small class="muted">Upload a new file to override the selected resume option.</small>
+      </div>
+    </div>
+    <div class="apply-form-actions">
+      <button class="btn primary" type="submit">Submit Application</button>
+      <button class="btn ghost" type="button" data-apply-close>Cancel</button>
+    </div>
+  </form>
+</section>
+{% else %}
+<section class="card section-block apply-panel is-open">
+  <div class="notice-card warning">
+    <strong>Profile completion: {{ candidate.profile_completion }}%</strong>
+    <p class="muted">Complete at least {{ profile_completion_required }}% profile before applying.</p>
+    <a class="btn primary" href="{% url 'dashboard:candidate_profile' %}">Complete Profile</a>
+  </div>
+</section>
+{% endif %}
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Job Overview</h3>
+      <p class="muted">Key details and expectations.</p>
+    </div>
+  </div>
+  <div class="info-grid">
+    <div class="info-row">
+      <span class="label">Category</span>
+      <strong>{{ job.category }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Experience</span>
+      <strong>{{ job.experience|default:"--" }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Skills</span>
+      <strong>{{ job.skills|default:"--" }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Salary</span>
+      <strong>{{ job.salary|default:"--" }}</strong>
+    </div>
+  </div>
+  <div class="card-subsection">
+    <h4>Job Description</h4>
+    <p class="muted">{{ job.description|default:"No description provided." }}</p>
+  </div>
+  <div class="card-subsection">
+    <h4>Requirements</h4>
+    <p class="muted">{{ job.requirements|default:"No requirements shared." }}</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Company Details</h3>
+      <p class="muted">Learn about the hiring company.</p>
+    </div>
+  </div>
+  {% if company %}
+  <div class="info-grid">
+    <div class="info-row">
+      <span class="label">Company</span>
+      <strong>{{ company.name }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Location</span>
+      <strong>{{ company.location|default:"--" }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Email</span>
+      <strong>{{ company.email|default:"--" }}</strong>
+    </div>
+  </div>
+  {% else %}
+  <p class="muted">Company details are not available.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Similar Jobs</h3>
+      <p class="muted">Other roles that match your interest.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th>Company</th>
+          <th>Location</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if similar_jobs %}
+          {% for item in similar_jobs %}
+          <tr>
+            <td><strong>{{ item.title }}</strong></td>
+            <td>{{ item.company }}</td>
+            <td>{{ item.location }}</td>
+            <td><a class="action-btn" href="{% url 'dashboard:candidate_job_detail' item.job_id %}">View</a></td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="4" class="muted" style="text-align:center; padding: 16px;">No similar jobs available.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

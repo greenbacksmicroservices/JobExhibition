@@ -1,0 +1,242 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Consultancy Dashboard{% endblock %}
+
+{% block content %}
+
+<section class="pill-grid">
+  <article class="pill-card gradient-1">
+    <div class="pill-icon"><i class="fa-solid fa-briefcase"></i></div>
+    <div>
+      <p class="pill-title">Total Assigned Jobs</p>
+      <strong class="pill-value" id="metricConsultancyAssignedJobs" data-count="{{ metrics.assigned_jobs }}">{{ metrics.assigned_jobs }}</strong>
+      <span class="pill-sub">Admin/Company assigned</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-2">
+    <div class="pill-icon"><i class="fa-solid fa-bolt"></i></div>
+    <div>
+      <p class="pill-title">Active Jobs</p>
+      <strong class="pill-value" id="metricConsultancyActiveJobs" data-count="{{ metrics.active_jobs }}">{{ metrics.active_jobs }}</strong>
+      <span class="pill-sub">Live requirements</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-3">
+    <div class="pill-icon"><i class="fa-solid fa-users"></i></div>
+    <div>
+      <p class="pill-title">Total Candidates Added</p>
+      <strong class="pill-value" id="metricConsultancyCandidates" data-count="{{ metrics.candidates }}">{{ metrics.candidates }}</strong>
+      <span class="pill-sub">Consultancy pool</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-4">
+    <div class="pill-icon"><i class="fa-solid fa-calendar-check"></i></div>
+    <div>
+      <p class="pill-title">Interviews Scheduled</p>
+      <strong class="pill-value" id="metricConsultancyInterviews" data-count="{{ metrics.interviews }}">{{ metrics.interviews }}</strong>
+      <span class="pill-sub">This week</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-5">
+    <div class="pill-icon"><i class="fa-solid fa-handshake"></i></div>
+    <div>
+      <p class="pill-title">Successful Placements</p>
+      <strong class="pill-value" id="metricConsultancyPlacements" data-count="{{ metrics.placements }}">{{ metrics.placements }}</strong>
+      <span class="pill-sub">Closed offers</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-6">
+    <div class="pill-icon"><i class="fa-solid fa-wallet"></i></div>
+    <div>
+      <p class="pill-title">Pending Payments</p>
+      <strong class="pill-value" id="metricConsultancyPendingPayments" data-count="{{ metrics.pending_payments }}">INR {{ metrics.pending_payments }}</strong>
+      <span class="pill-sub">Awaiting payout</span>
+    </div>
+  </article>
+</section>
+
+<section class="graph-grid">
+  <article class="card chart-card">
+    <div class="chart-header">
+      <div>
+        <h3>Application Pipeline</h3>
+        <p class="muted">Submitted -> Placed conversion flow</p>
+      </div>
+    </div>
+    <div class="bar-list">
+      {% for item in pipeline %}
+      <div class="bar-row">
+        <span>{{ item.label }}</span>
+        <div class="bar-track"><span class="bar-fill" data-value="{{ item.value }}"></span></div>
+        <strong data-bar-value data-pipeline-key="{{ item.key|default:'' }}">{{ item.value }}</strong>
+      </div>
+      {% endfor %}
+    </div>
+  </article>
+
+  <article class="card chart-card">
+    <div class="chart-header">
+      <div>
+        <h3>Admin Announcements</h3>
+        <p class="muted">Latest advertisement updates for consultancies.</p>
+      </div>
+    </div>
+    <div class="activity-list">
+    {% if advertisement %}
+        <div class="activity-item ad-item">
+          <div class="ad-item-content">
+            <strong>{{ advertisement.title|default:"Admin Update" }}</strong>
+            <span class="muted">{{ advertisement.message|truncatewords:18 }}</span>
+          </div>
+          {% if advertisement.media_file %}
+            <div class="ad-media">
+              {% if advertisement.media_kind == "video" %}
+                <video class="ad-video" autoplay muted loop playsinline preload="metadata">
+                  <source src="{{ advertisement.media_file.url }}" />
+                </video>
+                <button class="ad-sound-toggle" type="button" data-ad-sound-toggle aria-pressed="false">
+                  <i class="fa-solid fa-volume-xmark"></i>
+                  <span>Sound</span>
+                </button>
+              {% elif advertisement.media_kind == "image" %}
+                <img src="{{ advertisement.media_file.url }}" alt="Advertisement media" class="ad-image" loading="lazy" />
+              {% endif %}
+            </div>
+          {% endif %}
+          <span class="activity-time">{{ advertisement.created_at|date:"d M" }}</span>
+        </div>
+      {% else %}
+        <div class="activity-item">
+          <div>
+            <strong>No announcements yet</strong>
+            <span class="muted">Admin advertisements will appear here.</span>
+          </div>
+          <span class="activity-time">--</span>
+        </div>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+
+<section class="dashboard-row">
+  <article class="card compact-card">
+    <div class="card-header">
+      <div>
+        <h3>Assigned Jobs Snapshot</h3>
+        <p class="muted">Jobs visible to your consultancy</p>
+      </div>
+      <a class="btn ghost" href="{% url 'dashboard:consultancy_assigned_jobs' %}">View All</a>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>Company</th>
+            <th>Status</th>
+            <th>Applications</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for job in assigned_jobs %}
+          <tr>
+            <td><strong>{{ job.title }}</strong><div class="muted">{{ job.job_id }}</div></td>
+            <td>{{ job.company }}</td>
+            <td><span class="badge {% if job.status == 'Active' %}success{% elif job.status == 'Urgent' %}warning{% elif job.status == 'Closed' %}danger{% else %}neutral{% endif %}">{{ job.status }}</span></td>
+            <td>{{ job.applications }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article class="card compact-card">
+    <div class="card-header">
+      <div>
+        <h3>Interview Calendar</h3>
+        <p class="muted">Today's interview line-up</p>
+      </div>
+    </div>
+    <div class="activity-list">
+      {% for item in interview_schedule %}
+      <div class="activity-item">
+        <div>
+          <strong>{{ item.candidate }}</strong>
+          <span class="muted">{{ item.role }}</span>
+        </div>
+        <span class="activity-time">{{ item.time }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </article>
+</section>
+
+<section class="alerts-activity-grid">
+  <article class="card">
+    <div class="card-header">
+      <div>
+        <h3>Live Placement Tracker</h3>
+        <p class="muted">Commission status by candidate</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Candidate</th>
+            <th>Company</th>
+            <th>Salary</th>
+            <th>Commission</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in placements %}
+          <tr>
+            <td><strong>{{ row.candidate }}</strong></td>
+            <td>{{ row.company }}</td>
+            <td>{{ row.salary }}</td>
+            <td>{{ row.commission }}</td>
+            <td>
+              <span class="badge {% if row.status == 'Paid' %}success{% elif row.status == 'Pending' %}warning{% else %}info{% endif %}">
+                {{ row.status }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article class="card">
+    <div class="card-header">
+      <div>
+        <h3>Workflow Example</h3>
+        <p class="muted">End-to-end consultancy pipeline</p>
+      </div>
+    </div>
+    <ul class="checklist">
+      <li>Admin assigns job -> Consultancy sees job</li>
+      <li>Consultancy adds candidate -> Submit to company</li>
+      <li>Company shortlists -> Interview scheduled</li>
+      <li>Candidate selected -> Placement marked</li>
+      <li>Commission calculated -> Admin approves payment</li>
+    </ul>
+    <div class="card-subsection">
+      <h4>Permission System</h4>
+      <p class="muted">Consultancy can view assigned jobs and manage own candidates only.</p>
+      <ul class="checklist">
+        <li>OK Assigned jobs visible</li>
+        <li>OK Own candidates managed</li>
+        <li>X Company private notes hidden</li>
+        <li>X Other consultancy data blocked</li>
+      </ul>
+    </div>
+  </article>
+</section>
+{% endblock %}
+

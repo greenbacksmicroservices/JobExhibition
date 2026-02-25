@@ -1,0 +1,250 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Interviews{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Interviews</p>
+    <h2>Interview Scheduling & Updates</h2>
+    <p class="muted">Track company schedules, inform candidates, reschedule, and capture feedback.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="tab-nav">
+    <a class="tab-pill {% if section == 'upcoming' %}active{% endif %}" href="{% url 'dashboard:consultancy_interviews' %}?section=upcoming">Upcoming ({{ interview_counts.upcoming }})</a>
+    <a class="tab-pill {% if section == 'today' %}active{% endif %}" href="{% url 'dashboard:consultancy_interviews' %}?section=today">Today ({{ interview_counts.today }})</a>
+    <a class="tab-pill {% if section == 'completed' %}active{% endif %}" href="{% url 'dashboard:consultancy_interviews' %}?section=completed">Completed ({{ interview_counts.completed }})</a>
+    <a class="tab-pill {% if section == 'cancelled' %}active{% endif %}" href="{% url 'dashboard:consultancy_interviews' %}?section=cancelled">Cancelled ({{ interview_counts.cancelled }})</a>
+    <a class="tab-pill {% if section == 'feedback' %}active{% endif %}" href="{% url 'dashboard:consultancy_interviews' %}?section=feedback">Feedback ({{ interview_counts.feedback }})</a>
+  </div>
+</section>
+
+<section class="card section-block" id="schedule-interview">
+  <div class="card-header">
+    <div>
+      <h3>Schedule Interview</h3>
+      <p class="muted">Pick candidate, job, and time slot.</p>
+    </div>
+  </div>
+  <form class="interview-form" method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="schedule_interview" />
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Candidate</label>
+        <input type="text" name="candidate" placeholder="Candidate name" />
+      </div>
+      <div class="form-group">
+        <label>Job Title</label>
+        <input type="text" name="job_title" placeholder="Job role" />
+      </div>
+      <div class="form-group">
+        <label>Interview Date</label>
+        <input type="date" name="interview_date" />
+      </div>
+      <div class="form-group">
+        <label>Interview Time</label>
+        <input type="time" name="interview_time" />
+      </div>
+      <div class="form-group">
+        <label>Mode</label>
+        <select name="mode">
+          <option>Online</option>
+          <option>Offline</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Meeting Link</label>
+        <input type="url" name="meeting_link" placeholder="https://meet..." />
+      </div>
+      <div class="form-group">
+        <label>Interviewer</label>
+        <input type="text" name="interviewer" placeholder="Interviewer name" />
+      </div>
+      <div class="form-group">
+        <label>Round</label>
+        <select name="round">
+          <option value="">Select round</option>
+          <option value="HR">HR</option>
+          <option value="Technical">Technical</option>
+          <option value="Final">Final</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Notes</label>
+        <textarea rows="3" name="notes" placeholder="Interview preparation notes"></textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" type="submit">Schedule Interview</button>
+      <button class="btn ghost" type="reset">Clear</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Interview Line-up</h3>
+      <p class="muted">Company updates visible for your submitted candidates only.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Candidate</th>
+          <th>Company</th>
+          <th>Job</th>
+          <th>Date</th>
+          <th>Time</th>
+          <th>Mode</th>
+          <th>Round</th>
+          <th>Meeting</th>
+          <th>Interviewer</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if interviews %}
+          {% for interview in interviews %}
+          <tr>
+            <td><strong>{{ interview.candidate }}</strong></td>
+            <td>{{ interview.company }}</td>
+            <td>{{ interview.job }}</td>
+            <td>{{ interview.date }}</td>
+            <td>{{ interview.time }}</td>
+            <td>{{ interview.mode }}</td>
+            <td>{{ interview.round }}</td>
+            <td>
+              {% if interview.meeting_link %}
+                <a class="link-button" href="{{ interview.meeting_link }}" target="_blank" rel="noopener">Open</a>
+              {% else %}
+                --
+              {% endif %}
+            </td>
+            <td>{{ interview.interviewer }}</td>
+            <td><span class="badge info">{{ interview.status }}</span></td>
+            <td>
+              <div class="table-actions">
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="update_status" />
+                  <input type="hidden" name="interview_id" value="{{ interview.id }}" />
+                  <input type="hidden" name="status" value="scheduled" />
+                  <button class="action-btn" type="submit">Confirm Candidate</button>
+                </form>
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="update_status" />
+                  <input type="hidden" name="interview_id" value="{{ interview.id }}" />
+                  <input type="hidden" name="status" value="rescheduled" />
+                  <button class="action-btn warning" type="submit">Request Reschedule</button>
+                </form>
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="update_status" />
+                  <input type="hidden" name="interview_id" value="{{ interview.id }}" />
+                  <input type="hidden" name="status" value="no_show" />
+                  <button class="action-btn danger" type="submit">Mark No Show</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="11" class="muted" style="text-align:center; padding: 16px;">No interviews available for this section.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card section-block" id="feedback">
+  <div class="card-header">
+    <div>
+      <h3>Submit Interview Feedback</h3>
+      <p class="muted">Capture interview outcomes and candidate performance.</p>
+    </div>
+  </div>
+  <form class="company-form-grid" method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="submit_feedback" />
+    <div class="company-form-group">
+      <label>Select Interview</label>
+      <select name="interview_id" required>
+        <option value="">Choose interview</option>
+        {% for item in feedback_queue %}
+          <option value="{{ item.id }}">{{ item.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="company-form-group">
+      <label>Rating (1-5)</label>
+      <input type="number" name="rating" min="1" max="5" />
+    </div>
+    <div class="company-form-group">
+      <label>Final Decision</label>
+      <select name="final_decision">
+        <option value="">Select decision</option>
+        <option value="next_round">Move to Next Round</option>
+        <option value="selected">Selected</option>
+        <option value="rejected">Rejected</option>
+        <option value="hold">Hold</option>
+      </select>
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Technical Skills</label>
+      <input type="text" name="technical_skills" placeholder="Notes on technical skills" />
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Communication Skills</label>
+      <input type="text" name="communication_skills" placeholder="Notes on communication" />
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Strengths</label>
+      <input type="text" name="strengths" placeholder="Candidate strengths" />
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Weakness</label>
+      <input type="text" name="weakness" placeholder="Areas to improve" />
+    </div>
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Save Feedback</button>
+      <button class="btn ghost" type="reset">Clear</button>
+    </div>
+  </form>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Automation & Reminders</h3>
+      <p class="muted">Enable reminders and calendar invites for upcoming interviews.</p>
+    </div>
+  </div>
+  <div class="card-grid">
+    <article class="card">
+      <h4>24 Hour Reminder</h4>
+      <p class="muted">Send auto reminder to candidate.</p>
+      <button class="btn ghost" type="button">Enable</button>
+    </article>
+    <article class="card">
+      <h4>1 Hour Reminder</h4>
+      <p class="muted">Final interview reminder.</p>
+      <button class="btn ghost" type="button">Enable</button>
+    </article>
+    <article class="card">
+      <h4>Calendar Invite</h4>
+      <p class="muted">Generate .ics invite for interview.</p>
+      <button class="btn ghost" type="button">Generate</button>
+    </article>
+  </div>
+</section>
+{% endblock %}

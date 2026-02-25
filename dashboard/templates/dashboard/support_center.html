@@ -1,0 +1,788 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ page_title|default:"Support Center" }} | Job Exhibition Admin</title>
+    <link rel="icon" href="{% static 'dashboard/favicon.ico' %}" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/user-management.css' %}" />
+  </head>
+  <body class="user-management support-center">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+    </div>
+    <div class="toast-container" id="toastContainer"></div>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+                <div class="brand">
+          <div class="brand-mark"><img src="{% static 'dashboard/img/je-logo.svg' %}" alt="Job Exhibition logo" /></div>
+          <div class="brand-text">
+            <h1 class="style-1"><span class="brand-job">Job</span> <span class="brand-exhibition">Exhibition</span></h1>
+            <span class="brand-subtitle">Admin Control</span>
+          </div>
+</div>
+
+
+        
+        <div class="company-user admin-user">
+          <div class="company-logo-stack">
+            <div class="company-logo" style="--progress: 100;">
+              {% if admin_profile and admin_profile.photo %}
+                <img src="{{ admin_profile.photo.url }}" alt="Admin photo" />
+              {% else %}
+                <span>{{ request.user.username|default:"A"|first|upper }}</span>
+              {% endif %}
+            </div>
+            <span class="profile-progress-text">100% Complete</span>
+          </div>
+          <div class="company-user-meta">
+            <strong>{{ request.user.username|default:"Admin" }}</strong>
+            <span>Platform Admin</span>
+          </div>
+        </div>
+
+<nav class="sidebar-nav">
+          <a class="nav-item" href="{% url 'dashboard:dashboard' %}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+            <span>Dashboard</span>
+          </a>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="userManagement" aria-expanded="false" aria-controls="userManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span>User Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="userManagement">
+              <a class="nav-sub" href="{% url 'dashboard:companies' %}">Companies</a>
+              <a class="nav-sub" href="{% url 'dashboard:consultancies' %}">Consultancies</a>
+              <a class="nav-sub" href="{% url 'dashboard:candidates' %}">Candidates</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="jobManagement" aria-expanded="false" aria-controls="jobManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M14,2H6A2,2 0 0,0 4,4V20a2,2 0 0,0 2,2H18a2,2 0 0,0 2,-2V8L14,2M18,20H6V4H13V9H18V20"/></svg>
+                <span>Job Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="jobManagement">
+              <a class="nav-sub" href="{% url 'dashboard:jobs' %}">All Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_pending' %}">Pending Approval</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_approved' %}">Approved Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_rejected' %}">Rejected Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_reported' %}">Reported Jobs</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="applicationManagement" aria-expanded="false" aria-controls="applicationManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75-3.54-4.3 5.41h13.2L11.96 6.29z"/></svg>
+                <span>Application Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="applicationManagement">
+              <a class="nav-sub" href="{% url 'dashboard:applications' %}">All Applications</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_interview' %}">Interview Scheduled</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_selected' %}">Selected</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_rejected' %}">Rejected</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_offer' %}">Offer Issued</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="subscriptionBilling" aria-expanded="false" aria-controls="subscriptionBilling">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+                <span>Subscription &amp; Billing</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="subscriptionBilling">
+              <a class="nav-sub" href="{% url 'dashboard:subscriptions' %}">Overview</a>
+              <a class="nav-sub" href="{% url 'dashboard:subscriptions_free_paid' %}">Who is Free / Paid</a>
+              <a class="nav-sub" href="{% url 'dashboard:subscriptions_expiry_alerts' %}">Expiry Alerts</a>
+              <a class="nav-sub" href="{% url 'dashboard:subscriptions_revenue' %}">Revenue Charts</a>
+              <a class="nav-sub" href="{% url 'dashboard:subscriptions_manual_assign' %}">Manual Plan Assign</a>
+            </div>
+          </div>
+
+          <a class="nav-item" href="{% url 'dashboard:advertisement_management' %}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75-3.54-4.3 5.41h13.2L11.96 6.29z"/></svg>
+            <span>Advertisement Management</span>
+          </a>
+
+          <div class="nav-section{% if comm_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="communicationCenter" aria-expanded="{% if comm_section %}true{% else %}false{% endif %}" aria-controls="communicationCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v16l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                <span>Communication Center</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="communicationCenter">
+              <a class="nav-sub{% if comm_section == 'bulk-email' %} active{% endif %}" href="{% url 'dashboard:communication_bulk_email' %}">Bulk Email</a>
+              <a class="nav-sub{% if comm_section == 'bulk-sms' %} active{% endif %}" href="{% url 'dashboard:communication_bulk_sms' %}">Bulk SMS</a>
+              <a class="nav-sub{% if comm_section == 'whatsapp' %} active{% endif %}" href="{% url 'dashboard:communication_whatsapp' %}">WhatsApp Alerts</a>
+              <a class="nav-sub{% if comm_section == 'chat-monitor' %} active{% endif %}" href="{% url 'dashboard:message_monitor' %}">Chat Monitoring</a>
+              <a class="nav-sub{% if comm_section == 'notifications' %} active{% endif %}" href="{% url 'dashboard:communication_notifications' %}">In-App Notifications</a>
+              <a class="nav-sub{% if comm_section == 'templates' %} active{% endif %}" href="{% url 'dashboard:communication_templates' %}">Message Templates</a>
+              <a class="nav-sub{% if comm_section == 'sent-history' %} active{% endif %}" href="{% url 'dashboard:communication_sent_history' %}">Sent History</a>
+              <a class="nav-sub{% if comm_section == 'scheduled' %} active{% endif %}" href="{% url 'dashboard:communication_scheduled' %}">Scheduled Messages</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if support_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="supportCenter" aria-expanded="{% if support_section %}true{% else %}false{% endif %}" aria-controls="supportCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a7 7 0 0 1 7 7v2a5 5 0 0 1-5 5h-1v3h-2v-3H9a5 5 0 0 1-5-5V9a7 7 0 0 1 7-7zm0 2a5 5 0 0 0-5 5v2a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3V9a5 5 0 0 0-5-5z"/></svg>
+                <span>Customer Support</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="supportCenter">
+              <a class="nav-sub{% if support_section == 'dashboard' %} active{% endif %}" href="{% url 'dashboard:support_center' %}">Support Dashboard</a>
+              <a class="nav-sub{% if support_section == 'all' %} active{% endif %}" href="{% url 'dashboard:support_tickets' %}">All Tickets</a>
+              <a class="nav-sub{% if support_section == 'high' %} active{% endif %}" href="{% url 'dashboard:support_high_priority' %}">High Priority</a>
+              <a class="nav-sub{% if support_section == 'assigned' %} active{% endif %}" href="{% url 'dashboard:support_assigned' %}">Assigned Tickets</a>
+              <a class="nav-sub{% if support_section == 'unassigned' %} active{% endif %}" href="{% url 'dashboard:support_unassigned' %}">Unassigned</a>
+              <a class="nav-sub{% if support_section == 'closed' %} active{% endif %}" href="{% url 'dashboard:support_closed' %}">Closed</a>
+              <a class="nav-sub{% if support_section == 'analytics' %} active{% endif %}" href="{% url 'dashboard:support_analytics' %}">Support Analytics</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if grievance_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="grievanceCenter" aria-expanded="{% if grievance_section %}true{% else %}false{% endif %}" aria-controls="grievanceCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 15h-1.5v-1.5H12V17zm0-4.5h-1.5V7H12v5.5z"/></svg>
+                <span>Grievance / Reports</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="grievanceCenter">
+              <a class="nav-sub{% if grievance_section == 'complaints' %} active{% endif %}" href="{% url 'dashboard:grievance_complaints' %}">User Complaints</a>
+              <a class="nav-sub{% if grievance_section == 'job-reports' %} active{% endif %}" href="{% url 'dashboard:grievance_job_reports' %}">Job Reports</a>
+              <a class="nav-sub{% if grievance_section == 'abuse-fraud' %} active{% endif %}" href="{% url 'dashboard:grievance_abuse_fraud' %}">Abuse / Fraud</a>
+              <a class="nav-sub{% if grievance_section == 'resolution-log' %} active{% endif %}" href="{% url 'dashboard:grievance_resolution_log' %}">Resolution Log</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="cms" aria-expanded="false" aria-controls="cms">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"/></svg>
+                <span>CMS</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="cms">
+              <a class="nav-sub" href="#">Pages</a>
+              <a class="nav-sub" href="#">FAQ</a>
+              <a class="nav-sub" href="#">Blog / News</a>
+              <a class="nav-sub" href="#">Homepage Sections</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if settings_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="settings" aria-expanded="{% if settings_section %}true{% else %}false{% endif %}" aria-controls="settings">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l1.72-1.34c.15-.12.19-.34.1-.51l-1.63-2.83c-.12-.22-.37-.29-.59-.22l-2.03.81c-.42-.32-.9-.6-1.44-.84l-.3-2.15c-.04-.24-.24-.42-.5-.42h-3.26c-.26 0-.46.18-.49.42l-.3 2.15c-.54.24-1.02.52-1.44.84l-2.03-.81c-.22-.09-.47 0-.59.22L2.74 8.87c-.1.17-.05.39.1.51l1.72 1.34c-.05.3-.07.62-.07.94s.02.64.07.94l-1.72 1.34c-.15.12-.19.34-.1.51l1.63 2.83c.12.22.37.29.59.22l2.03-.81c.42.32.9.6 1.44.84l.3 2.15c.03.24.23.42.49.42h3.26c.26 0 .46-.18.49-.42l.3-2.15c.54-.24 1.02-.52 1.44-.84l2.03.81c.22.09.47 0 .59-.22l1.63-2.83c.1-.17.05-.39-.1-.51l-1.72-1.34zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                <span>Settings</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="settings">
+              <a class="nav-sub{% if settings_section == 'platform' %} active{% endif %}" href="{% url 'dashboard:settings_platform' %}">Platform Settings</a>
+              <a class="nav-sub{% if settings_section == 'job-categories' %} active{% endif %}" href="{% url 'dashboard:settings_job_categories' %}">Job Categories</a>
+              <a class="nav-sub{% if settings_section == 'locations' %} active{% endif %}" href="{% url 'dashboard:settings_locations' %}">Locations</a>
+              <a class="nav-sub{% if settings_section == 'skills' %} active{% endif %}" href="{% url 'dashboard:settings_skills' %}">Skills Library</a>
+              <a class="nav-sub{% if settings_section == 'experience-levels' %} active{% endif %}" href="{% url 'dashboard:settings_experience_levels' %}">Experience Levels</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if audit_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="securityAudit" aria-expanded="{% if audit_section %}true{% else %}false{% endif %}" aria-controls="securityAudit">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+                <span>Security &amp; Audit</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="securityAudit">
+              <a class="nav-sub{% if audit_section == 'login-history' %} active{% endif %}" href="{% url 'dashboard:security_login_history' %}">Login History</a>
+              <a class="nav-sub{% if audit_section == 'ip-logs' %} active{% endif %}" href="{% url 'dashboard:security_ip_logs' %}">IP Logs</a>
+              <a class="nav-sub{% if audit_section == 'admin-activity' %} active{% endif %}" href="{% url 'dashboard:security_admin_activity' %}">Admin Activity Logs</a>
+              <a class="nav-sub{% if audit_section == 'role-permissions' %} active{% endif %}" href="{% url 'dashboard:security_role_permissions' %}">Role Permissions</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="subAdmin" aria-expanded="false" aria-controls="subAdmin">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span>Sub-Admin</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="subAdmin">
+              <a class="nav-sub" href="#">Create Sub Admin</a>
+              <a class="nav-sub" href="#">Assign Role</a>
+              <a class="nav-sub" href="#">Permission Control</a>
+            </div>
+          </div>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <header class="page-header">
+          <div class="topbar">
+<div class="top-actions">
+              <div class="sidebar-control">
+  <button class="sidebar-control-btn" type="button" data-sidebar-toggle aria-label="Toggle sidebar">
+    <i class="fa-solid fa-bars"></i>
+    <span>Responsive Collapsible Sidebar</span>
+  </button>
+</div>
+<button class="icon-btn fullscreen-toggle" type="button" data-fullscreen-toggle aria-label="Toggle fullscreen">
+  <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+</button>
+
+              <button class="icon-btn compact" id="darkModeToggle" aria-label="Toggle dark mode">
+                <i class="fa-solid fa-moon"></i>
+              </button>
+              <a class="icon-btn compact" href="{% url 'dashboard:message_monitor' %}" aria-label="Messages">
+                <i class="fa-regular fa-envelope"></i>
+              </a>
+              <details class="notification-dropdown">
+                <summary class="icon-btn" aria-label="Notifications">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
+                  {% if messages %}<span class="notif-dot"></span>{% endif %}
+                </summary>
+                <div class="notification-menu">
+                  <h4>Notifications</h4>
+                  {% if messages %}
+                  <ul class="notification-list">
+                    {% for message in messages %}
+                    <li>{{ message }}</li>
+                    {% endfor %}
+                  </ul>
+                  {% else %}
+                  <p class="muted">No notifications yet.</p>
+                  {% endif %}
+                </div>
+              </details>
+            </div>
+            <details class="profile-dropdown">
+              <summary class="profile-summary">
+                <div class="profile-avatar">{{ request.user.username|default:"A"|first|upper }}</div>
+                <div class="profile-meta">
+                  <strong>{{ request.user.username|default:"Admin" }}</strong>
+                  <span>Platform Administrator</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+              </summary>
+              <div class="profile-menu">
+                              {% if request.user.last_login %}
+                              <a class="menu-item last-login-info" href="{% url 'dashboard:admin_profile_last_login' %}">
+                                <strong>Last Login</strong>
+                                <span>{{ request.user.last_login|date:"M d, Y H:i" }}</span>
+                              </a>
+                              {% endif %}
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile' %}">
+                                <i class="fa-solid fa-user"></i> My Profile
+                              </a>
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile_photo' %}">
+                                <i class="fa-solid fa-image"></i> Upload Photo
+                              </a>
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile_password' %}">
+                                <i class="fa-solid fa-key"></i> Change Password
+                              </a>
+                              <a class="menu-item logout" href="{% url 'dashboard:logout' %}">
+                                <i class="fa-solid fa-right-from-bracket"></i> Logout
+                              </a>
+              </div>
+              </details>
+          </div>
+        </header>
+
+        <section class="page-hero company-hero">
+          <div>
+            <p class="eyebrow">Support Center</p>
+            <h2>{{ page_title|default:"Support Dashboard" }}</h2>
+            <p class="muted">{{ page_subtitle|default:"Overview of ticket workload." }}</p>
+          </div>
+        </section>
+
+        {% if support_section == "dashboard" %}
+        <section class="metrics-grid">
+          <article class="metric-card gradient-2">
+            <div class="metric-top">
+              <span class="metric-title">Total Tickets</span>
+              <span class="metric-badge">All</span>
+            </div>
+            <strong>1,248</strong>
+            <p>Across all companies</p>
+          </article>
+          <article class="metric-card gradient-4">
+            <div class="metric-top">
+              <span class="metric-title">Open Tickets</span>
+              <span class="metric-badge">Live</span>
+            </div>
+            <strong>86</strong>
+            <p>Waiting for response</p>
+          </article>
+          <article class="metric-card gradient-1">
+            <div class="metric-top">
+              <span class="metric-title">High Priority</span>
+              <span class="metric-badge">Urgent</span>
+            </div>
+            <strong>14</strong>
+            <p>Requires immediate attention</p>
+          </article>
+          <article class="metric-card gradient-3">
+            <div class="metric-top">
+              <span class="metric-title">SLA Breach Risk</span>
+              <span class="metric-badge">SLA</span>
+            </div>
+            <strong>6</strong>
+            <p>Due in 1 hour</p>
+          </article>
+        </section>
+
+        <section class="support-dashboard-grid">
+          <article class="card">
+            <div class="card-header">
+              <div>
+                <h3>Queue Overview</h3>
+                <p class="muted">Current ticket routing status.</p>
+              </div>
+            </div>
+            <div class="queue-list">
+              <div class="queue-item">
+                <span>Unassigned</span>
+                <strong>22</strong>
+              </div>
+              <div class="queue-item">
+                <span>Assigned to Agents</span>
+                <strong>48</strong>
+              </div>
+              <div class="queue-item">
+                <span>Waiting for Company</span>
+                <strong>16</strong>
+              </div>
+            </div>
+          </article>
+          <article class="card">
+            <div class="card-header">
+              <div>
+                <h3>Admin Tools</h3>
+                <p class="muted">Key actions for the support team.</p>
+              </div>
+            </div>
+            <ul class="analysis-list">
+              <li>Assign ticket to support agent</li>
+              <li>Change status and priority</li>
+              <li>Add internal notes</li>
+              <li>Merge duplicate tickets</li>
+              <li>View company details</li>
+            </ul>
+          </article>
+          <article class="card">
+            <div class="card-header">
+              <div>
+                <h3>Automation & SLA</h3>
+                <p class="muted">Professional SaaS features.</p>
+              </div>
+            </div>
+            <div class="automation-grid">
+              <div class="automation-card">
+                <strong>Auto Response</strong>
+                <span class="muted">Instant acknowledgment email</span>
+              </div>
+              <div class="automation-card">
+                <strong>SLA Timer</strong>
+                <span class="muted">Response time tracking</span>
+              </div>
+              <div class="automation-card">
+                <strong>Canned Replies</strong>
+                <span class="muted">Speed up responses</span>
+              </div>
+              <div class="automation-card">
+                <strong>Escalation</strong>
+                <span class="muted">Auto escalation rules</span>
+              </div>
+              <div class="automation-card">
+                <strong>Ticket Tags</strong>
+                <span class="muted">Categorize issues</span>
+              </div>
+              <div class="automation-card">
+                <strong>Feedback Rating</strong>
+                <span class="muted">Post-resolution survey</span>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Recent Tickets</h3>
+              <p class="muted">Latest incoming tickets.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="table support-table">
+              <thead>
+                <tr>
+                  <th>Ticket ID</th>
+                  <th>Company</th>
+                  <th>Subject</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Assigned</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>#SUP-2041</td>
+                  <td>TechNova</td>
+                  <td>Payment not processing</td>
+                  <td><span class="badge warning">High</span></td>
+                  <td><span class="badge info">Open</span></td>
+                  <td>Unassigned</td>
+                </tr>
+                <tr>
+                  <td>#SUP-2038</td>
+                  <td>HireBridge</td>
+                  <td>Candidate complaint on job</td>
+                  <td><span class="badge neutral">Medium</span></td>
+                  <td><span class="badge warning">Waiting</span></td>
+                  <td>Rohit</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if support_section == "all" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>All Tickets</h3>
+              <p class="muted">Complete support queue.</p>
+            </div>
+            <div class="header-actions">
+              <select>
+                <option>Status: All</option>
+                <option>Open</option>
+                <option>In Progress</option>
+                <option>Waiting</option>
+                <option>Closed</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="table support-table">
+              <thead>
+                <tr>
+                  <th>Ticket ID</th>
+                  <th>Company</th>
+                  <th>Category</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Assigned</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>#SUP-2041</td>
+                  <td>TechNova</td>
+                  <td>Billing</td>
+                  <td><span class="badge warning">High</span></td>
+                  <td><span class="badge info">Open</span></td>
+                  <td>Unassigned</td>
+                  <td>2026-02-18</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="action-btn">Assign</button>
+                      <button class="action-btn">View</button>
+                      <button class="action-btn danger">Merge</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>#SUP-2034</td>
+                  <td>CloudHire</td>
+                  <td>Technical Issue</td>
+                  <td><span class="badge neutral">Medium</span></td>
+                  <td><span class="badge warning">Waiting</span></td>
+                  <td>Meera</td>
+                  <td>2026-02-17</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="action-btn">View</button>
+                      <button class="action-btn">Note</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if support_section == "high" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>High Priority Tickets</h3>
+              <p class="muted">Critical issues that need immediate attention.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="table support-table">
+              <thead>
+                <tr>
+                  <th>Ticket ID</th>
+                  <th>Company</th>
+                  <th>Subject</th>
+                  <th>Status</th>
+                  <th>SLA</th>
+                  <th>Assigned</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>#SUP-2041</td>
+                  <td>TechNova</td>
+                  <td>Payment not processing</td>
+                  <td><span class="badge info">Open</span></td>
+                  <td>45 min</td>
+                  <td>Unassigned</td>
+                </tr>
+                <tr>
+                  <td>#SUP-2031</td>
+                  <td>TalentAxis</td>
+                  <td>Account locked</td>
+                  <td><span class="badge warning">In Progress</span></td>
+                  <td>1h 10m</td>
+                  <td>Rohit</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if support_section == "assigned" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Assigned Tickets</h3>
+              <p class="muted">Tickets already owned by agents.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="table support-table">
+              <thead>
+                <tr>
+                  <th>Ticket ID</th>
+                  <th>Company</th>
+                  <th>Agent</th>
+                  <th>Status</th>
+                  <th>Last Update</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>#SUP-2038</td>
+                  <td>HireBridge</td>
+                  <td>Priya</td>
+                  <td><span class="badge warning">Waiting</span></td>
+                  <td>1 hour ago</td>
+                </tr>
+                <tr>
+                  <td>#SUP-2034</td>
+                  <td>CloudHire</td>
+                  <td>Meera</td>
+                  <td><span class="badge info">In Progress</span></td>
+                  <td>3 hours ago</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if support_section == "unassigned" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Unassigned Tickets</h3>
+              <p class="muted">Assign tickets to support agents.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="table support-table">
+              <thead>
+                <tr>
+                  <th>Ticket ID</th>
+                  <th>Company</th>
+                  <th>Subject</th>
+                  <th>Priority</th>
+                  <th>Assign</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>#SUP-2041</td>
+                  <td>TechNova</td>
+                  <td>Payment not processing</td>
+                  <td><span class="badge warning">High</span></td>
+                  <td>
+                    <select>
+                      <option>Assign agent</option>
+                      <option>Priya</option>
+                      <option>Rohit</option>
+                      <option>Meera</option>
+                    </select>
+                  </td>
+                </tr>
+                <tr>
+                  <td>#SUP-2040</td>
+                  <td>PeopleEdge</td>
+                  <td>Candidate issue</td>
+                  <td><span class="badge neutral">Medium</span></td>
+                  <td>
+                    <select>
+                      <option>Assign agent</option>
+                      <option>Priya</option>
+                      <option>Rohit</option>
+                      <option>Meera</option>
+                    </select>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if support_section == "closed" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Closed Tickets</h3>
+              <p class="muted">Resolved tickets and feedback rating.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="table support-table">
+              <thead>
+                <tr>
+                  <th>Ticket ID</th>
+                  <th>Company</th>
+                  <th>Resolution</th>
+                  <th>Closed On</th>
+                  <th>Feedback</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>#SUP-2021</td>
+                  <td>QuickHire</td>
+                  <td>Resolved billing issue</td>
+                  <td>2026-02-14</td>
+                  <td>4.8 / 5</td>
+                </tr>
+                <tr>
+                  <td>#SUP-2019</td>
+                  <td>TalentAxis</td>
+                  <td>Account reverified</td>
+                  <td>2026-02-12</td>
+                  <td>5 / 5</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if support_section == "analytics" %}
+        <section class="support-dashboard-grid">
+          <article class="card">
+            <div class="card-header">
+              <div>
+                <h3>Response Time</h3>
+                <p class="muted">Average first response time.</p>
+              </div>
+            </div>
+            <div class="analysis-card">
+              <strong>32 min</strong>
+              <span class="muted">Last 7 days</span>
+            </div>
+          </article>
+          <article class="card">
+            <div class="card-header">
+              <div>
+                <h3>Resolution Time</h3>
+                <p class="muted">Average time to close.</p>
+              </div>
+            </div>
+            <div class="analysis-card">
+              <strong>2.4 days</strong>
+              <span class="muted">Last 30 days</span>
+            </div>
+          </article>
+          <article class="card">
+            <div class="card-header">
+              <div>
+                <h3>Feedback Rating</h3>
+                <p class="muted">Customer satisfaction score.</p>
+              </div>
+            </div>
+            <div class="analysis-card">
+              <strong>4.6 / 5</strong>
+              <span class="muted">Based on 210 responses</span>
+            </div>
+          </article>
+          <article class="card">
+            <div class="card-header">
+              <div>
+                <h3>Top Categories</h3>
+                <p class="muted">Most common issues.</p>
+              </div>
+            </div>
+            <ul class="analysis-list">
+              <li>Billing - 32%</li>
+              <li>Technical Issue - 28%</li>
+              <li>Account Verification - 16%</li>
+              <li>Candidate Issue - 12%</li>
+            </ul>
+          </article>
+        </section>
+        {% endif %}
+      </main>
+    </div>
+
+    <script src="{% static 'dashboard/js/dashboard.js' %}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
+
+

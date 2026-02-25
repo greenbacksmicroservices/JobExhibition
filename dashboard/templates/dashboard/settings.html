@@ -1,0 +1,949 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ page_title|default:"Settings" }} | Job Exhibition Admin</title>
+    <link rel="icon" href="{% static 'dashboard/favicon.ico' %}" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/user-management.css' %}" />
+  </head>
+  <body class="user-management settings-management">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+    </div>
+    <div class="toast-container" id="toastContainer"></div>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+                <div class="brand">
+          <div class="brand-mark"><img src="{% static 'dashboard/img/je-logo.svg' %}" alt="Job Exhibition logo" /></div>
+          <div class="brand-text">
+            <h1 class="style-1"><span class="brand-job">Job</span> <span class="brand-exhibition">Exhibition</span></h1>
+            <span class="brand-subtitle">Admin Control</span>
+          </div>
+</div>
+
+
+        
+        <div class="company-user admin-user">
+          <div class="company-logo-stack">
+            <div class="company-logo" style="--progress: 100;">
+              {% if admin_profile and admin_profile.photo %}
+                <img src="{{ admin_profile.photo.url }}" alt="Admin photo" />
+              {% else %}
+                <span>{{ request.user.username|default:"A"|first|upper }}</span>
+              {% endif %}
+            </div>
+            <span class="profile-progress-text">100% Complete</span>
+          </div>
+          <div class="company-user-meta">
+            <strong>{{ request.user.username|default:"Admin" }}</strong>
+            <span>Platform Admin</span>
+          </div>
+        </div>
+
+<nav class="sidebar-nav">
+          <a class="nav-item" href="{% url 'dashboard:dashboard' %}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+            <span>Dashboard</span>
+          </a>
+
+          <div class="nav-section open">
+            <button class="nav-item nav-toggle" type="button" data-target="userManagement" aria-expanded="true" aria-controls="userManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span>User Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="userManagement">
+              <a class="nav-sub" href="{% url 'dashboard:companies' %}">Companies</a>
+              <a class="nav-sub" href="{% url 'dashboard:consultancies' %}">Consultancies</a>
+              <a class="nav-sub" href="{% url 'dashboard:candidates' %}">Candidates</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="jobManagement" aria-expanded="false" aria-controls="jobManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M14,2H6A2,2 0 0,0 4,4V20a2,2 0 0,0 2,2H18a2,2 0 0,0 2,-2V8L14,2M18,20H6V4H13V9H18V20"/></svg>
+                <span>Job Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="jobManagement">
+              <a class="nav-sub" href="{% url 'dashboard:jobs' %}">All Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_pending' %}">Pending Approval</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_approved' %}">Approved Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_rejected' %}">Rejected Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_reported' %}">Reported Jobs</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="applicationManagement" aria-expanded="false" aria-controls="applicationManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75-3.54-4.3 5.41h13.2L11.96 6.29z"/></svg>
+                <span>Application Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="applicationManagement">
+              <a class="nav-sub" href="{% url 'dashboard:applications' %}">All Applications</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_interview' %}">Interview Scheduled</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_selected' %}">Selected</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_rejected' %}">Rejected</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_offer' %}">Offer Issued</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="subscriptionBilling" aria-expanded="false" aria-controls="subscriptionBilling">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+                <span>Subscription &amp; Billing</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="subscriptionBilling">
+              <a class="nav-sub{% if section == 'overview' %} active{% endif %}" href="{% url 'dashboard:subscriptions' %}">Overview</a>
+              <a class="nav-sub{% if section == 'free-paid' %} active{% endif %}" href="{% url 'dashboard:subscriptions_free_paid' %}">Who is Free / Paid</a>
+              <a class="nav-sub{% if section == 'expiry-alerts' %} active{% endif %}" href="{% url 'dashboard:subscriptions_expiry_alerts' %}">Expiry Alerts</a>
+              <a class="nav-sub{% if section == 'revenue-charts' %} active{% endif %}" href="{% url 'dashboard:subscriptions_revenue' %}">Revenue Charts</a>
+              <a class="nav-sub{% if section == 'manual-assign' %} active{% endif %}" href="{% url 'dashboard:subscriptions_manual_assign' %}">Manual Plan Assign</a>
+            </div>
+          </div>
+                  <a class="nav-item" href="{% url 'dashboard:advertisement_management' %}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75-3.54-4.3 5.41h13.2L11.96 6.29z"/></svg>
+            <span>Advertisement Management</span>
+          </a>
+                            <div class="nav-section{% if comm_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="communicationCenter" aria-expanded="{% if comm_section %}true{% else %}false{% endif %}" aria-controls="communicationCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v16l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                <span>Communication Center</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="communicationCenter">
+              <a class="nav-sub{% if comm_section == 'bulk-email' %} active{% endif %}" href="{% url 'dashboard:communication_bulk_email' %}">Bulk Email</a>
+              <a class="nav-sub{% if comm_section == 'bulk-sms' %} active{% endif %}" href="{% url 'dashboard:communication_bulk_sms' %}">Bulk SMS</a>
+              <a class="nav-sub{% if comm_section == 'notifications' %} active{% endif %}" href="{% url 'dashboard:communication_notifications' %}">Notifications</a>
+              <a class="nav-sub{% if comm_section == 'whatsapp' %} active{% endif %}" href="{% url 'dashboard:communication_whatsapp' %}">WhatsApp Alerts</a>
+              <a class="nav-sub{% if comm_section == 'chat-monitor' %} active{% endif %}" href="{% url 'dashboard:message_monitor' %}">Chat Monitoring</a>
+            </div>
+          </div>
+                  
+          <div class="nav-section{% if support_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="supportCenter" aria-expanded="{% if support_section %}true{% else %}false{% endif %}" aria-controls="supportCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a7 7 0 0 1 7 7v2a5 5 0 0 1-5 5h-1v3h-2v-3H9a5 5 0 0 1-5-5V9a7 7 0 0 1 7-7zm0 2a5 5 0 0 0-5 5v2a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3V9a5 5 0 0 0-5-5z"/></svg>
+                <span>Customer Support</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="supportCenter">
+              <a class="nav-sub{% if support_section == 'dashboard' %} active{% endif %}" href="{% url 'dashboard:support_center' %}">Support Dashboard</a>
+              <a class="nav-sub{% if support_section == 'all' %} active{% endif %}" href="{% url 'dashboard:support_tickets' %}">All Tickets</a>
+              <a class="nav-sub{% if support_section == 'high' %} active{% endif %}" href="{% url 'dashboard:support_high_priority' %}">High Priority</a>
+              <a class="nav-sub{% if support_section == 'assigned' %} active{% endif %}" href="{% url 'dashboard:support_assigned' %}">Assigned Tickets</a>
+              <a class="nav-sub{% if support_section == 'unassigned' %} active{% endif %}" href="{% url 'dashboard:support_unassigned' %}">Unassigned</a>
+              <a class="nav-sub{% if support_section == 'closed' %} active{% endif %}" href="{% url 'dashboard:support_closed' %}">Closed</a>
+              <a class="nav-sub{% if support_section == 'analytics' %} active{% endif %}" href="{% url 'dashboard:support_analytics' %}">Support Analytics</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if grievance_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="grievanceCenter" aria-expanded="{% if grievance_section %}true{% else %}false{% endif %}" aria-controls="grievanceCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 15h-1.5v-1.5H12V17zm0-4.5h-1.5V7H12v5.5z"/></svg>
+                <span>Grievance / Reports</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="grievanceCenter">
+              <a class="nav-sub{% if grievance_section == 'complaints' %} active{% endif %}" href="{% url 'dashboard:grievance_complaints' %}">User Complaints</a>
+              <a class="nav-sub{% if grievance_section == 'job-reports' %} active{% endif %}" href="{% url 'dashboard:grievance_job_reports' %}">Job Reports</a>
+              <a class="nav-sub{% if grievance_section == 'abuse-fraud' %} active{% endif %}" href="{% url 'dashboard:grievance_abuse_fraud' %}">Abuse / Fraud</a>
+              <a class="nav-sub{% if grievance_section == 'resolution-log' %} active{% endif %}" href="{% url 'dashboard:grievance_resolution_log' %}">Resolution Log</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if settings_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="settings" aria-expanded="{% if settings_section %}true{% else %}false{% endif %}" aria-controls="settings">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l1.72-1.34c.15-.12.19-.34.1-.51l-1.63-2.83c-.12-.22-.37-.29-.59-.22l-2.03.81c-.42-.32-.9-.6-1.44-.84l-.3-2.15c-.04-.24-.24-.42-.5-.42h-3.26c-.26 0-.46.18-.49.42l-.3 2.15c-.54.24-1.02.52-1.44.84l-2.03-.81c-.22-.09-.47 0-.59.22L2.74 8.87c-.1.17-.05.39.1.51l1.72 1.34c-.05.3-.07.62-.07.94s.02.64.07.94l-1.72 1.34c-.15.12-.19.34-.1.51l1.63 2.83c.12.22.37.29.59.22l2.03-.81c.42.32.9.6 1.44.84l.3 2.15c.03.24.23.42.49.42h3.26c.26 0 .46-.18.49-.42l.3-2.15c.54-.24 1.02-.52 1.44-.84l2.03.81c.22.09.47 0 .59-.22l1.63-2.83c.1-.17.05-.39-.10-.51l-1.72-1.34zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                <span>Settings</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="settings">
+              <a class="nav-sub{% if settings_section == 'platform' %} active{% endif %}" href="{% url 'dashboard:settings_platform' %}">Platform Settings</a>
+              <a class="nav-sub{% if settings_section == 'job-categories' %} active{% endif %}" href="{% url 'dashboard:settings_job_categories' %}">Job Categories</a>
+              <a class="nav-sub{% if settings_section == 'locations' %} active{% endif %}" href="{% url 'dashboard:settings_locations' %}">Locations</a>
+              <a class="nav-sub{% if settings_section == 'skills' %} active{% endif %}" href="{% url 'dashboard:settings_skills' %}">Skills Library</a>
+              <a class="nav-sub{% if settings_section == 'experience-levels' %} active{% endif %}" href="{% url 'dashboard:settings_experience_levels' %}">Experience Levels</a>
+            </div>
+          </div>
+        </nav>
+      </aside>
+
+                        <main class="main user-page" id="settings-page">
+        <header class="page-header">
+          <div class="topbar">
+<div class="top-actions">
+              <div class="sidebar-control">
+  <button class="sidebar-control-btn" type="button" data-sidebar-toggle aria-label="Toggle sidebar">
+    <i class="fa-solid fa-bars"></i>
+    <span>Responsive Collapsible Sidebar</span>
+  </button>
+</div>
+<button class="icon-btn fullscreen-toggle" type="button" data-fullscreen-toggle aria-label="Toggle fullscreen">
+  <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+</button>
+
+              <button class="icon-btn compact" id="darkModeToggle" aria-label="Toggle dark mode">
+                <i class="fa-solid fa-moon"></i>
+              </button>
+              <a class="icon-btn compact" href="{% url 'dashboard:message_monitor' %}" aria-label="Messages">
+                <i class="fa-regular fa-envelope"></i>
+              </a>
+              <details class="notification-dropdown">
+                <summary class="icon-btn" aria-label="Notifications">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
+                  {% if messages %}<span class="notif-dot"></span>{% endif %}
+                </summary>
+                <div class="notification-menu">
+                  <h4>Notifications</h4>
+                  {% if messages %}
+                  <ul class="notification-list">
+                    {% for message in messages %}
+                    <li>{{ message }}</li>
+                    {% endfor %}
+                  </ul>
+                  {% else %}
+                  <p class="muted">No notifications yet.</p>
+                  {% endif %}
+                </div>
+              </details>
+            </div>
+            <details class="profile-dropdown">
+              <summary class="profile-summary">
+                <div class="profile-avatar">{{ request.user.username|default:"A"|first|upper }}</div>
+                <div class="profile-meta">
+                  <strong>{{ request.user.username|default:"Admin" }}</strong>
+                  <span>Platform Administrator</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+              </summary>
+              <div class="profile-menu">
+                              {% if request.user.last_login %}
+                              <a class="menu-item last-login-info" href="{% url 'dashboard:admin_profile_last_login' %}">
+                                <strong>Last Login</strong>
+                                <span>{{ request.user.last_login|date:"M d, Y H:i" }}</span>
+                              </a>
+                              {% endif %}
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile' %}">
+                                <i class="fa-solid fa-user"></i> My Profile
+                              </a>
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile_photo' %}">
+                                <i class="fa-solid fa-image"></i> Upload Photo
+                              </a>
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile_password' %}">
+                                <i class="fa-solid fa-key"></i> Change Password
+                              </a>
+                              <a class="menu-item logout" href="{% url 'dashboard:logout' %}">
+                                <i class="fa-solid fa-right-from-bracket"></i> Logout
+                              </a>
+              </div>
+              </details>
+          </div>
+        </header>
+
+        <section class="page-hero">
+          <div>
+            <p class="eyebrow">Settings</p>
+            <h2>{{ page_title|default:"Platform Settings" }}</h2>
+            <p class="muted">{{ page_subtitle|default:"Control core configuration, master data, and access policies." }}</p>
+          </div>
+          <div class="page-actions">
+            {% if settings_section == "platform" %}
+              <button class="btn ghost">Reset</button>
+              <button class="btn primary">Save Changes</button>
+            {% elif settings_section == "job-categories" %}
+              <button class="btn primary">Add Category</button>
+              <button class="btn ghost">Import CSV</button>
+            {% elif settings_section == "locations" %}
+              <button class="btn primary">Add Location</button>
+              <button class="btn ghost">Bulk Import</button>
+            {% elif settings_section == "skills" %}
+              <button class="btn primary">Add Skill</button>
+              <button class="btn ghost">Sync Suggestions</button>
+            {% elif settings_section == "experience-levels" %}
+              <button class="btn primary">Add Level</button>
+              <button class="btn ghost">Update Threshold</button>
+            {% endif %}
+          </div>
+        </section>
+
+        {% if settings_section == "platform" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>General Settings</h3>
+              <p class="muted">Branding, contact channels, and locale defaults.</p>
+            </div>
+          </div>
+          <form class="settings-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Website Name</label>
+                <input type="text" placeholder="Job Exhibition" />
+              </div>
+              <div class="form-group">
+                <label>Logo</label>
+                <input type="file" />
+              </div>
+              <div class="form-group">
+                <label>Favicon</label>
+                <input type="file" />
+              </div>
+              <div class="form-group">
+                <label>Contact Email</label>
+                <input type="email" placeholder="support@jobexhibition.com" />
+              </div>
+              <div class="form-group">
+                <label>Support Phone</label>
+                <input type="text" placeholder="+91 98765 43210" />
+              </div>
+              <div class="form-group">
+                <label>Currency</label>
+                <select>
+                  <option>INR</option>
+                  <option>USD</option>
+                  <option>EUR</option>
+                  <option>GBP</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Timezone</label>
+                <select>
+                  <option>UTC +05:30 (Asia/Kolkata)</option>
+                  <option>UTC +00:00 (UTC)</option>
+                  <option>UTC -05:00 (US/Eastern)</option>
+                  <option>UTC +01:00 (Europe/Paris)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Language</label>
+                <select>
+                  <option>English</option>
+                  <option>Hindi</option>
+                  <option>Marathi</option>
+                  <option>Gujarati</option>
+                </select>
+              </div>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Payment Settings</h3>
+              <p class="muted">Commission structure, plans, and gateway configuration.</p>
+            </div>
+          </div>
+          <form class="settings-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Commission %</label>
+                <input type="number" min="0" max="100" placeholder="10" />
+              </div>
+              <div class="form-group">
+                <label>Subscription Plans</label>
+                <input type="text" placeholder="Free, Standard, Premium" />
+                <span class="inline-note">Comma-separated plan labels.</span>
+              </div>
+              <div class="form-group">
+                <label>Payment Gateway Mode</label>
+                <select>
+                  <option>Test</option>
+                  <option>Live</option>
+                </select>
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>Payment Gateway Keys</label>
+                <textarea rows="3" placeholder="Razorpay/Stripe/PayU keys"></textarea>
+              </div>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Communication Settings</h3>
+              <p class="muted">SMTP, SMS, WhatsApp, and notification controls.</p>
+            </div>
+          </div>
+          <form class="settings-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>SMTP Host</label>
+                <input type="text" placeholder="smtp.gmail.com" />
+              </div>
+              <div class="form-group">
+                <label>SMTP Port</label>
+                <input type="number" placeholder="587" />
+              </div>
+              <div class="form-group">
+                <label>SMTP Username</label>
+                <input type="text" placeholder="no-reply@jobexhibition.com" />
+              </div>
+              <div class="form-group">
+                <label>SMTP Password</label>
+                <input type="password" placeholder="********" />
+              </div>
+              <div class="form-group">
+                <label>SMS API Key</label>
+                <input type="text" placeholder="SMS_API_KEY" />
+              </div>
+              <div class="form-group">
+                <label>WhatsApp API Key</label>
+                <input type="text" placeholder="WHATSAPP_API_KEY" />
+              </div>
+              <div class="form-group">
+                <label>Notification Toggle</label>
+                <label class="switch">
+                  <input type="checkbox" checked />
+                  <span class="slider"></span>
+                </label>
+                <span class="inline-note">Enable in-app notifications.</span>
+              </div>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Security Settings</h3>
+              <p class="muted">Access safeguards and automation rules.</p>
+            </div>
+          </div>
+          <form class="settings-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>OTP Enable / Disable</label>
+                <label class="switch">
+                  <input type="checkbox" checked />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label>Email Verification Required</label>
+                <label class="switch">
+                  <input type="checkbox" checked />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label>Auto Approval Jobs ON / OFF</label>
+                <label class="switch">
+                  <input type="checkbox" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </form>
+        </section>
+        {% endif %}
+
+        {% if settings_section == "job-categories" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Example Categories</h3>
+              <p class="muted">These appear in the job posting dropdown for employers.</p>
+            </div>
+          </div>
+          <div class="tag-grid">
+            <span class="tag-pill">IT / Software</span>
+            <span class="tag-pill">Marketing</span>
+            <span class="tag-pill">Sales</span>
+            <span class="tag-pill">HR</span>
+            <span class="tag-pill">Finance</span>
+            <span class="tag-pill">Healthcare</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Add Category</h3>
+              <p class="muted">Create a new category with icon and parent mapping.</p>
+            </div>
+          </div>
+          <form class="settings-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Category Name</label>
+                <input type="text" placeholder="Design" />
+              </div>
+              <div class="form-group">
+                <label>Parent Category (Optional)</label>
+                <select>
+                  <option>None</option>
+                  <option>IT / Software</option>
+                  <option>Marketing</option>
+                  <option>Sales</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Status</label>
+                <select>
+                  <option>Active</option>
+                  <option>Inactive</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Icon Upload</label>
+                <input type="file" />
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>Description</label>
+                <textarea rows="3" placeholder="Short description for category"></textarea>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn primary">Save Category</button>
+              <button type="button" class="btn ghost">Reset</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Category List</h3>
+              <p class="muted">Manage, edit, or disable categories.</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Category</th>
+                  <th>Parent</th>
+                  <th>Status</th>
+                  <th>Icon</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>IT / Software</td>
+                  <td>N/A</td>
+                  <td><span class="badge success">Active</span></td>
+                  <td>it.svg</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="action-btn">Edit</button>
+                      <button class="action-btn danger">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Marketing</td>
+                  <td>N/A</td>
+                  <td><span class="badge success">Active</span></td>
+                  <td>marketing.svg</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="action-btn">Edit</button>
+                      <button class="action-btn warning">Disable</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>SEO (Subcategory)</td>
+                  <td>Marketing</td>
+                  <td><span class="badge warning">Inactive</span></td>
+                  <td>seo.svg</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="action-btn">Edit</button>
+                      <button class="action-btn">Activate</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if settings_section == "locations" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Location Structure</h3>
+              <p class="muted">Country -> State -> City hierarchy for job posting and filters.</p>
+            </div>
+          </div>
+          <div class="details-grid">
+            <div class="details-card">
+              <h6>Country</h6>
+              <div class="details-list">
+                <div><span>Sample:</span> India</div>
+                <div><span>Total:</span> 12</div>
+              </div>
+            </div>
+            <div class="details-card">
+              <h6>State</h6>
+              <div class="details-list">
+                <div><span>Sample:</span> Maharashtra</div>
+                <div><span>Total:</span> 68</div>
+              </div>
+            </div>
+            <div class="details-card">
+              <h6>City</h6>
+              <div class="details-list">
+                <div><span>Sample:</span> Mumbai</div>
+                <div><span>Total:</span> 420</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Add Location</h3>
+              <p class="muted">Add country, state, or city in the hierarchy.</p>
+            </div>
+          </div>
+          <form class="settings-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Country</label>
+                <input type="text" placeholder="India" />
+              </div>
+              <div class="form-group">
+                <label>State</label>
+                <input type="text" placeholder="Maharashtra" />
+              </div>
+              <div class="form-group">
+                <label>City</label>
+                <input type="text" placeholder="Mumbai" />
+              </div>
+              <div class="form-group">
+                <label>Status</label>
+                <select>
+                  <option>Active</option>
+                  <option>Inactive</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Bulk Import</label>
+                <input type="file" />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn primary">Save Location</button>
+              <button type="button" class="btn ghost">Clear</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Location List</h3>
+              <p class="muted">Manage active locations used in job filtering.</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Country</th>
+                  <th>State</th>
+                  <th>City</th>
+                  <th>Status</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>India</td>
+                  <td>Maharashtra</td>
+                  <td>Mumbai</td>
+                  <td><span class="badge success">Active</span></td>
+                  <td>2026-02-14</td>
+                </tr>
+                <tr>
+                  <td>India</td>
+                  <td>Karnataka</td>
+                  <td>Bengaluru</td>
+                  <td><span class="badge success">Active</span></td>
+                  <td>2026-02-12</td>
+                </tr>
+                <tr>
+                  <td>India</td>
+                  <td>Gujarat</td>
+                  <td>Surat</td>
+                  <td><span class="badge warning">Inactive</span></td>
+                  <td>2026-02-08</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if settings_section == "skills" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Skills Library</h3>
+              <p class="muted">Used in employer job posts and candidate profiles for matching.</p>
+            </div>
+          </div>
+          <div class="tag-grid">
+            <span class="tag-pill">Python</span>
+            <span class="tag-pill">Django</span>
+            <span class="tag-pill">React</span>
+            <span class="tag-pill">Node.js</span>
+            <span class="tag-pill">Salesforce</span>
+            <span class="tag-pill">Digital Marketing</span>
+            <span class="tag-pill">Data Analytics</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Add Skill</h3>
+              <p class="muted">Create a reusable skill for job matching.</p>
+            </div>
+          </div>
+          <form class="settings-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Skill Name</label>
+                <input type="text" placeholder="React" />
+              </div>
+              <div class="form-group">
+                <label>Category</label>
+                <select>
+                  <option>Technology</option>
+                  <option>Marketing</option>
+                  <option>Sales</option>
+                  <option>Finance</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Status</label>
+                <select>
+                  <option>Active</option>
+                  <option>Inactive</option>
+                </select>
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>Synonyms / Aliases</label>
+                <input type="text" placeholder="ReactJS, React.js" />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn primary">Save Skill</button>
+              <button type="button" class="btn ghost">Reset</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Skill Manager</h3>
+              <p class="muted">Popularity tracking for employer and candidate selection.</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Skill</th>
+                  <th>Category</th>
+                  <th>Used in Jobs</th>
+                  <th>In Candidates</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Python</td>
+                  <td>Technology</td>
+                  <td>320</td>
+                  <td>880</td>
+                  <td><span class="badge success">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Digital Marketing</td>
+                  <td>Marketing</td>
+                  <td>148</td>
+                  <td>410</td>
+                  <td><span class="badge success">Active</span></td>
+                </tr>
+                <tr>
+                  <td>Cold Calling</td>
+                  <td>Sales</td>
+                  <td>92</td>
+                  <td>214</td>
+                  <td><span class="badge warning">Inactive</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if settings_section == "experience-levels" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Experience Levels</h3>
+              <p class="muted">Dropdown options shown on job posting and candidate profiles.</p>
+            </div>
+          </div>
+          <div class="level-grid">
+            <div class="level-card">
+              <strong>Fresher</strong>
+              <span>0 Years</span>
+              <span class="badge success">Active</span>
+            </div>
+            <div class="level-card">
+              <strong>1-2 Years</strong>
+              <span>1 to 2 Years</span>
+              <span class="badge success">Active</span>
+            </div>
+            <div class="level-card">
+              <strong>3-5 Years</strong>
+              <span>3 to 5 Years</span>
+              <span class="badge success">Active</span>
+            </div>
+            <div class="level-card">
+              <strong>5+ Years</strong>
+              <span>5+ Years</span>
+              <span class="badge success">Active</span>
+            </div>
+            <div class="level-card">
+              <strong>10+ Years</strong>
+              <span>10+ Years</span>
+              <span class="badge warning">Draft</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Add / Edit Level</h3>
+              <p class="muted">Maintain consistent experience ranges.</p>
+            </div>
+          </div>
+          <form class="settings-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Level Name</label>
+                <input type="text" placeholder="3-5 Years" />
+              </div>
+              <div class="form-group">
+                <label>Minimum Years</label>
+                <input type="number" min="0" placeholder="3" />
+              </div>
+              <div class="form-group">
+                <label>Maximum Years</label>
+                <input type="number" min="0" placeholder="5" />
+              </div>
+              <div class="form-group">
+                <label>Status</label>
+                <select>
+                  <option>Active</option>
+                  <option>Inactive</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn primary">Save Level</button>
+              <button type="button" class="btn ghost">Reset</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Report Threshold Limit</h3>
+              <p class="muted">Auto-flag accounts/jobs after a set number of reports.</p>
+            </div>
+          </div>
+          <form class="settings-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Threshold Count</label>
+                <input type="number" min="1" placeholder="5" />
+              </div>
+              <div class="form-group">
+                <label>Auto Action</label>
+                <select>
+                  <option>Send Warning</option>
+                  <option>Suspend Job</option>
+                  <option>Block Account</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Enable Auto-Flagging</label>
+                <label class="switch">
+                  <input type="checkbox" checked />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn primary">Update Threshold</button>
+              <button type="button" class="btn ghost">Reset</button>
+            </div>
+          </form>
+        </section>
+        {% endif %}
+
+      </main>
+    </div>
+
+    <script src="{% static 'dashboard/js/dashboard.js' %}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

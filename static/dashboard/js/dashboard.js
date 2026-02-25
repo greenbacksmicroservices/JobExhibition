@@ -1,0 +1,287 @@
+// Smooth sidebar accordion functionality
+document.addEventListener('DOMContentLoaded', () => {
+  const toggles = document.querySelectorAll('[data-sidebar-toggle]');
+  const overlay = document.getElementById('sidebarOverlay');
+  const accordions = document.querySelectorAll('.nav-toggle');
+  const subAccordions = document.querySelectorAll('.nav-sub-toggle');
+  const darkToggle = document.getElementById('darkModeToggle');
+  const fullscreenToggles = document.querySelectorAll('[data-fullscreen-toggle]');
+
+  const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
+
+  const closeMobileSidebar = () => {
+    if (!isMobile()) return;
+    document.body.classList.remove('sidebar-open');
+    toggles.forEach((btn) => btn.setAttribute('aria-expanded', 'false'));
+  };
+
+  const applySidebarState = (collapsed) => {
+    if (collapsed) {
+      document.body.classList.add('sidebar-collapsed');
+    } else {
+      document.body.classList.remove('sidebar-collapsed');
+    }
+    localStorage.setItem('sidebar-collapsed', collapsed ? 'true' : 'false');
+  };
+
+  const toggleSidebar = () => {
+    if (isMobile()) {
+      document.body.classList.toggle('sidebar-open');
+      toggles.forEach((btn) => {
+        btn.setAttribute('aria-expanded', document.body.classList.contains('sidebar-open').toString());
+      });
+      return;
+    }
+    const collapsed = document.body.classList.toggle('sidebar-collapsed');
+    localStorage.setItem('sidebar-collapsed', collapsed ? 'true' : 'false');
+  };
+
+  // Menu toggle
+  toggles.forEach((btn) => btn.addEventListener('click', toggleSidebar));
+
+  // Overlay click handler
+  if (overlay) {
+    overlay.addEventListener('click', () => {
+      closeMobileSidebar();
+    });
+  }
+
+  const stored = localStorage.getItem('sidebar-collapsed');
+  if (stored === 'true' && !isMobile()) {
+    applySidebarState(true);
+  }
+
+  window.addEventListener('resize', () => {
+    if (isMobile()) {
+      document.body.classList.remove('sidebar-collapsed');
+    } else {
+      document.body.classList.remove('sidebar-open');
+      const saved = localStorage.getItem('sidebar-collapsed');
+      applySidebarState(saved === 'true');
+    }
+  });
+
+  const resolveThemeScope = () => {
+    const scoped = (document.body?.dataset?.themeScope || '').trim().toLowerCase();
+    if (scoped) return scoped;
+    if (document.body.classList.contains('candidate-dashboard')) return 'candidate';
+    if (document.body.classList.contains('company-dashboard')) return 'company';
+    if (document.body.classList.contains('consultancy-dashboard')) return 'consultancy';
+    if (document.body.classList.contains('user-management')) return 'admin';
+    return 'admin';
+  };
+
+  const themeScope = resolveThemeScope();
+  const darkStorageKey = `dark-mode-${themeScope}`;
+  window.__dashboardThemeManaged = true;
+
+  // Dark mode toggle
+  const updateDarkIcon = () => {
+    if (!darkToggle) return;
+    const icon = darkToggle.querySelector('i');
+    if (!icon) return;
+    if (document.body.classList.contains('dark-mode')) {
+      icon.classList.remove('fa-moon');
+      icon.classList.add('fa-sun');
+    } else {
+      icon.classList.remove('fa-sun');
+      icon.classList.add('fa-moon');
+    }
+  };
+
+  const storedTheme = localStorage.getItem(darkStorageKey);
+  const legacyTheme = localStorage.getItem('dark-mode');
+  const shouldEnableDark =
+    storedTheme === 'true' || (storedTheme === null && themeScope === 'admin' && legacyTheme === 'true');
+  document.body.classList.toggle('dark-mode', shouldEnableDark);
+
+  updateDarkIcon();
+
+  if (darkToggle) {
+    darkToggle.addEventListener('click', () => {
+      document.body.classList.toggle('dark-mode');
+      localStorage.setItem(darkStorageKey, document.body.classList.contains('dark-mode'));
+      updateDarkIcon();
+    });
+  }
+
+  // Main accordion menu items with smooth animation
+  accordions.forEach((button) => {
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const section = button.closest('.nav-section');
+      if (!section) return;
+
+      // Close other sections (optional - comment out for allow-all-open behavior)
+      // accordions.forEach(otherButton => {
+      //   const otherSection = otherButton.closest('.nav-section');
+      //   if (otherSection !== section && otherSection.classList.contains('open')) {
+      //     otherSection.classList.remove('open');
+      //     otherButton.setAttribute('aria-expanded', 'false');
+      //   }
+      // });
+
+      // Toggle current section
+      const isOpen = section.classList.toggle('open');
+      button.setAttribute('aria-expanded', String(isOpen));
+    });
+  });
+
+  // Nested sub-accordion items with smooth animation
+  subAccordions.forEach((button) => {
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const isOpen = button.getAttribute('aria-expanded') === 'true';
+      button.setAttribute('aria-expanded', String(!isOpen));
+    });
+  });
+
+  // Smooth scroll for sidebar
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) {
+    sidebar.addEventListener('wheel', (e) => {
+      sidebar.scrollBy({
+        top: e.deltaY,
+        behavior: 'smooth'
+      });
+    }, { passive: true });
+  }
+
+  // Close mobile sidebar on navigation
+  const sidebarLinks = document.querySelectorAll('.sidebar-nav a');
+  sidebarLinks.forEach((link) => {
+    link.addEventListener('click', () => {
+      if (document.body.classList.contains('sidebar-open')) {
+        closeMobileSidebar();
+      }
+    });
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.body.classList.contains('sidebar-open')) {
+      closeMobileSidebar();
+    }
+  });
+
+  const getCookie = (name) => {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return '';
+  };
+
+  const clearCookie = (name) => {
+    document.cookie = `${name}=; Max-Age=0; path=/`;
+  };
+
+  const showWelcomeToast = (role) => {
+    const toast = document.createElement('div');
+    toast.className = 'welcome-toast show';
+    toast.textContent = `Welcome back, ${role}!`;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.remove();
+    }, 3200);
+  };
+
+  const welcomeRole = getCookie('welcome_role');
+  if (welcomeRole) {
+    showWelcomeToast(welcomeRole);
+    clearCookie('welcome_role');
+  }
+
+  fullscreenToggles.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+  });
+
+  const adVideos = Array.from(document.querySelectorAll('.ad-media video'));
+  const setMutedState = (video, muted) => {
+    video.muted = muted;
+    video.defaultMuted = muted;
+    if (muted) {
+      video.setAttribute('muted', '');
+    } else {
+      video.removeAttribute('muted');
+    }
+  };
+
+  adVideos.forEach((video) => {
+    setMutedState(video, true);
+    const tryPlay = () => {
+      video.play().catch(() => {});
+    };
+    if (video.readyState >= 2) {
+      tryPlay();
+    } else {
+      video.addEventListener('canplay', tryPlay, { once: true });
+    }
+  });
+
+  const updateSoundButton = (button, video) => {
+    const icon = button.querySelector('i');
+    const label = button.querySelector('span');
+    if (video.muted) {
+      button.setAttribute('aria-pressed', 'false');
+      button.setAttribute('aria-label', 'Enable sound');
+      if (icon) {
+        icon.classList.remove('fa-volume-high');
+        icon.classList.add('fa-volume-xmark');
+      }
+      if (label) {
+        label.textContent = 'Sound Off';
+      }
+    } else {
+      button.setAttribute('aria-pressed', 'true');
+      button.setAttribute('aria-label', 'Disable sound');
+      if (icon) {
+        icon.classList.remove('fa-volume-xmark');
+        icon.classList.add('fa-volume-high');
+      }
+      if (label) {
+        label.textContent = 'Sound On';
+      }
+    }
+  };
+
+  const videoToButton = new WeakMap();
+  const soundButtons = document.querySelectorAll('[data-ad-sound-toggle]');
+  soundButtons.forEach((button) => {
+    const container = button.closest('.ad-media');
+    const video = container ? container.querySelector('video') : null;
+    if (!video) return;
+    videoToButton.set(video, button);
+    updateSoundButton(button, video);
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+
+      const shouldUnmute = video.muted;
+      if (shouldUnmute) {
+        adVideos.forEach((otherVideo) => {
+          if (otherVideo === video) return;
+          setMutedState(otherVideo, true);
+          const otherButton = videoToButton.get(otherVideo);
+          if (otherButton) {
+            updateSoundButton(otherButton, otherVideo);
+          }
+        });
+      }
+
+      setMutedState(video, !shouldUnmute);
+      if (!video.muted) {
+        video.volume = 1;
+      }
+      video.play().catch(() => {});
+      updateSoundButton(button, video);
+    });
+  });
+});

@@ -1,0 +1,765 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}My Profile{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">My Profile</p>
+    <h2>Candidate Profile</h2>
+    <p class="muted">Fill in complete details to build a strong AI resume.</p>
+  </div>
+</section>
+
+<section class="card section-block profile-shell">
+  <div class="card-header">
+    <div>
+      <h3>Profile Form</h3>
+      <p class="muted">All sections in one compact form. Update and save anytime.</p>
+    </div>
+    <span class="badge success">{{ candidate.profile_completion|default:0 }}% Complete</span>
+  </div>
+  <div class="profile-overview-strip">
+    <span>Profile: {{ candidate.account_status|default:"Active" }}</span>
+    <span>Email: {% if candidate.email_verified %}Verified{% else %}Pending{% endif %}</span>
+    <span>Phone: {% if candidate.phone_verified %}Verified{% else %}Pending{% endif %}</span>
+    <span>Visibility: {% if candidate.profile_visibility %}Public{% else %}Private{% endif %}</span>
+  </div>
+  <div class="tab-nav profile-tabs">
+    <button class="tab-pill active" type="button" data-tab-target="personal">Personal</button>
+    <button class="tab-pill" type="button" data-tab-target="summary">Summary</button>
+    <button class="tab-pill" type="button" data-tab-target="education">Education</button>
+    <button class="tab-pill" type="button" data-tab-target="experience">Experience</button>
+    <button class="tab-pill" type="button" data-tab-target="skills">Skills</button>
+    <button class="tab-pill" type="button" data-tab-target="certifications">Certifications</button>
+    <button class="tab-pill" type="button" data-tab-target="projects">Projects</button>
+    <button class="tab-pill" type="button" data-tab-target="additional">Additional</button>
+    <button class="tab-pill" type="button" data-tab-target="resume">Resume Builder</button>
+  </div>
+
+  <form class="company-form-grid" method="post" enctype="multipart/form-data" data-loading-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="update_profile" />
+
+    <div class="tab-section active" data-tab-section="personal">
+      <div class="company-form-grid">
+        <div class="company-form-group company-form-full">
+          <label>Profile Photo</label>
+          <div class="logo-upload">
+            <div class="logo-preview">
+              {% if candidate.profile_image %}
+                <img src="{{ candidate.profile_image.url }}" alt="Candidate photo" />
+              {% else %}
+                <span>{{ candidate.name|default:"C"|first|upper }}</span>
+              {% endif %}
+            </div>
+            <div class="logo-actions">
+              <input type="file" name="profile_image" accept="image/*" />
+            </div>
+          </div>
+        </div>
+        <div class="company-form-group">
+          <label>Full Name</label>
+          <input type="text" name="name" value="{{ candidate.name|default:'' }}" required />
+        </div>
+        <div class="company-form-group">
+          <label>Email ID {% if candidate.email_verified %}<span class="badge success">Verified</span>{% endif %}</label>
+          <input type="email" name="email" value="{{ candidate.email|default:'' }}" required />
+        </div>
+        <div class="company-form-group">
+          <label>Mobile Number {% if candidate.phone_verified %}<span class="badge success">Verified</span>{% endif %}</label>
+          <input type="text" name="phone" value="{{ candidate.phone|default:'' }}" />
+        </div>
+        <div class="company-form-group">
+          <label>Alternate Mobile Number</label>
+          <input type="text" name="alt_phone" value="{{ candidate.alt_phone|default:'' }}" />
+        </div>
+        <div class="company-form-group">
+          <label>Date of Birth</label>
+          <input type="date" name="date_of_birth" value="{{ candidate.date_of_birth|date:'Y-m-d' }}" />
+        </div>
+        <div class="company-form-group">
+          <label>Gender</label>
+          <select name="gender">
+            <option value="">Select</option>
+            <option value="Male" {% if candidate.gender == 'Male' %}selected{% endif %}>Male</option>
+            <option value="Female" {% if candidate.gender == 'Female' %}selected{% endif %}>Female</option>
+            <option value="Other" {% if candidate.gender == 'Other' %}selected{% endif %}>Other</option>
+          </select>
+        </div>
+        <div class="company-form-group">
+          <label>Current Location (City, State)</label>
+          <input type="text" name="location" value="{{ candidate.location|default:'' }}" placeholder="City, State" />
+        </div>
+        <div class="company-form-group">
+          <label>Preferred Job Location</label>
+          <input type="text" name="preferred_job_location" value="{{ candidate.preferred_job_location|default:'' }}" placeholder="Preferred cities" />
+        </div>
+        <div class="company-form-group">
+          <label>Marital Status</label>
+          <select name="marital_status">
+            <option value="">Select</option>
+            <option value="Single" {% if candidate.marital_status == 'Single' %}selected{% endif %}>Single</option>
+            <option value="Married" {% if candidate.marital_status == 'Married' %}selected{% endif %}>Married</option>
+            <option value="Other" {% if candidate.marital_status == 'Other' %}selected{% endif %}>Other</option>
+          </select>
+        </div>
+        <div class="company-form-group">
+          <label>Nationality</label>
+          <input type="text" name="nationality" value="{{ candidate.nationality|default:'' }}" />
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-section" data-tab-section="summary">
+      <div class="company-form-grid">
+        <div class="company-form-group company-form-full">
+          <label>Short Bio (3-5 lines)</label>
+          <textarea rows="4" name="bio">{{ candidate.bio|default:'' }}</textarea>
+        </div>
+        <div class="company-form-group company-form-full">
+          <label>Career Objective</label>
+          <textarea rows="3" name="career_objective">{{ candidate.career_objective|default:'' }}</textarea>
+        </div>
+        <div class="company-form-group">
+          <label>Total Experience (Years/Months)</label>
+          <input type="text" name="total_experience" value="{{ candidate.total_experience|default:'' }}" placeholder="e.g. 3 Years" />
+        </div>
+        <div class="company-form-group">
+          <label>Current Job Status</label>
+          <select name="current_job_status">
+            <option value="">Select</option>
+            <option value="Fresher" {% if candidate.current_job_status == 'Fresher' %}selected{% endif %}>Fresher</option>
+            <option value="Working" {% if candidate.current_job_status == 'Working' %}selected{% endif %}>Working</option>
+            <option value="Open to Work" {% if candidate.current_job_status == 'Open to Work' %}selected{% endif %}>Open to Work</option>
+          </select>
+        </div>
+        <div class="company-form-group">
+          <label>Experience Type</label>
+          <select name="experience_type" data-experience-type>
+            <option value="">Select</option>
+            <option value="Fresher" {% if candidate.experience_type == 'Fresher' %}selected{% endif %}>Fresher</option>
+            <option value="Experienced" {% if candidate.experience_type == 'Experienced' %}selected{% endif %}>Experienced</option>
+          </select>
+        </div>
+        <div class="company-form-group">
+          <label>Experience (Years)</label>
+          <input type="text" name="experience" value="{{ candidate.experience|default:'' }}" placeholder="e.g. 2-4 years" />
+        </div>
+        <div class="company-form-group" data-experience-details>
+          <label>Current Company</label>
+          <input type="text" name="current_company" value="{{ candidate.current_company|default:'' }}" />
+        </div>
+        <div class="company-form-group" data-experience-details>
+          <label>Current Position</label>
+          <input type="text" name="current_position" value="{{ candidate.current_position|default:'' }}" />
+        </div>
+        <div class="company-form-group" data-experience-details>
+          <label>Current Salary</label>
+          <input type="text" name="current_salary" value="{{ candidate.current_salary|default:'' }}" />
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-section" data-tab-section="education">
+      <div class="repeatable" data-repeatable>
+        <div class="repeatable-list" data-repeatable-list>
+          {% if education_entries %}
+            {% for edu in education_entries %}
+            <div class="repeatable-row">
+              <div class="company-form-grid">
+                <div class="company-form-group">
+                  <label>Qualification</label>
+                  <input type="text" name="edu_qualification" value="{{ edu.qualification|default:'' }}" placeholder="10th / 12th / Graduation" />
+                </div>
+                <div class="company-form-group">
+                  <label>Course Name</label>
+                  <input type="text" name="edu_course" value="{{ edu.course_name|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Specialization</label>
+                  <input type="text" name="edu_specialization" value="{{ edu.specialization|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>College / University</label>
+                  <input type="text" name="edu_institution" value="{{ edu.institution|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Passing Year</label>
+                  <input type="text" name="edu_year" value="{{ edu.passing_year|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Percentage / CGPA</label>
+                  <input type="text" name="edu_score" value="{{ edu.score|default:'' }}" />
+                </div>
+              </div>
+              <div class="repeatable-actions">
+                <button class="btn ghost" type="button" data-remove-row>Remove</button>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="repeatable-row">
+              <div class="company-form-grid">
+                <div class="company-form-group">
+                  <label>Qualification</label>
+                  <input type="text" name="edu_qualification" placeholder="10th / 12th / Graduation" />
+                </div>
+                <div class="company-form-group">
+                  <label>Course Name</label>
+                  <input type="text" name="edu_course" />
+                </div>
+                <div class="company-form-group">
+                  <label>Specialization</label>
+                  <input type="text" name="edu_specialization" />
+                </div>
+                <div class="company-form-group">
+                  <label>College / University</label>
+                  <input type="text" name="edu_institution" />
+                </div>
+                <div class="company-form-group">
+                  <label>Passing Year</label>
+                  <input type="text" name="edu_year" />
+                </div>
+                <div class="company-form-group">
+                  <label>Percentage / CGPA</label>
+                  <input type="text" name="edu_score" />
+                </div>
+              </div>
+              <div class="repeatable-actions">
+                <button class="btn ghost" type="button" data-remove-row>Remove</button>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+        <button class="btn ghost" type="button" data-add-row data-template-id="edu-template">Add Education</button>
+        <template id="edu-template">
+          <div class="repeatable-row">
+            <div class="company-form-grid">
+              <div class="company-form-group">
+                <label>Qualification</label>
+                <input type="text" name="edu_qualification" placeholder="10th / 12th / Graduation" />
+              </div>
+              <div class="company-form-group">
+                <label>Course Name</label>
+                <input type="text" name="edu_course" />
+              </div>
+              <div class="company-form-group">
+                <label>Specialization</label>
+                <input type="text" name="edu_specialization" />
+              </div>
+              <div class="company-form-group">
+                <label>College / University</label>
+                <input type="text" name="edu_institution" />
+              </div>
+              <div class="company-form-group">
+                <label>Passing Year</label>
+                <input type="text" name="edu_year" />
+              </div>
+              <div class="company-form-group">
+                <label>Percentage / CGPA</label>
+                <input type="text" name="edu_score" />
+              </div>
+            </div>
+            <div class="repeatable-actions">
+              <button class="btn ghost" type="button" data-remove-row>Remove</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="tab-section" data-tab-section="experience">
+      <div class="repeatable" data-repeatable>
+        <div class="repeatable-list" data-repeatable-list>
+          {% if experience_entries %}
+            {% for exp in experience_entries %}
+            <div class="repeatable-row">
+              <div class="company-form-grid">
+                <div class="company-form-group">
+                  <label>Company Name</label>
+                  <input type="text" name="exp_company" value="{{ exp.company_name|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Designation</label>
+                  <input type="text" name="exp_designation" value="{{ exp.designation|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Industry</label>
+                  <input type="text" name="exp_industry" value="{{ exp.industry|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Start Date</label>
+                  <input type="date" name="exp_start" value="{{ exp.start_date|date:'Y-m-d' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>End Date</label>
+                  <input type="date" name="exp_end" value="{{ exp.end_date|date:'Y-m-d' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Currently Working</label>
+                  <select name="exp_current">
+                    <option value="no" {% if not exp.is_current %}selected{% endif %}>No</option>
+                    <option value="yes" {% if exp.is_current %}selected{% endif %}>Yes</option>
+                  </select>
+                </div>
+                <div class="company-form-group company-form-full">
+                  <label>Key Responsibilities</label>
+                  <textarea rows="3" name="exp_responsibilities">{{ exp.responsibilities|default:'' }}</textarea>
+                </div>
+                <div class="company-form-group company-form-full">
+                  <label>Achievements</label>
+                  <textarea rows="3" name="exp_achievements">{{ exp.achievements|default:'' }}</textarea>
+                </div>
+              </div>
+              <div class="repeatable-actions">
+                <button class="btn ghost" type="button" data-remove-row>Remove</button>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="repeatable-row">
+              <div class="company-form-grid">
+                <div class="company-form-group">
+                  <label>Company Name</label>
+                  <input type="text" name="exp_company" />
+                </div>
+                <div class="company-form-group">
+                  <label>Designation</label>
+                  <input type="text" name="exp_designation" />
+                </div>
+                <div class="company-form-group">
+                  <label>Industry</label>
+                  <input type="text" name="exp_industry" />
+                </div>
+                <div class="company-form-group">
+                  <label>Start Date</label>
+                  <input type="date" name="exp_start" />
+                </div>
+                <div class="company-form-group">
+                  <label>End Date</label>
+                  <input type="date" name="exp_end" />
+                </div>
+                <div class="company-form-group">
+                  <label>Currently Working</label>
+                  <select name="exp_current">
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                  </select>
+                </div>
+                <div class="company-form-group company-form-full">
+                  <label>Key Responsibilities</label>
+                  <textarea rows="3" name="exp_responsibilities"></textarea>
+                </div>
+                <div class="company-form-group company-form-full">
+                  <label>Achievements</label>
+                  <textarea rows="3" name="exp_achievements"></textarea>
+                </div>
+              </div>
+              <div class="repeatable-actions">
+                <button class="btn ghost" type="button" data-remove-row>Remove</button>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+        <button class="btn ghost" type="button" data-add-row data-template-id="exp-template">Add Experience</button>
+        <template id="exp-template">
+          <div class="repeatable-row">
+            <div class="company-form-grid">
+              <div class="company-form-group">
+                <label>Company Name</label>
+                <input type="text" name="exp_company" />
+              </div>
+              <div class="company-form-group">
+                <label>Designation</label>
+                <input type="text" name="exp_designation" />
+              </div>
+              <div class="company-form-group">
+                <label>Industry</label>
+                <input type="text" name="exp_industry" />
+              </div>
+              <div class="company-form-group">
+                <label>Start Date</label>
+                <input type="date" name="exp_start" />
+              </div>
+              <div class="company-form-group">
+                <label>End Date</label>
+                <input type="date" name="exp_end" />
+              </div>
+              <div class="company-form-group">
+                <label>Currently Working</label>
+                <select name="exp_current">
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
+              </div>
+              <div class="company-form-group company-form-full">
+                <label>Key Responsibilities</label>
+                <textarea rows="3" name="exp_responsibilities"></textarea>
+              </div>
+              <div class="company-form-group company-form-full">
+                <label>Achievements</label>
+                <textarea rows="3" name="exp_achievements"></textarea>
+              </div>
+            </div>
+            <div class="repeatable-actions">
+              <button class="btn ghost" type="button" data-remove-row>Remove</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="tab-section" data-tab-section="skills">
+      <div class="company-form-grid">
+        <div class="company-form-group">
+          <label>Skills Summary</label>
+          <input type="text" name="skills" value="{{ candidate.skills|default:'' }}" placeholder="e.g. PHP, Laravel, MySQL" />
+        </div>
+        <div class="company-form-group">
+          <label>Languages Known</label>
+          <input type="text" name="languages" value="{{ candidate.languages|default:'' }}" placeholder="e.g. English, Hindi" />
+        </div>
+      </div>
+      <div class="repeatable" data-repeatable>
+        <div class="repeatable-list" data-repeatable-list>
+          {% if skill_entries %}
+            {% for skill in skill_entries %}
+            <div class="repeatable-row">
+              <div class="company-form-grid">
+                <div class="company-form-group">
+                  <label>Skill Name</label>
+                  <input type="text" name="skill_name" value="{{ skill.name|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Skill Category</label>
+                  <select name="skill_category">
+                    <option value="Technical" {% if skill.category == 'Technical' %}selected{% endif %}>Technical</option>
+                    <option value="Soft" {% if skill.category == 'Soft' %}selected{% endif %}>Soft</option>
+                    <option value="Other" {% if skill.category == 'Other' %}selected{% endif %}>Other</option>
+                  </select>
+                </div>
+                <div class="company-form-group">
+                  <label>Skill Level</label>
+                  <select name="skill_level">
+                    <option value="Beginner" {% if skill.level == 'Beginner' %}selected{% endif %}>Beginner</option>
+                    <option value="Intermediate" {% if skill.level == 'Intermediate' %}selected{% endif %}>Intermediate</option>
+                    <option value="Expert" {% if skill.level == 'Expert' %}selected{% endif %}>Expert</option>
+                  </select>
+                </div>
+              </div>
+              <div class="repeatable-actions">
+                <button class="btn ghost" type="button" data-remove-row>Remove</button>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="repeatable-row">
+              <div class="company-form-grid">
+                <div class="company-form-group">
+                  <label>Skill Name</label>
+                  <input type="text" name="skill_name" />
+                </div>
+                <div class="company-form-group">
+                  <label>Skill Category</label>
+                  <select name="skill_category">
+                    <option value="Technical">Technical</option>
+                    <option value="Soft">Soft</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div class="company-form-group">
+                  <label>Skill Level</label>
+                  <select name="skill_level">
+                    <option value="Beginner">Beginner</option>
+                    <option value="Intermediate">Intermediate</option>
+                    <option value="Expert">Expert</option>
+                  </select>
+                </div>
+              </div>
+              <div class="repeatable-actions">
+                <button class="btn ghost" type="button" data-remove-row>Remove</button>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+        <button class="btn ghost" type="button" data-add-row data-template-id="skill-template">Add Skill</button>
+        <template id="skill-template">
+          <div class="repeatable-row">
+            <div class="company-form-grid">
+              <div class="company-form-group">
+                <label>Skill Name</label>
+                <input type="text" name="skill_name" />
+              </div>
+              <div class="company-form-group">
+                <label>Skill Category</label>
+                <select name="skill_category">
+                  <option value="Technical">Technical</option>
+                  <option value="Soft">Soft</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div class="company-form-group">
+                <label>Skill Level</label>
+                <select name="skill_level">
+                  <option value="Beginner">Beginner</option>
+                  <option value="Intermediate">Intermediate</option>
+                  <option value="Expert">Expert</option>
+                </select>
+              </div>
+            </div>
+            <div class="repeatable-actions">
+              <button class="btn ghost" type="button" data-remove-row>Remove</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="tab-section" data-tab-section="certifications">
+      <div class="repeatable" data-repeatable>
+        <div class="repeatable-list" data-repeatable-list>
+          {% if cert_entries %}
+            {% for cert in cert_entries %}
+            <div class="repeatable-row">
+              <div class="company-form-grid">
+                <div class="company-form-group">
+                  <label>Certificate Name</label>
+                  <input type="text" name="cert_name" value="{{ cert.title|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Issuing Organization</label>
+                  <input type="text" name="cert_org" value="{{ cert.issuing_org|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Year</label>
+                  <input type="text" name="cert_year" value="{{ cert.year|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Certificate Upload</label>
+                  <input type="file" name="cert_file" />
+                  {% if cert.certificate_file %}
+                    <div class="muted"><a href="{{ cert.certificate_file.url }}" target="_blank" rel="noopener">View Existing</a></div>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="repeatable-actions">
+                <button class="btn ghost" type="button" data-remove-row>Remove</button>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="repeatable-row">
+              <div class="company-form-grid">
+                <div class="company-form-group">
+                  <label>Certificate Name</label>
+                  <input type="text" name="cert_name" />
+                </div>
+                <div class="company-form-group">
+                  <label>Issuing Organization</label>
+                  <input type="text" name="cert_org" />
+                </div>
+                <div class="company-form-group">
+                  <label>Year</label>
+                  <input type="text" name="cert_year" />
+                </div>
+                <div class="company-form-group">
+                  <label>Certificate Upload</label>
+                  <input type="file" name="cert_file" />
+                </div>
+              </div>
+              <div class="repeatable-actions">
+                <button class="btn ghost" type="button" data-remove-row>Remove</button>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+        <button class="btn ghost" type="button" data-add-row data-template-id="cert-template">Add Certification</button>
+        <template id="cert-template">
+          <div class="repeatable-row">
+            <div class="company-form-grid">
+              <div class="company-form-group">
+                <label>Certificate Name</label>
+                <input type="text" name="cert_name" />
+              </div>
+              <div class="company-form-group">
+                <label>Issuing Organization</label>
+                <input type="text" name="cert_org" />
+              </div>
+              <div class="company-form-group">
+                <label>Year</label>
+                <input type="text" name="cert_year" />
+              </div>
+              <div class="company-form-group">
+                <label>Certificate Upload</label>
+                <input type="file" name="cert_file" />
+              </div>
+            </div>
+            <div class="repeatable-actions">
+              <button class="btn ghost" type="button" data-remove-row>Remove</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="tab-section" data-tab-section="projects">
+      <div class="repeatable" data-repeatable>
+        <div class="repeatable-list" data-repeatable-list>
+          {% if project_entries %}
+            {% for proj in project_entries %}
+            <div class="repeatable-row">
+              <div class="company-form-grid">
+                <div class="company-form-group">
+                  <label>Project Title</label>
+                  <input type="text" name="project_title" value="{{ proj.title|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Technology Used</label>
+                  <input type="text" name="project_tech" value="{{ proj.technology|default:'' }}" />
+                </div>
+                <div class="company-form-group">
+                  <label>Duration</label>
+                  <input type="text" name="project_duration" value="{{ proj.duration|default:'' }}" />
+                </div>
+                <div class="company-form-group company-form-full">
+                  <label>Description</label>
+                  <textarea rows="3" name="project_desc">{{ proj.description|default:'' }}</textarea>
+                </div>
+              </div>
+              <div class="repeatable-actions">
+                <button class="btn ghost" type="button" data-remove-row>Remove</button>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="repeatable-row">
+              <div class="company-form-grid">
+                <div class="company-form-group">
+                  <label>Project Title</label>
+                  <input type="text" name="project_title" />
+                </div>
+                <div class="company-form-group">
+                  <label>Technology Used</label>
+                  <input type="text" name="project_tech" />
+                </div>
+                <div class="company-form-group">
+                  <label>Duration</label>
+                  <input type="text" name="project_duration" />
+                </div>
+                <div class="company-form-group company-form-full">
+                  <label>Description</label>
+                  <textarea rows="3" name="project_desc"></textarea>
+                </div>
+              </div>
+              <div class="repeatable-actions">
+                <button class="btn ghost" type="button" data-remove-row>Remove</button>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+        <button class="btn ghost" type="button" data-add-row data-template-id="project-template">Add Project</button>
+        <template id="project-template">
+          <div class="repeatable-row">
+            <div class="company-form-grid">
+              <div class="company-form-group">
+                <label>Project Title</label>
+                <input type="text" name="project_title" />
+              </div>
+              <div class="company-form-group">
+                <label>Technology Used</label>
+                <input type="text" name="project_tech" />
+              </div>
+              <div class="company-form-group">
+                <label>Duration</label>
+                <input type="text" name="project_duration" />
+              </div>
+              <div class="company-form-group company-form-full">
+                <label>Description</label>
+                <textarea rows="3" name="project_desc"></textarea>
+              </div>
+            </div>
+            <div class="repeatable-actions">
+              <button class="btn ghost" type="button" data-remove-row>Remove</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="tab-section" data-tab-section="additional">
+      <div class="company-form-grid">
+        <div class="company-form-group">
+          <label>Expected Salary</label>
+          <input type="text" name="expected_salary" value="{{ candidate.expected_salary|default:'' }}" />
+        </div>
+        <div class="company-form-group">
+          <label>Notice Period</label>
+          <input type="text" name="notice_period" value="{{ candidate.notice_period|default:'' }}" />
+        </div>
+        <div class="company-form-group">
+          <label>Preferred Industry</label>
+          <input type="text" name="preferred_industry" value="{{ candidate.preferred_industry|default:'' }}" />
+        </div>
+        <div class="company-form-group">
+          <label>Willing to Relocate</label>
+          <select name="willing_to_relocate">
+            <option value="no" {% if not candidate.willing_to_relocate %}selected{% endif %}>No</option>
+            <option value="yes" {% if candidate.willing_to_relocate %}selected{% endif %}>Yes</option>
+          </select>
+        </div>
+        <div class="company-form-group">
+          <label>LinkedIn URL</label>
+          <input type="url" name="linkedin_url" value="{{ candidate.linkedin_url|default:'' }}" />
+        </div>
+        <div class="company-form-group">
+          <label>GitHub URL</label>
+          <input type="url" name="github_url" value="{{ candidate.github_url|default:'' }}" />
+        </div>
+        <div class="company-form-group">
+          <label>Portfolio URL</label>
+          <input type="url" name="portfolio_url" value="{{ candidate.portfolio_url|default:'' }}" />
+        </div>
+        <div class="company-form-group">
+          <label>Portfolio File</label>
+          <input type="file" name="portfolio_file" />
+        </div>
+        <div class="company-form-group company-form-full">
+          <label>Video Resume</label>
+          <input type="file" name="video_resume" />
+        </div>
+        <div class="company-form-group company-form-full">
+          <label class="d-flex justify-content-between align-items-center">
+            <span>Profile Visibility</span>
+            <span class="switch">
+              <input type="checkbox" name="profile_visibility" {% if candidate.profile_visibility %}checked{% endif %} />
+              <span class="slider"></span>
+            </span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-section" data-tab-section="resume">
+      <div class="card-grid">
+        <article class="card">
+          <h4>AI Resume Builder</h4>
+          <p class="muted">Generate a professional resume from your profile details.</p>
+          <a class="btn primary" href="{% url 'dashboard:candidate_resume_manager' %}">Generate AI Resume</a>
+        </article>
+        <article class="card">
+          <h4>Preview &amp; Download</h4>
+          <p class="muted">Preview and download your resume in multiple templates.</p>
+          <a class="btn ghost" href="{% url 'dashboard:candidate_resume_manager' %}">Go to Resume Manager</a>
+        </article>
+      </div>
+    </div>
+
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Save Profile</button>
+      <button class="btn ghost" type="reset">Reset</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

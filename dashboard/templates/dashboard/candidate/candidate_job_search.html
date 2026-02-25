@@ -1,0 +1,108 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}Job Search{% endblock %}
+
+{% block content %}
+<section class="job-search-hero">
+  <div class="job-search-hero-content">
+    <p class="eyebrow">Job Search</p>
+    <h2>Find Your Next Opportunity</h2>
+    <p class="muted">Discover jobs tailored to your skills, experience, and location.</p>
+  </div>
+  <form class="job-search-bar" method="get">
+    <div class="search-field">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="text" name="search" value="{{ filters.search }}" placeholder="Job title or company" />
+    </div>
+    <div class="search-field">
+      <i class="fa-solid fa-location-dot"></i>
+      <input type="text" name="location" value="{{ filters.location }}" placeholder="City or remote" />
+    </div>
+    <button class="btn primary" type="submit">Search Jobs</button>
+  </form>
+  <div class="job-search-meta">
+    <span class="muted">Showing {{ jobs|length }} jobs</span>
+    <a class="link-button" href="{% url 'dashboard:candidate_job_search' %}">Clear Filters</a>
+  </div>
+</section>
+
+<section class="job-search-layout">
+  <aside class="job-filter-panel">
+    <h4>Filters</h4>
+    <form class="filter-stack" method="get">
+      <input type="hidden" name="search" value="{{ filters.search }}" />
+      <input type="hidden" name="location" value="{{ filters.location }}" />
+      <div class="filter-group">
+        <label>Salary Range</label>
+        <input type="text" name="salary" value="{{ filters.salary }}" placeholder="e.g. 5-10 LPA" />
+      </div>
+      <div class="filter-group">
+        <label>Experience</label>
+        <input type="text" name="experience" value="{{ filters.experience }}" placeholder="e.g. 3-5 years" />
+      </div>
+      <div class="filter-group">
+        <label>Skills</label>
+        <input type="text" name="skills" value="{{ filters.skills }}" placeholder="React, Python" />
+      </div>
+      <div class="filter-group">
+        <label>Job Type</label>
+        <select name="job_type">
+          <option value="">Any</option>
+          <option value="Full-time" {% if filters.job_type == 'Full-time' %}selected{% endif %}>Full-time</option>
+          <option value="Part-time" {% if filters.job_type == 'Part-time' %}selected{% endif %}>Part-time</option>
+          <option value="Contract" {% if filters.job_type == 'Contract' %}selected{% endif %}>Contract</option>
+          <option value="Remote" {% if filters.job_type == 'Remote' %}selected{% endif %}>Remote</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Sort</label>
+        <select name="sort">
+          <option value="latest" {% if filters.sort == 'latest' %}selected{% endif %}>Latest</option>
+          <option value="salary_high" {% if filters.sort == 'salary_high' %}selected{% endif %}>Salary high to low</option>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button class="btn primary" type="submit">Apply Filters</button>
+      </div>
+    </form>
+  </aside>
+
+  <div class="job-results-panel">
+    {% if jobs %}
+      <div class="job-card-list">
+        {% for job in jobs %}
+        <article class="job-card">
+          <div class="job-card-main">
+            <div>
+              <h4>{{ job.title }}</h4>
+              <p class="muted">{{ job.company }} - {{ job.location }} - {{ job.job_type }}</p>
+            </div>
+            <span class="badge info">{{ job.category }}</span>
+          </div>
+          <div class="job-card-tags">
+            <span>{{ job.salary|default:"Salary negotiable" }}</span>
+            <span>{{ job.experience|default:"Experience flexible" }}</span>
+            <span>{{ job.skills|default:"Skills open" }}</span>
+            {% if job.recruiter_name %}
+            <span>Consultancy: {{ job.recruiter_name }}</span>
+            {% endif %}
+          </div>
+          <div class="job-card-actions">
+            <a class="btn primary" href="{% url 'dashboard:candidate_job_detail' job.job_id %}">Apply</a>
+            <a class="btn ghost" href="{% url 'dashboard:candidate_job_detail' job.job_id %}">View</a>
+            <button class="btn ghost" type="button">Save</button>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="analysis-card">
+        <strong>No jobs found</strong>
+        <p class="muted">Try adjusting your filters or keywords.</p>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
+

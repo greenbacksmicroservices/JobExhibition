@@ -1,0 +1,101 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}My Applications{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">My Applications</p>
+    <h2>Application Tracker</h2>
+    <p class="muted">Track your application status and timeline.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Status Flow</h3>
+      <p class="muted">Applied → Under Review → Shortlisted → Interview Scheduled → Selected → Offer Received</p>
+    </div>
+  </div>
+  <div class="summary-tags">
+    <span class="badge info">Applied</span>
+    <span class="badge warning">Under Review</span>
+    <span class="badge success">Shortlisted</span>
+    <span class="badge neutral">Interview Scheduled</span>
+    <span class="badge info">Selected</span>
+    <span class="badge success">Offer Received</span>
+    <span class="badge danger">Rejected</span>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Applications</h3>
+      <p class="muted">Real-time status updates</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th>Company</th>
+          <th>Applied Date</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if applications %}
+          {% for app in applications %}
+          <tr>
+            <td><strong>{{ app.job_title }}</strong></td>
+            <td>{{ app.company }}</td>
+            <td>{{ app.applied_date|date:"d M Y"|default:"--" }}</td>
+            <td>
+              <span class="badge {% if app.status == 'Applied' %}info{% elif app.status == 'Under Review' %}warning{% elif app.status == 'Shortlisted' %}success{% elif app.status == 'Interview Scheduled' or app.status == 'Interview' %}neutral{% elif app.status == 'Selected' %}info{% elif app.status == 'Rejected' %}danger{% elif app.status == 'Offer Received' or app.status == 'Offer Issued' %}success{% else %}neutral{% endif %}">
+                {{ app.status }}
+              </span>
+            </td>
+            <td>
+              <div class="table-actions">
+                <button class="action-btn" type="button">View</button>
+                <button class="action-btn" type="button">Timeline</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="5" class="muted" style="text-align:center; padding: 16px;">No applications found yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if applications %}
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Application Timeline</h3>
+      <p class="muted">Latest application progress</p>
+    </div>
+  </div>
+  {% with applications.0 as latest %}
+  <div class="timeline-grid">
+    {% for step in status_flow %}
+      <div class="timeline-step {% if forloop.counter <= latest.current_step %}active{% endif %}">
+        <span class="timeline-dot"></span>
+        <span class="timeline-label">{{ step }}</span>
+      </div>
+    {% endfor %}
+  </div>
+  {% endwith %}
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}Messages{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Messages</p>
+    <h2>Candidate Inbox</h2>
+    <p class="muted">Chat opens only after you apply or a consultancy submits you.</p>
+  </div>
+</section>
+
+<section class="chat-shell chat-threaded">
+  <aside class="chat-thread-panel">
+    <div class="chat-panel-header">
+      <div>
+        <h3>Conversations</h3>
+        <p class="muted">Your job-related chats.</p>
+      </div>
+    </div>
+    <div class="chat-thread-list">
+      {% if thread_cards %}
+        {% for card in thread_cards %}
+        <a class="chat-thread {% if active_thread and card.thread.id == active_thread.id %}active{% endif %}" href="?thread={{ card.thread.id }}">
+          <div class="thread-avatar">{{ card.partner_name|default:"?"|first|upper }}</div>
+          <div class="thread-meta">
+            <strong>{{ card.partner_name }}</strong>
+            <span class="muted">{{ card.job_title }}</span>
+            <small class="muted">Application {{ card.application_id|default:"--" }}</small>
+          </div>
+          <div class="thread-end">
+            <span class="thread-time">{{ card.last_message_at|date:"d M" }}</span>
+            {% if card.unread_count %}
+            <span class="thread-unread">{{ card.unread_count }}</span>
+            {% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      {% else %}
+        <div class="analysis-card">
+          <strong>No conversations yet</strong>
+          <p class="muted">Apply to a job to unlock chat.</p>
+        </div>
+      {% endif %}
+    </div>
+  </aside>
+
+  <div class="chat-window chat-threaded-window">
+    {% if active_thread %}
+    <div class="chat-header">
+      <div>
+        <h3>{{ active_card.partner_name|default:"Conversation" }}</h3>
+        <p class="muted">{{ active_card.partner_role }} - {{ active_card.job_title }}</p>
+      </div>
+      <span class="badge info">Application {{ active_card.application_id|default:"--" }}</span>
+    </div>
+    <div class="chat-messages">
+      {% if thread_messages %}
+        {% for msg in thread_messages %}
+        <div class="chat-message {% if msg.sender_role == current_role %}company{% else %}support{% endif %}">
+          <div class="chat-bubble">
+            <div class="chat-meta">
+              <strong>{{ msg.sender_name|default:msg.sender_role|title }}</strong>
+              <span class="muted">{{ msg.created_at|date:"d M, H:i" }}</span>
+            </div>
+            {% if msg.body %}
+            <p>{{ msg.body }}</p>
+            {% endif %}
+            {% if msg.attachment %}
+            <a class="attachment-link" href="{{ msg.attachment.url }}" target="_blank" rel="noopener">View attachment</a>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="analysis-card">
+          <strong>No messages yet</strong>
+          <p class="muted">Start the conversation with a quick hello.</p>
+        </div>
+      {% endif %}
+    </div>
+    <form class="chat-input" method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="send_message" />
+      <input type="hidden" name="thread_id" value="{{ active_thread.id }}" />
+      <textarea name="message_body" rows="2" placeholder="Type your message..."></textarea>
+      <div class="chat-actions">
+        <label class="file-pill">
+          <input type="file" name="attachment" />
+          Attach
+        </label>
+        <button class="btn primary" type="submit">Send</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="analysis-card">
+      <strong>Select a conversation</strong>
+      <p class="muted">Apply to a job to unlock messaging.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,395 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Consultancy Registration | Job Exhibition</title>
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      background: linear-gradient(135deg, #ecfeff 0%, #f8fafc 55%, #f0fdf4 100%);
+      padding: 40px 30px;
+      position: relative;
+      overflow-x: hidden;
+    }
+    .skills-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .skill-item {
+      position: absolute;
+      bottom: -120px;
+      background: rgba(255, 255, 255, 0.5);
+      backdrop-filter: blur(8px);
+      padding: 10px 20px;
+      border-radius: 50px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+      animation: floatUp linear infinite;
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      color: #0f766e;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    @keyframes floatUp {
+      0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { transform: translateY(-115vh) rotate(15deg); opacity: 0; }
+    }
+    .register-card {
+      width: 860px;
+      max-width: 100%;
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 28px;
+      padding: 36px;
+      box-shadow: 0 30px 60px rgba(15, 23, 42, 0.12);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      position: relative;
+      z-index: 10;
+      animation: entranceShake 1.2s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+    @keyframes entranceShake {
+      0% { transform: scale(0.5) translateY(180px); opacity: 0; }
+      60% { transform: scale(1.05) translateY(-10px); opacity: 1; }
+      80% { transform: scale(0.98) translateY(5px); }
+      100% { transform: scale(1) translateY(0); }
+    }
+    h2 { font-size: 28px; font-weight: 800; color: #0f172a; margin-bottom: 4px; }
+    .subtitle { color: #64748b; margin-bottom: 20px; font-size: 14px; }
+    .alert {
+      background: #ffeded; color: #b91c1c; padding: 12px; border-radius: 12px;
+      margin-bottom: 16px; font-size: 13px; border: 1px solid #fecaca;
+    }
+    form { display: grid; gap: 18px; }
+    .form-section {
+      padding: 16px;
+      border-radius: 16px;
+      border: 1px solid #e2e8f0;
+      background: #fff;
+      box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
+    }
+    .form-section h4 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 10px;
+    }
+    .field { display: grid; gap: 6px; }
+    .field label { font-size: 12px; font-weight: 600; color: #475569; }
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      font-size: 13px;
+      background: #fff;
+    }
+    .field textarea { resize: vertical; min-height: 72px; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .checkbox-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 8px 12px;
+    }
+    .checkbox-grid label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+      color: #475569;
+      font-size: 12px;
+    }
+    .btn-primary {
+      padding: 14px;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(90deg, #0f766e, #14b8a6);
+      color: #fff;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      transition: transform 0.3s ease;
+    }
+    .btn-primary:hover { transform: translateY(-2px); }
+    .link-row {
+      margin-top: 14px;
+      text-align: center;
+      font-size: 13px;
+      color: #64748b;
+    }
+    .link-row a { color: #0f766e; text-decoration: none; font-weight: 600; }
+    .register-switch {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(148, 163, 184, 0.25);
+      display: grid;
+      gap: 10px;
+      text-align: center;
+      color: #64748b;
+      font-size: 12px;
+    }
+    .switch-links {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+    }
+    .switch-links a {
+      text-decoration: none;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+      background: #fff;
+    }
+    .switch-links a.active {
+      border-color: #0f766e;
+      color: #0f766e;
+      background: #ecfeff;
+    }
+  </style>
+</head>
+<body>
+  <div class="skills-bg">
+    <div class="skill-item" style="left: 6%; animation-duration: 11s;">Recruitment</div>
+    <div class="skill-item" style="left: 20%; animation-duration: 15s; animation-delay: 2s;">Screening</div>
+    <div class="skill-item" style="left: 36%; animation-duration: 13s; animation-delay: 1s;">Interview</div>
+    <div class="skill-item" style="left: 52%; animation-duration: 17s; animation-delay: 3s;">Placement</div>
+    <div class="skill-item" style="left: 69%; animation-duration: 12s; animation-delay: 2s;">Analytics</div>
+    <div class="skill-item" style="left: 84%; animation-duration: 16s; animation-delay: 4s;">Consulting</div>
+  </div>
+
+  <div class="register-card">
+    <h2>Consultancy Registration</h2>
+    <p class="subtitle">Join as a consultancy to manage assigned jobs and candidates.</p>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="form-section">
+        <h4>1. Basic Company Information</h4>
+        <div class="grid-2">
+          <div class="field">
+            <label>Consultancy Name</label>
+            <input type="text" name="name" placeholder="Consultancy name" required />
+          </div>
+          <div class="field">
+            <label>Company Type</label>
+            <select name="company_type" required>
+              <option value="">Select Type</option>
+              <option value="Proprietorship">Proprietorship</option>
+              <option value="Partnership">Partnership</option>
+              <option value="LLP">LLP</option>
+              <option value="Pvt Ltd">Pvt Ltd</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Registration Number (optional)</label>
+            <input type="text" name="registration_number" placeholder="Reg. Number" />
+          </div>
+          <div class="field">
+            <label>GST Number (optional)</label>
+            <input type="text" name="gst_number" placeholder="GSTIN" />
+          </div>
+          <div class="field">
+            <label>Year of Establishment</label>
+            <input type="number" name="year_established" placeholder="e.g. 2015" />
+          </div>
+          <div class="field">
+            <label>Website URL (optional)</label>
+            <input type="url" name="website_url" placeholder="https://yourcompany.com" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h4>2. Contact Details</h4>
+        <div class="grid-2">
+          <div class="field">
+            <label>Official Email (Login ID)</label>
+            <input type="email" name="email" placeholder="consultancy@email.com" required />
+          </div>
+          <div class="field">
+            <label>Create Password</label>
+            <input type="password" name="password" placeholder="Create password" required />
+          </div>
+          <div class="field">
+            <label>Mobile Number</label>
+            <input type="text" name="phone" placeholder="+91" />
+          </div>
+          <div class="field">
+            <label>Alternate Mobile Number</label>
+            <input type="text" name="alt_phone" placeholder="+91" />
+          </div>
+          <div class="field">
+            <label>Office Landline (optional)</label>
+            <input type="text" name="office_landline" placeholder="Landline" />
+          </div>
+          <div class="field">
+            <label>City (Location)</label>
+            <input type="text" name="location" placeholder="City" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h4>3. Office Address</h4>
+        <div class="grid-2">
+          <div class="field">
+            <label>Address Line 1</label>
+            <input type="text" name="address_line1" placeholder="Building / Street" />
+          </div>
+          <div class="field">
+            <label>Address Line 2</label>
+            <input type="text" name="address_line2" placeholder="Area / Landmark" />
+          </div>
+          <div class="field">
+            <label>City</label>
+            <input type="text" name="city" placeholder="City" />
+          </div>
+          <div class="field">
+            <label>State</label>
+            <input type="text" name="state" placeholder="State" />
+          </div>
+          <div class="field">
+            <label>PIN Code</label>
+            <input type="text" name="pin_code" placeholder="PIN" />
+          </div>
+          <div class="field">
+            <label>Country</label>
+            <input type="text" name="country" placeholder="Country" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h4>4. Owner / Director Details</h4>
+        <div class="grid-2">
+          <div class="field">
+            <label>Owner / Director Name</label>
+            <input type="text" name="owner_name" placeholder="Full name" />
+          </div>
+          <div class="field">
+            <label>Designation</label>
+            <input type="text" name="owner_designation" placeholder="Founder / Director" />
+          </div>
+          <div class="field">
+            <label>Mobile Number</label>
+            <input type="text" name="owner_phone" placeholder="+91" />
+          </div>
+          <div class="field">
+            <label>Email ID</label>
+            <input type="email" name="owner_email" placeholder="owner@email.com" />
+          </div>
+          <div class="field">
+            <label>PAN Number (optional)</label>
+            <input type="text" name="owner_pan" placeholder="PAN" />
+          </div>
+          <div class="field">
+            <label>Aadhaar (optional)</label>
+            <input type="text" name="owner_aadhaar" placeholder="Aadhaar" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h4>5. Services Information</h4>
+        <div class="grid-2">
+          <div class="field">
+            <label>Type of Consultancy</label>
+            <div class="checkbox-grid">
+              <label><input type="checkbox" name="consultancy_types" value="HR Consultancy" /> HR Consultancy</label>
+              <label><input type="checkbox" name="consultancy_types" value="IT Consultancy" /> IT Consultancy</label>
+              <label><input type="checkbox" name="consultancy_types" value="Education Consultancy" /> Education Consultancy</label>
+              <label><input type="checkbox" name="consultancy_types" value="Manpower Supply" /> Manpower Supply</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>Industries Served</label>
+            <input type="text" name="industries_served" placeholder="e.g. IT, BFSI, Retail" />
+          </div>
+          <div class="field">
+            <label>Service Charges (optional)</label>
+            <input type="text" name="service_charges" placeholder="e.g. 8% CTC" />
+          </div>
+          <div class="field">
+            <label>Areas of Operation</label>
+            <select name="areas_of_operation">
+              <option value="">Select</option>
+              <option value="State">State</option>
+              <option value="India">India</option>
+              <option value="International">International</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h4>6. Documents Upload</h4>
+        <div class="grid-2">
+          <div class="field">
+            <label>Company Registration Certificate</label>
+            <input type="file" name="registration_certificate" />
+          </div>
+          <div class="field">
+            <label>GST Certificate (optional)</label>
+            <input type="file" name="gst_certificate" />
+          </div>
+          <div class="field">
+            <label>PAN Card</label>
+            <input type="file" name="pan_card" />
+          </div>
+          <div class="field">
+            <label>Office Address Proof</label>
+            <input type="file" name="address_proof" />
+          </div>
+          <div class="field">
+            <label>Logo Upload</label>
+            <input type="file" name="logo_upload" accept="image/*" />
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-primary" type="submit">Submit for Approval</button>
+    </form>
+
+    <div class="link-row">
+      Already registered? <a href="{% url 'dashboard:login' %}">Login here</a>
+    </div>
+    <div class="register-switch">
+      <span>Switch registration type</span>
+      <div class="switch-links">
+        <a href="{% url 'dashboard:company_register' %}">Company</a>
+        <a class="active" href="{% url 'dashboard:consultancy_register' %}">Consultancy</a>
+        <a href="{% url 'dashboard:candidate_register' %}">Candidate</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

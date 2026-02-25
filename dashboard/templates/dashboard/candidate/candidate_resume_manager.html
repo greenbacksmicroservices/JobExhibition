@@ -1,0 +1,221 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}Resume Manager{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Resume Manager</p>
+    <h2>Manage Resume Versions</h2>
+    <p class="muted">Upload, preview, download, and set default resume.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Upload Resume</h3>
+      <p class="muted">PDF/DOC format accepted.</p>
+    </div>
+  </div>
+  <form class="company-form-grid" method="post" enctype="multipart/form-data" data-loading-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="upload_resume" />
+    <div class="company-form-group">
+      <label>Resume Title</label>
+      <input type="text" name="resume_title" placeholder="e.g. Software Engineer Resume" />
+    </div>
+    <div class="company-form-group">
+      <label>Resume File</label>
+      <input type="file" name="resume_file" required />
+    </div>
+    <div class="company-form-group">
+      <label class="d-flex justify-content-between align-items-center">
+        <span>Set as Default</span>
+        <span class="switch">
+          <input type="checkbox" name="make_default" />
+          <span class="slider"></span>
+        </span>
+      </label>
+    </div>
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Upload Resume</button>
+      <button class="btn ghost" type="reset">Clear</button>
+    </div>
+  </form>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Job Exhibition Resume (AI)</h3>
+      <p class="muted">Generate an AI resume from your profile details and save it as a version.</p>
+    </div>
+  </div>
+  <div class="resume-card">
+    <div>
+      <strong>AI Resume Status</strong>
+      <div class="muted">
+        {% if ai_resume %}
+          Last generated: {{ ai_resume.created_at|date:"d M Y" }} - Template: {{ ai_resume.template_name|default:"showcase"|title }}
+        {% else %}
+          Not generated yet.
+        {% endif %}
+      </div>
+    </div>
+    <div class="table-actions">
+      {% if ai_resume %}
+        <a class="action-btn" href="{{ ai_resume.resume_file.url }}" target="_blank" rel="noopener">Preview</a>
+        <a class="action-btn" href="{{ ai_resume.resume_file.url }}" download>Download</a>
+      {% endif %}
+      <form method="post" class="inline-form" data-loading-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="generate_ai_resume" />
+        <select name="template_name">
+          <option value="showcase" {% if ai_template == "showcase" or ai_template == "premium" or ai_template == "designer" %}selected{% endif %}>Showcase Template (Photo Style)</option>
+          <option value="modern" {% if ai_template == "modern" %}selected{% endif %}>Modern Template</option>
+          <option value="corporate" {% if ai_template == "corporate" %}selected{% endif %}>Corporate Template</option>
+          <option value="simple" {% if ai_template == "simple" %}selected{% endif %}>Simple Template</option>
+          <option value="creative" {% if ai_template == "creative" %}selected{% endif %}>Creative Template</option>
+        </select>
+        <button class="action-btn" type="submit">{% if ai_resume %}Regenerate{% else %}Generate{% endif %}</button>
+      </form>
+      <form method="post" class="inline-form" data-loading-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="run_ai_score" />
+        <button class="action-btn" type="submit">AI Resume Scoring</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Default Resume</h3>
+      <p class="muted">Used for all applications unless changed.</p>
+    </div>
+  </div>
+  {% if candidate.resume %}
+    <div class="resume-card">
+      <div>
+        <strong>Default Resume</strong>
+        <div class="muted">{{ candidate.resume.name|default:"Resume file" }}</div>
+      </div>
+      <div class="table-actions">
+        <a class="action-btn" href="{{ candidate.resume.url }}" target="_blank" rel="noopener">Preview</a>
+        <a class="action-btn" href="{{ candidate.resume.url }}" download>Download</a>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">No default resume selected yet.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Resume Versions</h3>
+      <p class="muted">Manage multiple versions for different roles.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Uploaded</th>
+          <th>Default</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if resumes %}
+          {% for resume in resumes %}
+          <tr>
+            <td><strong>{{ resume.title|default:"Resume" }}</strong></td>
+            <td>{{ resume.created_at|date:"d M Y" }}</td>
+            <td>
+              <span class="badge {% if resume.is_default %}success{% else %}neutral{% endif %}">
+                {% if resume.is_default %}Yes{% else %}No{% endif %}
+              </span>
+            </td>
+            <td>
+              <div class="table-actions">
+                <a class="action-btn" href="{{ resume.resume_file.url }}" target="_blank" rel="noopener">Preview</a>
+                <a class="action-btn" href="{{ resume.resume_file.url }}" download>Download</a>
+                <form method="post" class="inline-form" data-loading-form>
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="set_default" />
+                  <input type="hidden" name="resume_id" value="{{ resume.id }}" />
+                  <button class="action-btn" type="submit">Set Default</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="4" class="muted" style="text-align:center; padding: 16px;">No resume versions uploaded yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>AI Resume Scoring</h3>
+      <p class="muted">ATS readiness score and improvement checklist.</p>
+    </div>
+    <span class="badge {% if ai_score_data.score >= 70 %}success{% elif ai_score_data.score >= 50 %}warning{% else %}danger{% endif %}">
+      Score: {{ ai_score_data.score }}/100 ({{ ai_score_data.band }})
+    </span>
+  </div>
+
+  <div class="candidate-metric-bars">
+    {% for check in ai_score_data.checks %}
+      <div class="candidate-metric-row">
+        <div class="metric-meta">
+          <strong>{{ check.label }}</strong>
+          <span>{% if check.complete %}Completed{% else %}Missing{% endif %} • Weight {{ check.weight }}</span>
+        </div>
+        <div class="metric-value">{% if check.complete %}{{ check.weight }}{% else %}0{% endif %}</div>
+        <div class="metric-track">
+          <span class="metric-fill" style="width: {% if check.complete %}100{% else %}12{% endif %}%;"></span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="dashboard-row" style="margin-top: 14px;">
+    <article class="card compact-card">
+      <div class="card-header">
+        <h4>Strengths</h4>
+      </div>
+      <ul class="checklist">
+        {% for item in ai_score_data.strengths %}
+          <li>{{ item }}</li>
+        {% empty %}
+          <li>No strengths detected yet.</li>
+        {% endfor %}
+      </ul>
+    </article>
+    <article class="card compact-card">
+      <div class="card-header">
+        <h4>Improvement Tips</h4>
+      </div>
+      <ul class="checklist">
+        {% for item in ai_score_data.missing %}
+          <li>{{ item }}</li>
+        {% empty %}
+          <li>Great. Your resume profile is complete.</li>
+        {% endfor %}
+      </ul>
+    </article>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,327 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>binayak Resume</title>
+  <style>
+    :root {
+      --green: #0b7a53;
+      --dark: #13233d;
+      --gold: #f3b200;
+      --ink: #1f2937;
+      --line: #d6dce5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Poppins', Arial, sans-serif;
+      color: var(--ink);
+      background: radial-gradient(circle at 10% 10%, #edf5ef 0%, #f8fafc 45%, #e9eef7 100%);
+      padding: 20px;
+    }
+    .resume {
+      max-width: 980px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 20px;
+      border: 2px solid #e5e7eb;
+      overflow: hidden;
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+      position: relative;
+      isolation: isolate;
+    }
+    .resume::before {
+      content: 'Job Exhibition';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 84px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: rgba(12, 122, 82, 0.06);
+      transform: rotate(-21deg);
+      pointer-events: none;
+      z-index: -1;
+    }
+    .watermark-logo {
+      position: absolute;
+      top: 14px;
+      right: 16px;
+      width: 78px;
+      opacity: 0.08;
+      pointer-events: none;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      padding: 18px 20px 14px;
+      background: linear-gradient(130deg, #f8fafc 0%, #eef4fb 55%, #deefe7 100%);
+      border-bottom: 3px solid var(--green);
+      position: relative;
+    }
+    .logo-line {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .logo-dot {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: #ffffff;
+      border: 1px solid #d6e7de;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      box-shadow: 0 6px 15px rgba(12, 122, 82, 0.18);
+    }
+    .logo-dot img { width: 24px; height: 24px; }
+    .logo-text strong { display: block; color: #0f172a; letter-spacing: 0.5px; }
+    .logo-text span { color: #64748b; font-size: 12px; }
+    .name-title h1 {
+      margin: 0;
+      font-size: 44px;
+      line-height: 1;
+      letter-spacing: 1px;
+      color: var(--dark);
+      text-transform: uppercase;
+      padding-right: 130px;
+    }
+    .name-title .summary-tag {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #0f172a;
+      background: linear-gradient(90deg, var(--gold), #ffd871);
+    }
+    .contact-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(220px, 1fr));
+      gap: 6px 12px;
+      margin-top: 10px;
+      font-size: 13px;
+      color: #0f172a;
+    }
+    .contact-grid strong { color: var(--green); }
+    .hero-photo {
+      position: relative;
+      width: 98px;
+      height: 112px;
+      border-radius: 14px;
+      border: 3px solid #ffffff;
+      overflow: hidden;
+      background: linear-gradient(145deg, #dbeafe, #d1fae5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 12px 24px rgba(2, 132, 199, 0.2);
+      align-self: start;
+    }
+    .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .avatar-fallback {
+      width: 66px;
+      height: 66px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, var(--green), #22c55e);
+      color: #fff;
+      font-size: 24px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .section-wrap { padding: 16px 20px 18px; }
+    .dual {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .panel h3 {
+      margin: 0;
+      padding: 10px 12px;
+      color: #fff;
+      font-size: 16px;
+      background: linear-gradient(90deg, var(--green), #0f766e);
+      letter-spacing: 0.2px;
+    }
+    .panel-body { padding: 12px; font-size: 14px; }
+    .personal-grid { display: grid; grid-template-columns: 140px 1fr; gap: 6px 10px; }
+    .personal-grid span:nth-child(odd) { color: #64748b; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { border: 1px solid #e5e7eb; padding: 7px 8px; text-align: left; }
+    th { background: #f8fafc; color: #0f172a; }
+    .skill-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px dashed #d1d5db;
+      padding: 7px 0;
+      font-size: 14px;
+    }
+    .skill-row:last-child { border-bottom: none; }
+    .stars { color: #f59e0b; letter-spacing: 1px; font-size: 13px; }
+    .xp-card {
+      border: 1px dashed #cbd5e1;
+      border-radius: 12px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: #f8fafc;
+    }
+    .xp-card h4 { margin: 0 0 4px; font-size: 16px; color: #0f172a; }
+    .xp-company { margin: 0 0 5px; color: var(--green); font-weight: 700; }
+    .strengths { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+    .languages { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #ecfeff;
+      border: 1px solid #a5f3fc;
+      color: #0c4a6e;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .declaration {
+      margin-top: 14px;
+      border-top: 2px solid #e5e7eb;
+      padding-top: 10px;
+      font-size: 14px;
+    }
+    .sign { margin-top: 12px; text-align: right; font-weight: 700; font-size: 18px; color: var(--dark); }
+    .bottom-bar {
+      margin-top: 16px;
+      padding: 10px 14px;
+      color: #fff;
+      font-size: 13px;
+      background: linear-gradient(90deg, #0b7a53, #13233d);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; }
+      .dual { grid-template-columns: 1fr; }
+      .contact-grid { grid-template-columns: 1fr; }
+      .name-title h1 { font-size: 34px; padding-right: 0; }
+      .hero-photo { width: 92px; height: 108px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="resume">
+    <img class='watermark-logo' src='/static/dashboard/img/je-logo.svg' alt='Job Exhibition Logo' />
+    <header class="hero">
+      <div>
+        <div class="logo-line">
+          <div class="logo-dot"><img src="/static/dashboard/img/je-logo.svg" alt="Job Exhibition Logo" /></div>
+          <div class="logo-text">
+            <strong>Job Exhibition</strong>
+            <span>AI Resume Builder</span>
+          </div>
+        </div>
+        <div class="name-title">
+          <h1>binayak</h1>
+          <span class="summary-tag">PROFESSIONAL SUMMARY</span>
+        </div>
+        <div class="contact-grid">
+          <div><strong>Mobile:</strong> 9630258741</div>
+          <div><strong>Date of Birth:</strong> -</div>
+          <div><strong>Email:</strong> binayak@gmail.com</div>
+          <div><strong>LinkedIn:</strong> -</div>
+          <div><strong>Location:</strong> Cuttack</div>
+          <div><strong>Website:</strong> -</div>
+        </div>
+      </div>
+      <div class="hero-photo"><img src='/media/profiles/photo_1.jpeg' alt='Profile Photo' /></div>
+    </header>
+
+    <div class="section-wrap">
+      <div class="dual">
+        <section class="panel">
+          <h3>PERSONAL DETAILS</h3>
+          <div class="panel-body personal-grid">
+            <span>Full Name</span><span>binayak</span>
+            <span>Date of Birth</span><span>-</span>
+            <span>Gender</span><span>-</span>
+            <span>Address</span><span>-</span>
+            <span>Phone</span><span>9630258741</span>
+            <span>Email</span><span>binayak@gmail.com</span>
+          </div>
+        </section>
+        <section class="panel">
+          <h3>CAREER OBJECTIVE</h3>
+          <div class="panel-body">
+            <p>Not specified</p>
+          </div>
+        </section>
+      </div>
+
+      <section class="panel" style="margin-bottom: 14px;">
+        <h3>EDUCATION QUALIFICATION</h3>
+        <div class="panel-body" style="padding: 0;">
+          <table>
+            <thead>
+              <tr><th>Qualification</th><th>Board/University</th><th>Year</th><th>Percentage / CGPA</th></tr>
+            </thead>
+            <tbody>
+              <tr><td colspan='4'>Add education details in profile to show here.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="dual">
+        <section class="panel">
+          <h3>SKILLS</h3>
+          <div class="panel-body"><div class='skill-row'><span>Communication</span><span class='stars'>&#9733;&#9733;&#9733;&#9733;&#9733;</span></div><div class='skill-row'><span>Team Work</span><span class='stars'>&#9733;&#9733;&#9733;&#9733;&#9733;</span></div><div class='skill-row'><span>Problem Solving</span><span class='stars'>&#9733;&#9733;&#9733;&#9733;&#9733;</span></div><div class='skill-row'><span>Adaptability</span><span class='stars'>&#9733;&#9733;&#9733;&#9733;&#9734;</span></div></div>
+        </section>
+        <section class="panel">
+          <h3>EXPERIENCE</h3>
+          <div class="panel-body"><div class='xp-card'><h4>Not specified</h4><p class='xp-company'>Total Experience: Not specified</p><p>Add detailed experience entries in profile for richer resume output.</p></div></div>
+        </section>
+      </div>
+
+      <div class="dual">
+        <section class="panel">
+          <h3>STRENGTHS</h3>
+          <div class="panel-body"><ul class="strengths"><li>Hardworking</li><li>Punctual</li><li>Quick Learner</li><li>Team Player</li></ul></div>
+        </section>
+        <section class="panel">
+          <h3>LANGUAGE</h3>
+          <div class="panel-body"><div class="languages"><span class='chip'>English</span></div></div>
+        </section>
+      </div>
+
+      <section class="declaration">
+        <strong>DECLARATION</strong>
+        <p>I hereby declare that all the above information is true to the best of my knowledge.</p>
+        <div class="sign">binayak</div>
+      </section>
+
+      <div class="bottom-bar">
+        <span>9630258741</span>
+        <span>binayak@gmail.com</span>
+        <span>-</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

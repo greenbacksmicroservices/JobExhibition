@@ -1,0 +1,226 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: "Space Grotesk", sans-serif;
+    min-height: 100vh;
+    background: radial-gradient(circle at top left, #e0f2fe, #f8fafc 40%, #eef2ff 70%, #fef9c3 100%);
+    color: #0f172a;
+    animation: fadeIn 0.8s ease-in-out;
+}
+
+.container {
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow: hidden;
+}
+
+.drop-1,
+.drop-2,
+.drop-3,
+.drop-4 {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(0px);
+    opacity: 0.6;
+}
+
+.drop-1 {
+    width: 220px;
+    height: 220px;
+    background: radial-gradient(circle, rgba(56, 189, 248, 0.7), rgba(59, 130, 246, 0.2));
+    top: -60px;
+    left: -60px;
+    animation: float 9s ease-in-out infinite;
+}
+
+.drop-2 {
+    width: 180px;
+    height: 180px;
+    background: radial-gradient(circle, rgba(251, 191, 36, 0.6), rgba(234, 88, 12, 0.2));
+    bottom: -40px;
+    right: -40px;
+    animation: float 11s ease-in-out infinite;
+    animation-delay: 0.6s;
+}
+
+.drop-3 {
+    width: 130px;
+    height: 130px;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.5), rgba(79, 70, 229, 0.1));
+    top: 20%;
+    right: 10%;
+    animation: float 7s ease-in-out infinite;
+    animation-delay: 1.2s;
+}
+
+.drop-4 {
+    width: 90px;
+    height: 90px;
+    background: radial-gradient(circle, rgba(34, 197, 94, 0.4), rgba(20, 83, 45, 0.1));
+    bottom: 15%;
+    left: 12%;
+    animation: float 10s ease-in-out infinite;
+    animation-delay: 0.3s;
+}
+
+.login-box {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    padding: 36px 32px 28px;
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 22px;
+    box-shadow: 0 30px 60px rgba(15, 23, 42, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(10px);
+    z-index: 2;
+    animation: popIn 0.9s ease-out;
+}
+
+.login-box h2 {
+    font-size: 26px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.login-box p {
+    font-size: 14px;
+    color: #475569;
+    margin-bottom: 20px;
+}
+
+.alert {
+    background: #fee2e2;
+    color: #b91c1c;
+    padding: 10px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    margin-bottom: 16px;
+    display: grid;
+    gap: 4px;
+}
+
+.input-group {
+    position: relative;
+    margin-bottom: 18px;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 14px 42px 14px 14px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    font-size: 14px;
+    outline: none;
+    transition: border 0.2s, box-shadow 0.2s;
+}
+
+.input-group input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.input-group label {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 13px;
+    color: #94a3b8;
+    transition: 0.2s ease;
+    pointer-events: none;
+    background: transparent;
+}
+
+.input-group input:focus + label,
+.input-group input:valid + label {
+    top: -8px;
+    left: 10px;
+    font-size: 11px;
+    color: #2563eb;
+    background: #fff;
+    padding: 0 6px;
+}
+
+.input-group i {
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    font-size: 18px;
+}
+
+.forgot-pass {
+    text-align: right;
+    margin-bottom: 18px;
+}
+
+.forgot-pass a {
+    font-size: 12px;
+    color: #2563eb;
+    text-decoration: none;
+}
+
+.btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(135deg, #2563eb, #38bdf8);
+    color: #fff;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+}
+
+.sign-up {
+    text-align: center;
+    margin-top: 18px;
+    font-size: 12px;
+    color: #475569;
+}
+
+.sign-up a {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+@keyframes float {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-16px); }
+    100% { transform: translateY(0px); }
+}
+
+@keyframes popIn {
+    0% { transform: translateY(20px) scale(0.98); opacity: 0; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@media (max-width: 480px) {
+    .login-box {
+        padding: 28px 24px;
+    }
+}

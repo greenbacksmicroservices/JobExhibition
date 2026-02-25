@@ -1,0 +1,98 @@
+{% extends "dashboard/company/company_base.html" %}
+{% load static %}
+
+{% block title %}Reports & Analytics{% endblock %}
+
+{% block content %}
+<section class="page-hero company-hero">
+  <div>
+    <p class="eyebrow">Analytics</p>
+    <h2>Reports & Analytics</h2>
+    <p class="muted">View comprehensive analytics about your hiring campaigns.</p>
+  </div>
+</section>
+
+<section class="pill-grid">
+  <article class="pill-card gradient-1">
+    <div class="pill-icon"><i class="fa-solid fa-chart-bar"></i></div>
+    <div>
+      <p class="pill-title">Total Jobs</p>
+      <strong class="pill-value">{{ total_jobs }}</strong>
+      <span class="pill-sub">Posted</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-2">
+    <div class="pill-icon"><i class="fa-solid fa-file-lines"></i></div>
+    <div>
+      <p class="pill-title">Total Applications</p>
+      <strong class="pill-value">{{ total_applications }}</strong>
+      <span class="pill-sub">Received</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-3">
+    <div class="pill-icon"><i class="fa-solid fa-percentage"></i></div>
+    <div>
+      <p class="pill-title">Conversion Rate</p>
+      <strong class="pill-value">{{ conversion_rate }}%</strong>
+      <span class="pill-sub">Selection rate</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-5">
+    <div class="pill-icon"><i class="fa-solid fa-clock"></i></div>
+    <div>
+      <p class="pill-title">Avg Time to Hire</p>
+      <strong class="pill-value">{{ avg_time_to_hire }}</strong>
+      <span class="pill-sub">Average</span>
+    </div>
+  </article>
+</section>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+  <div class="card">
+    <div class="card-header">
+      <h3>Applications Status</h3>
+    </div>
+    <div style="padding: 20px;">
+      <div class="ratio-bar split" style="margin-bottom: 16px;">
+        <span class="ratio-fill approved" style="width: 40%;"></span>
+        <span class="ratio-fill rejected" style="width: 60%;"></span>
+      </div>
+      <div class="ratio-values">
+        <span><strong>40%</strong> Selected</span>
+        <span><strong>60%</strong> Rejected</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Job Post Performance</h3>
+    </div>
+    <div style="padding: 20px;">
+      <div class="activity-list">
+        <div class="activity-item">
+          <div>
+            <strong>Senior Developer</strong>
+            <span class="muted">45 applications</span>
+          </div>
+          <span class="activity-time">Most Popular</span>
+        </div>
+        <div class="activity-item">
+          <div>
+            <strong>UI/UX Designer</strong>
+            <span class="muted">28 applications</span>
+          </div>
+          <span class="activity-time">Good</span>
+        </div>
+        <div class="activity-item">
+          <div>
+            <strong>Marketing Manager</strong>
+            <span class="muted">12 applications</span>
+          </div>
+          <span class="activity-time">Average</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

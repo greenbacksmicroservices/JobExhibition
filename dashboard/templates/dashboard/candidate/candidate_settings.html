@@ -1,0 +1,117 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Settings</p>
+    <h2>Account & Privacy</h2>
+    <p class="muted">Manage security, notifications, and profile privacy.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Change Password</h3>
+      <p class="muted">Update your account password.</p>
+    </div>
+  </div>
+  <form class="company-form-grid" method="post" data-loading-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="change_password" />
+    <div class="company-form-group">
+      <label>New Password</label>
+      <input type="password" name="password" required />
+    </div>
+    <div class="company-form-group">
+      <label>Confirm Password</label>
+      <input type="password" name="confirm_password" required />
+    </div>
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Update Password</button>
+    </div>
+  </form>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Account Settings</h3>
+      <p class="muted">Email, privacy, and security controls.</p>
+    </div>
+  </div>
+  <form class="company-form-grid" method="post" data-loading-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="update_settings" />
+    <div class="company-form-group">
+      <label>Email</label>
+      <input type="email" name="email" value="{{ candidate.email|default:'' }}" required />
+    </div>
+    <div class="company-form-group">
+      <label>Profile Visibility</label>
+      <select name="profile_visibility">
+        <option value="on" {% if candidate.profile_visibility %}selected{% endif %}>Visible</option>
+        <option value="" {% if not candidate.profile_visibility %}selected{% endif %}>Hidden</option>
+      </select>
+    </div>
+    <div class="company-form-group">
+      <label>Notification Preferences</label>
+      <select>
+        <option>Email + SMS</option>
+        <option>Email Only</option>
+        <option>SMS Only</option>
+      </select>
+    </div>
+    <div class="company-form-group">
+      <label>Privacy Mode</label>
+      <select>
+        <option>Public Profile</option>
+        <option>Recruiter Only</option>
+        <option>Private</option>
+      </select>
+    </div>
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Save Settings</button>
+    </div>
+  </form>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Security Features</h3>
+      <p class="muted">Email verification, OTP login, and login history.</p>
+    </div>
+  </div>
+  <div class="status-controls">
+    <label class="d-flex justify-content-between align-items-center">
+      <span>Email Verification</span>
+      <span class="badge success">Verified</span>
+    </label>
+    <label class="d-flex justify-content-between align-items-center">
+      <span>OTP Login</span>
+      <span class="switch">
+        <input type="checkbox" />
+        <span class="slider"></span>
+      </span>
+    </label>
+    <label class="d-flex justify-content-between align-items-center">
+      <span>Login History</span>
+      <button class="btn ghost" type="button">View Logs</button>
+    </label>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Danger Zone</h3>
+      <p class="muted">Delete account and remove all data.</p>
+    </div>
+  </div>
+  <button class="btn danger" type="button">Delete Account</button>
+</section>
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Communication Center{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Communication Center</p>
+    <h2>Candidate & Company Messaging</h2>
+    <p class="muted">Chat, reminders, bulk messaging, and templates linked to your submissions.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="tab-nav">
+    <a class="tab-pill active" href="#company-chats">Company Chats</a>
+    <a class="tab-pill" href="#candidate-chats">Candidate Chats</a>
+    <a class="tab-pill" href="#bulk-messaging">Bulk Messaging</a>
+    <a class="tab-pill" href="#templates">Message Templates</a>
+  </div>
+</section>
+
+<section class="card section-block" id="company-chats">
+  <div class="card-header">
+    <div>
+      <h3>Company Chats</h3>
+      <p class="muted">Conversations linked to assigned jobs and submissions.</p>
+    </div>
+  </div>
+  <div class="card-grid">
+    <article class="card">
+      <h4>Acme Corp - Backend Engineer</h4>
+      <p class="muted">Latest: Please confirm availability for interview.</p>
+      <button class="btn ghost" type="button">Open Chat</button>
+    </article>
+    <article class="card">
+      <h4>BrightLabs - Product Manager</h4>
+      <p class="muted">Latest: Share shortlisted candidates.</p>
+      <button class="btn ghost" type="button">Open Chat</button>
+    </article>
+    <article class="card">
+      <h4>Nova Tech - Data Analyst</h4>
+      <p class="muted">Latest: Interview feedback pending.</p>
+      <button class="btn ghost" type="button">Open Chat</button>
+    </article>
+  </div>
+</section>
+
+<section class="card section-block" id="candidate-chats">
+  <div class="card-header">
+    <div>
+      <h3>Candidate Chats</h3>
+      <p class="muted">Updates, reminders, and offer confirmation threads.</p>
+    </div>
+  </div>
+  <div class="card-grid">
+    <article class="card">
+      <h4>Riya Sharma</h4>
+      <p class="muted">Interview scheduled for 24 Feb, 2:00 PM.</p>
+      <button class="btn ghost" type="button">Open Chat</button>
+    </article>
+    <article class="card">
+      <h4>Arjun Mehta</h4>
+      <p class="muted">Waiting for confirmation.</p>
+      <button class="btn ghost" type="button">Open Chat</button>
+    </article>
+    <article class="card">
+      <h4>Fatima Khan</h4>
+      <p class="muted">Offer letter shared.</p>
+      <button class="btn ghost" type="button">Open Chat</button>
+    </article>
+  </div>
+</section>
+
+<section class="card section-block company-communication" id="bulk-messaging">
+  <div class="card-header">
+    <div>
+      <h3>Bulk Messaging</h3>
+      <p class="muted">Send interview reminders or updates to multiple candidates.</p>
+    </div>
+  </div>
+  <form class="comm-form">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Audience</label>
+        <select>
+          <option>All Candidates</option>
+          <option>Shortlisted</option>
+          <option>Interview Scheduled</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Subject</label>
+        <input type="text" placeholder="Subject line" />
+      </div>
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Message</label>
+        <textarea rows="4" placeholder="Write your message..."></textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" type="button">Send Bulk Email</button>
+      <button class="btn ghost" type="button">Save Draft</button>
+    </div>
+  </form>
+</section>
+
+<section class="card section-block" id="templates">
+  <div class="card-header">
+    <div>
+      <h3>Message Templates</h3>
+      <p class="muted">Reusable templates for fast communication.</p>
+    </div>
+  </div>
+  <div class="card-grid">
+    <article class="card">
+      <h4>Interview Reminder</h4>
+      <p class="muted">Share timing, link, and preparation tips.</p>
+      <button class="btn ghost" type="button">Use Template</button>
+    </article>
+    <article class="card">
+      <h4>Offer Confirmation</h4>
+      <p class="muted">Send offer details and next steps.</p>
+      <button class="btn ghost" type="button">Use Template</button>
+    </article>
+    <article class="card">
+      <h4>Company Update</h4>
+      <p class="muted">Update hiring manager on candidate progress.</p>
+      <button class="btn ghost" type="button">Use Template</button>
+    </article>
+  </div>
+</section>
+{% endblock %}

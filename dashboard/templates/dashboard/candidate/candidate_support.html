@@ -1,0 +1,99 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}Support{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Support</p>
+    <h2>Help & Support</h2>
+    <p class="muted">Create tickets, track status, and chat with support.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Create Ticket</h3>
+      <p class="muted">Describe your issue and our team will respond.</p>
+    </div>
+  </div>
+  <form class="company-form-grid" method="post" data-loading-form>
+    {% csrf_token %}
+    <div class="company-form-group">
+      <label>Subject</label>
+      <input type="text" name="subject" placeholder="Ticket subject" required />
+    </div>
+    <div class="company-form-group">
+      <label>Category</label>
+      <select name="category" required>
+        <option value="profile">Profile</option>
+        <option value="applications">Applications</option>
+        <option value="interviews">Interviews</option>
+        <option value="payments">Payments</option>
+      </select>
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Message</label>
+      <textarea rows="4" name="message" placeholder="Describe your issue..." required></textarea>
+    </div>
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Create Ticket</button>
+      <button class="btn ghost" type="reset">Clear</button>
+    </div>
+  </form>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Ticket Status</h3>
+      <p class="muted">Track your support requests.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Ticket</th>
+          <th>Category</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if tickets %}
+          {% for ticket in tickets %}
+          <tr>
+            <td><strong>{{ ticket.id }}</strong></td>
+            <td>{{ ticket.category }}</td>
+            <td><span class="badge info">{{ ticket.status }}</span></td>
+            <td><button class="action-btn" type="button">View</button></td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="4" class="muted" style="text-align:center; padding: 16px;">No tickets created yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Live Chat</h3>
+      <p class="muted">Chat with support for quick responses.</p>
+    </div>
+  </div>
+  <div class="chat-window">
+    <div class="analysis-card">
+      <strong>Chat support is available 9 AM - 7 PM</strong>
+      <p class="muted">Start a conversation when ready.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}

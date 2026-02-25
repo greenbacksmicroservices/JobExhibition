@@ -1,0 +1,91 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Job Management{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Job Management</p>
+    <h2>Assigned Jobs Control Center</h2>
+    <p class="muted">View assigned jobs, submit candidates, and track submissions.</p>
+    <p class="muted">Note: Consultancies cannot create jobs unless a marketplace model is enabled.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn ghost" href="{% url 'dashboard:consultancy_assigned_jobs' %}">My Job Assignments</a>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Quick Filters</h3>
+      <p class="muted">Filter assigned jobs by status.</p>
+    </div>
+  </div>
+  <div class="summary-tags">
+    <a class="badge {% if not filter_status %}info{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}">All Assigned ({{ status_counts.all }})</a>
+    <a class="badge {% if filter_status == 'active' %}success{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=active">Active ({{ status_counts.active }})</a>
+    <a class="badge {% if filter_status == 'closed' %}danger{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=closed">Closed ({{ status_counts.closed }})</a>
+    <a class="badge {% if filter_status == 'urgent' %}warning{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=urgent">Urgent ({{ status_counts.urgent }})</a>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>{% if filter_status %}{{ filter_status|title }} Jobs{% else %}All Assigned Jobs{% endif %}</h3>
+      <p class="muted">Consultancy can only view jobs assigned by admin or company.</p>
+    </div>
+    <span class="badge info">Assigned Only</span>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Job Title</th>
+          <th>Company</th>
+          <th>Positions</th>
+          <th>Deadline</th>
+          <th>Submissions</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if assigned_jobs %}
+          {% for job in assigned_jobs %}
+          <tr>
+            <td>
+              <strong>{{ job.title }}</strong>
+              <div class="muted">{{ job.job_id }}</div>
+            </td>
+            <td>{{ job.company }}</td>
+            <td>{{ job.positions }}</td>
+            <td>{{ job.deadline|date:"d M Y"|default:"--" }}</td>
+            <td>{{ job.submissions }}</td>
+            <td>
+              <span class="badge {% if job.status == 'Active' %}success{% elif job.status == 'Urgent' %}warning{% elif job.status == 'Closed' %}danger{% else %}neutral{% endif %}">
+                {{ job.status }}
+              </span>
+            </td>
+            <td>
+              <div class="table-actions">
+                <a class="action-btn" href="{% url 'dashboard:consultancy_job_detail' job.job_id %}">View Details</a>
+                <a class="action-btn" href="{% url 'dashboard:consultancy_candidate_pool' %}?job_id={{ job.job_id }}#submit-candidate">Submit Candidate</a>
+                <a class="action-btn" href="{% url 'dashboard:consultancy_applications' %}?job_id={{ job.job_id }}">View Submissions</a>
+                <a class="action-btn" href="{% url 'dashboard:consultancy_assigned_jobs' %}#job-tracking">Track Status</a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="7" class="muted" style="text-align:center; padding: 16px;">No assigned jobs yet. Wait for admin or company assignment.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

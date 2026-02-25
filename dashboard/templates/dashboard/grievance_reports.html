@@ -1,0 +1,583 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ page_title|default:"Grievance / Reports" }} | Job Exhibition Admin</title>
+    <link rel="icon" href="{% static 'dashboard/favicon.ico' %}" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/user-management.css' %}" />
+  </head>
+  <body class="user-management grievance-management">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+    </div>
+    <div class="toast-container" id="toastContainer"></div>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+                <div class="brand">
+          <div class="brand-mark"><img src="{% static 'dashboard/img/je-logo.svg' %}" alt="Job Exhibition logo" /></div>
+          <div class="brand-text">
+            <h1 class="style-1"><span class="brand-job">Job</span> <span class="brand-exhibition">Exhibition</span></h1>
+            <span class="brand-subtitle">Admin Control</span>
+          </div>
+</div>
+
+
+        
+        <div class="company-user admin-user">
+          <div class="company-logo-stack">
+            <div class="company-logo" style="--progress: 100;">
+              {% if admin_profile and admin_profile.photo %}
+                <img src="{{ admin_profile.photo.url }}" alt="Admin photo" />
+              {% else %}
+                <span>{{ request.user.username|default:"A"|first|upper }}</span>
+              {% endif %}
+            </div>
+            <span class="profile-progress-text">100% Complete</span>
+          </div>
+          <div class="company-user-meta">
+            <strong>{{ request.user.username|default:"Admin" }}</strong>
+            <span>Platform Admin</span>
+          </div>
+        </div>
+
+<nav class="sidebar-nav">
+          <a class="nav-item" href="{% url 'dashboard:dashboard' %}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+            <span>Dashboard</span>
+          </a>
+
+          <div class="nav-section open">
+            <button class="nav-item nav-toggle" type="button" data-target="userManagement" aria-expanded="true" aria-controls="userManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span>User Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="userManagement">
+              <a class="nav-sub" href="{% url 'dashboard:companies' %}">Companies</a>
+              <a class="nav-sub" href="{% url 'dashboard:consultancies' %}">Consultancies</a>
+              <a class="nav-sub" href="{% url 'dashboard:candidates' %}">Candidates</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="jobManagement" aria-expanded="false" aria-controls="jobManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M14,2H6A2,2 0 0,0 4,4V20a2,2 0 0,0 2,2H18a2,2 0 0,0 2,-2V8L14,2M18,20H6V4H13V9H18V20"/></svg>
+                <span>Job Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="jobManagement">
+              <a class="nav-sub" href="{% url 'dashboard:jobs' %}">All Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_pending' %}">Pending Approval</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_approved' %}">Approved Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_rejected' %}">Rejected Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_reported' %}">Reported Jobs</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="applicationManagement" aria-expanded="false" aria-controls="applicationManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75-3.54-4.3 5.41h13.2L11.96 6.29z"/></svg>
+                <span>Application Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="applicationManagement">
+              <a class="nav-sub" href="{% url 'dashboard:applications' %}">All Applications</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_interview' %}">Interview Scheduled</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_selected' %}">Selected</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_rejected' %}">Rejected</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_offer' %}">Offer Issued</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="subscriptionBilling" aria-expanded="false" aria-controls="subscriptionBilling">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+                <span>Subscription &amp; Billing</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="subscriptionBilling">
+              <a class="nav-sub{% if section == 'overview' %} active{% endif %}" href="{% url 'dashboard:subscriptions' %}">Overview</a>
+              <a class="nav-sub{% if section == 'free-paid' %} active{% endif %}" href="{% url 'dashboard:subscriptions_free_paid' %}">Who is Free / Paid</a>
+              <a class="nav-sub{% if section == 'expiry-alerts' %} active{% endif %}" href="{% url 'dashboard:subscriptions_expiry_alerts' %}">Expiry Alerts</a>
+              <a class="nav-sub{% if section == 'revenue-charts' %} active{% endif %}" href="{% url 'dashboard:subscriptions_revenue' %}">Revenue Charts</a>
+              <a class="nav-sub{% if section == 'manual-assign' %} active{% endif %}" href="{% url 'dashboard:subscriptions_manual_assign' %}">Manual Plan Assign</a>
+            </div>
+          </div>
+                  <a class="nav-item" href="{% url 'dashboard:advertisement_management' %}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75-3.54-4.3 5.41h13.2L11.96 6.29z"/></svg>
+            <span>Advertisement Management</span>
+          </a>
+                            <div class="nav-section{% if comm_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="communicationCenter" aria-expanded="{% if comm_section %}true{% else %}false{% endif %}" aria-controls="communicationCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v16l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                <span>Communication Center</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="communicationCenter">
+              <a class="nav-sub{% if comm_section == 'bulk-email' %} active{% endif %}" href="{% url 'dashboard:communication_bulk_email' %}">Bulk Email</a>
+              <a class="nav-sub{% if comm_section == 'bulk-sms' %} active{% endif %}" href="{% url 'dashboard:communication_bulk_sms' %}">Bulk SMS</a>
+              <a class="nav-sub{% if comm_section == 'notifications' %} active{% endif %}" href="{% url 'dashboard:communication_notifications' %}">Notifications</a>
+              <a class="nav-sub{% if comm_section == 'whatsapp' %} active{% endif %}" href="{% url 'dashboard:communication_whatsapp' %}">WhatsApp Alerts</a>
+              <a class="nav-sub{% if comm_section == 'chat-monitor' %} active{% endif %}" href="{% url 'dashboard:message_monitor' %}">Chat Monitoring</a>
+            </div>
+          </div>
+                  
+          <div class="nav-section{% if support_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="supportCenter" aria-expanded="{% if support_section %}true{% else %}false{% endif %}" aria-controls="supportCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a7 7 0 0 1 7 7v2a5 5 0 0 1-5 5h-1v3h-2v-3H9a5 5 0 0 1-5-5V9a7 7 0 0 1 7-7zm0 2a5 5 0 0 0-5 5v2a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3V9a5 5 0 0 0-5-5z"/></svg>
+                <span>Customer Support</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="supportCenter">
+              <a class="nav-sub{% if support_section == 'dashboard' %} active{% endif %}" href="{% url 'dashboard:support_center' %}">Support Dashboard</a>
+              <a class="nav-sub{% if support_section == 'all' %} active{% endif %}" href="{% url 'dashboard:support_tickets' %}">All Tickets</a>
+              <a class="nav-sub{% if support_section == 'high' %} active{% endif %}" href="{% url 'dashboard:support_high_priority' %}">High Priority</a>
+              <a class="nav-sub{% if support_section == 'assigned' %} active{% endif %}" href="{% url 'dashboard:support_assigned' %}">Assigned Tickets</a>
+              <a class="nav-sub{% if support_section == 'unassigned' %} active{% endif %}" href="{% url 'dashboard:support_unassigned' %}">Unassigned</a>
+              <a class="nav-sub{% if support_section == 'closed' %} active{% endif %}" href="{% url 'dashboard:support_closed' %}">Closed</a>
+              <a class="nav-sub{% if support_section == 'analytics' %} active{% endif %}" href="{% url 'dashboard:support_analytics' %}">Support Analytics</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if grievance_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="grievanceCenter" aria-expanded="{% if grievance_section %}true{% else %}false{% endif %}" aria-controls="grievanceCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 15h-1.5v-1.5H12V17zm0-4.5h-1.5V7H12v5.5z"/></svg>
+                <span>Grievance / Reports</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="grievanceCenter">
+              <a class="nav-sub{% if grievance_section == 'complaints' %} active{% endif %}" href="{% url 'dashboard:grievance_complaints' %}">User Complaints</a>
+              <a class="nav-sub{% if grievance_section == 'job-reports' %} active{% endif %}" href="{% url 'dashboard:grievance_job_reports' %}">Job Reports</a>
+              <a class="nav-sub{% if grievance_section == 'abuse-fraud' %} active{% endif %}" href="{% url 'dashboard:grievance_abuse_fraud' %}">Abuse / Fraud</a>
+              <a class="nav-sub{% if grievance_section == 'resolution-log' %} active{% endif %}" href="{% url 'dashboard:grievance_resolution_log' %}">Resolution Log</a>
+            </div>
+          </div>        </nav>
+      </aside>
+
+                              <main class="main user-page" id="grievance-reports">
+        <header class="page-header">
+          <div class="topbar">
+<div class="top-actions">
+              <div class="sidebar-control">
+  <button class="sidebar-control-btn" type="button" data-sidebar-toggle aria-label="Toggle sidebar">
+    <i class="fa-solid fa-bars"></i>
+    <span>Responsive Collapsible Sidebar</span>
+  </button>
+</div>
+<button class="icon-btn fullscreen-toggle" type="button" data-fullscreen-toggle aria-label="Toggle fullscreen">
+  <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+</button>
+
+              <button class="icon-btn compact" id="darkModeToggle" aria-label="Toggle dark mode">
+                <i class="fa-solid fa-moon"></i>
+              </button>
+              <a class="icon-btn compact" href="{% url 'dashboard:message_monitor' %}" aria-label="Messages">
+                <i class="fa-regular fa-envelope"></i>
+              </a>
+              <details class="notification-dropdown">
+                <summary class="icon-btn" aria-label="Notifications">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
+                  {% if messages %}<span class="notif-dot"></span>{% endif %}
+                </summary>
+                <div class="notification-menu">
+                  <h4>Notifications</h4>
+                  {% if messages %}
+                  <ul class="notification-list">
+                    {% for message in messages %}
+                    <li>{{ message }}</li>
+                    {% endfor %}
+                  </ul>
+                  {% else %}
+                  <p class="muted">No notifications yet.</p>
+                  {% endif %}
+                </div>
+              </details>
+            </div>
+            <details class="profile-dropdown">
+              <summary class="profile-summary">
+                <div class="profile-avatar">{{ request.user.username|default:"A"|first|upper }}</div>
+                <div class="profile-meta">
+                  <strong>{{ request.user.username|default:"Admin" }}</strong>
+                  <span>Platform Administrator</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+              </summary>
+              <div class="profile-menu">
+                              {% if request.user.last_login %}
+                              <a class="menu-item last-login-info" href="{% url 'dashboard:admin_profile_last_login' %}">
+                                <strong>Last Login</strong>
+                                <span>{{ request.user.last_login|date:"M d, Y H:i" }}</span>
+                              </a>
+                              {% endif %}
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile' %}">
+                                <i class="fa-solid fa-user"></i> My Profile
+                              </a>
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile_photo' %}">
+                                <i class="fa-solid fa-image"></i> Upload Photo
+                              </a>
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile_password' %}">
+                                <i class="fa-solid fa-key"></i> Change Password
+                              </a>
+                              <a class="menu-item logout" href="{% url 'dashboard:logout' %}">
+                                <i class="fa-solid fa-right-from-bracket"></i> Logout
+                              </a>
+              </div>
+              </details>
+          </div>
+        </header>
+
+        <section class="page-hero">
+          <div>
+            <p class="eyebrow">Grievance / Reports</p>
+            <h2>{{ page_title|default:"User Complaints" }}</h2>
+            <p class="muted">{{ page_subtitle|default:"Track, investigate, and resolve platform issues." }}</p>
+          </div>
+        </section>
+
+        {% if grievance_section == "complaints" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>User Complaints</h3>
+              <p class="muted">Common complaint types coming from users.</p>
+            </div>
+          </div>
+          <div class="tag-grid">
+            <span class="tag-pill">Account issue</span>
+            <span class="tag-pill">Payment issue</span>
+            <span class="tag-pill">Login problem</span>
+            <span class="tag-pill">Employer behavior</span>
+            <span class="tag-pill">Technical bug</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Complaint Form (Frontend)</h3>
+              <p class="muted">Capture complaint details with priority and evidence.</p>
+            </div>
+          </div>
+          <form class="grievance-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Complaint Type</label>
+                <select>
+                  <option>Account issue</option>
+                  <option>Payment issue</option>
+                  <option>Login problem</option>
+                  <option>Employer behavior</option>
+                  <option>Technical bug</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Subject</label>
+                <input type="text" placeholder="Short summary" />
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>Description</label>
+                <textarea rows="4" placeholder="Describe the issue in detail"></textarea>
+              </div>
+              <div class="form-group">
+                <label>Screenshot Upload</label>
+                <input type="file" />
+              </div>
+              <div class="form-group">
+                <label>Priority</label>
+                <select>
+                  <option>Low</option>
+                  <option>Medium</option>
+                  <option>High</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Related Job (Optional)</label>
+                <input type="text" placeholder="Job ID / URL" />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn primary">Submit Complaint</button>
+              <button type="button" class="btn ghost">Save Draft</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Recent Complaints</h3>
+              <p class="muted">Track complaint status and priority.</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Complaint</th>
+                  <th>User</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Submitted</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Login problem - OTP not received</td>
+                  <td>anuj.k@email.com</td>
+                  <td><span class="badge warning">Medium</span></td>
+                  <td><span class="badge info">Open</span></td>
+                  <td>2026-02-12</td>
+                </tr>
+                <tr>
+                  <td>Employer behavior complaint</td>
+                  <td>riya.m@email.com</td>
+                  <td><span class="badge danger">High</span></td>
+                  <td><span class="badge warning">In Review</span></td>
+                  <td>2026-02-11</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if grievance_section == "job-reports" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Job Report Reasons</h3>
+              <p class="muted">Reasons users can choose while reporting a job.</p>
+            </div>
+          </div>
+          <div class="tag-grid">
+            <span class="tag-pill">Fake Job</span>
+            <span class="tag-pill">Scam</span>
+            <span class="tag-pill">Wrong Salary</span>
+            <span class="tag-pill">Misleading Information</span>
+            <span class="tag-pill">Duplicate Posting</span>
+            <span class="tag-pill">Inappropriate Content</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Report Job Flow</h3>
+              <p class="muted">User and admin flow for job reporting.</p>
+            </div>
+          </div>
+          <div class="flow-grid">
+            <div class="flow-step">User opens job page and clicks "Report Job"</div>
+            <div class="flow-step">Reason selected and description added</div>
+            <div class="flow-step">Report submitted and stored in job_reports</div>
+            <div class="flow-step">Admin reviews job detail and report count</div>
+            <div class="flow-step">Action taken: warn, suspend, or delete</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Admin Review Panel</h3>
+              <p class="muted">Job detail, reporter details, and action controls.</p>
+            </div>
+          </div>
+          <div class="details-grid">
+            <div class="details-card">
+              <h6>Job Detail</h6>
+              <div class="details-list">
+                <div><span>Job ID:</span> J-2098</div>
+                <div><span>Title:</span> Marketing Associate</div>
+                <div><span>Employer:</span> Blue Orbit Media</div>
+                <div><span>Status:</span> Active</div>
+              </div>
+            </div>
+            <div class="details-card">
+              <h6>Report Count</h6>
+              <div class="details-list">
+                <div><span>Total Reports:</span> 12</div>
+                <div><span>Last Report:</span> 2026-02-12</div>
+                <div><span>Severity:</span> High</div>
+              </div>
+            </div>
+            <div class="details-card">
+              <h6>Reporter Details</h6>
+              <div class="details-list">
+                <div><span>Name:</span> Riya Mehta</div>
+                <div><span>Email:</span> riya.m@email.com</div>
+                <div><span>Reason:</span> Misleading Information</div>
+              </div>
+            </div>
+          </div>
+          <div class="action-row">
+            <button class="action-btn">Ignore</button>
+            <button class="action-btn warning">Warn Employer</button>
+            <button class="action-btn warning">Suspend Job</button>
+            <button class="action-btn danger">Delete Job</button>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if grievance_section == "abuse-fraud" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Abuse / Fraud Categories</h3>
+              <p class="muted">Flagged behaviors that require investigation.</p>
+            </div>
+          </div>
+          <div class="tag-grid">
+            <span class="tag-pill">Payment fraud</span>
+            <span class="tag-pill">Fake employer</span>
+            <span class="tag-pill">Identity misuse</span>
+            <span class="tag-pill">Harassment</span>
+            <span class="tag-pill">Blackmail</span>
+            <span class="tag-pill">Spam messaging</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Investigation Panel</h3>
+              <p class="muted">Evidence upload, chat history, IP tracking, and actions.</p>
+            </div>
+          </div>
+          <div class="details-grid">
+            <div class="details-card">
+              <h6>Evidence Upload</h6>
+              <input type="file" />
+              <p class="muted" style="margin-top:8px;">Upload screenshots or documents.</p>
+            </div>
+            <div class="details-card">
+              <h6>Chat History</h6>
+              <div class="timeline">
+                <div class="timeline-item">User: "Please pay advance"</div>
+                <div class="timeline-item">Employer: "Send fee to unlock offer"</div>
+                <div class="timeline-item">User: "This looks suspicious"</div>
+              </div>
+            </div>
+            <div class="details-card">
+              <h6>IP Address Tracking</h6>
+              <div class="ip-grid">
+                <span class="ip-chip">103.24.18.12</span>
+                <span class="ip-chip">103.24.19.55</span>
+                <span class="ip-chip">49.204.18.102</span>
+              </div>
+            </div>
+          </div>
+          <div class="action-row">
+            <button class="action-btn warning">Account Suspend</button>
+            <button class="action-btn danger">Permanent Ban</button>
+            <button class="action-btn">Legal Flag</button>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if grievance_section == "resolution-log" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Resolution Log</h3>
+              <p class="muted">Who submitted, who handled, actions taken, and resolution time.</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Complaint</th>
+                  <th>Submitted By</th>
+                  <th>Handled By</th>
+                  <th>Action</th>
+                  <th>Resolved On</th>
+                  <th>Notes</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Fake job report</td>
+                  <td>Riya Mehta</td>
+                  <td>Admin A</td>
+                  <td>Warn Employer, Suspend Job</td>
+                  <td>2026-02-12</td>
+                  <td>Employer warned, job hidden</td>
+                  <td><span class="badge success">Resolved</span></td>
+                </tr>
+                <tr>
+                  <td>Payment fraud</td>
+                  <td>Anuj Sharma</td>
+                  <td>Admin B</td>
+                  <td>Permanent Ban</td>
+                  <td>2026-02-10</td>
+                  <td>Evidence verified</td>
+                  <td><span class="badge success">Resolved</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Full Workflow Example</h3>
+              <p class="muted">End-to-end workflow from report to resolution.</p>
+            </div>
+          </div>
+          <div class="workflow-example">
+            <p>1. User reports fake job.</p>
+            <p>2. Entry created in job_reports.</p>
+            <p>3. Admin reviews job detail and report count.</p>
+            <p>4. Employer receives warning.</p>
+            <p>5. Job is suspended.</p>
+            <p>6. Resolution log updated and status marked Resolved.</p>
+          </div>
+        </section>
+        {% endif %}
+      </main>
+    </div>
+
+    <script src="{% static 'dashboard/js/dashboard.js' %}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

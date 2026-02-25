@@ -1,0 +1,666 @@
+{% extends "dashboard/company/company_base.html" %}
+{% load static %}
+
+{% block title %}Communication{% endblock %}
+
+{% block content %}
+<section class="page-hero company-hero">
+  <div>
+    <p class="eyebrow">Messaging</p>
+    <h2>{{ page_title|default:"Communication Center" }}</h2>
+    <p class="muted">{{ page_subtitle|default:"Bulk outreach for candidates." }}</p>
+  </div>
+</section>
+
+{% if comm_section == "bulk-email" %}
+<section class="card comm-section company-communication">
+  <div class="card-header">
+    <div>
+      <h3>Bulk Email</h3>
+      <p class="muted">Subject, rich text editor, attachments, and recipient targeting.</p>
+    </div>
+    <div class="header-badges">
+      <span class="badge info">Open Rate Tracking (Advanced)</span>
+    </div>
+  </div>
+  <form class="comm-form">
+    <div class="form-grid">
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Subject</label>
+        <input type="text" id="bulkEmailSubject" placeholder="Enter email subject" />
+      </div>
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Message Editor (Rich Text)</label>
+        <div class="editor-toolbar">
+          <button type="button" class="tool-btn"><i class="fa-solid fa-bold"></i></button>
+          <button type="button" class="tool-btn"><i class="fa-solid fa-italic"></i></button>
+          <button type="button" class="tool-btn"><i class="fa-solid fa-underline"></i></button>
+          <button type="button" class="tool-btn"><i class="fa-solid fa-link"></i></button>
+          <button type="button" class="tool-btn"><i class="fa-solid fa-list"></i></button>
+        </div>
+        <div class="rich-editor" id="bulkEmailEditor" contenteditable="true" data-placeholder="Write your email message..."></div>
+        <div class="variable-row">
+          <span class="muted">Dynamic variables:</span>
+          <div class="variable-chips">
+            <span class="variable-chip">{name}</span>
+            <span class="variable-chip">{job_title}</span>
+            <span class="variable-chip">{interview_date}</span>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Attachments</label>
+        <input type="file" multiple />
+      </div>
+      <div class="form-group">
+        <label>Select Recipients</label>
+        <div class="checkbox-grid">
+          <label><input type="checkbox" /> All Applicants</label>
+          <label><input type="checkbox" /> Shortlisted</label>
+          <label><input type="checkbox" /> Interview Scheduled</label>
+          <label><input type="checkbox" /> Selected</label>
+          <label><input type="checkbox" /> Custom Selected</label>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn primary">Send Now</button>
+      <button type="button" class="btn ghost">Schedule Later</button>
+      <button type="button" class="btn ghost" id="emailPreviewBtn" data-bs-toggle="modal" data-bs-target="#emailPreviewModal">Preview</button>
+      <input type="datetime-local" />
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Email History</h3>
+      <p class="muted">Recent bulk email campaigns and status.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Subject</th>
+          <th>Audience</th>
+          <th>Sent On</th>
+          <th>Status</th>
+          <th>Open Rate</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Hiring Drive - March</td>
+          <td>All Applicants</td>
+          <td>2026-02-12</td>
+          <td><span class="badge success">Delivered</span></td>
+          <td>42%</td>
+        </tr>
+        <tr>
+          <td>Shortlisted Interview Update</td>
+          <td>Shortlisted</td>
+          <td>2026-02-10</td>
+          <td><span class="badge warning">Scheduled</span></td>
+          <td>-</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="modal fade" id="emailPreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Email Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="email-preview">
+          <strong id="emailPreviewSubject">No subject</strong>
+          <p class="muted" id="emailPreviewBody">No content yet.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if comm_section == "bulk-sms" %}
+<section class="card comm-section company-communication">
+  <div class="card-header">
+    <div>
+      <h3>Bulk SMS</h3>
+      <p class="muted">Short messages with character count and credit balance.</p>
+    </div>
+  </div>
+  <form class="comm-form">
+    <div class="form-grid">
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Message Text</label>
+        <textarea class="sms-textarea" rows="4" maxlength="160" placeholder="Type SMS message (160 characters)..."></textarea>
+        <div class="char-count">0 / 160</div>
+      </div>
+      <div class="form-group">
+        <label>Select Recipients</label>
+        <div class="checkbox-grid">
+          <label><input type="checkbox" /> All Applicants</label>
+          <label><input type="checkbox" /> Shortlisted</label>
+          <label><input type="checkbox" /> Interview Scheduled</label>
+          <label><input type="checkbox" /> Selected</label>
+          <label><input type="checkbox" /> Custom Selected</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>SMS Credits</label>
+        <div class="credit-card">
+          <strong>12,500</strong>
+          <span class="muted">Credits available</span>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn primary">Send Now</button>
+      <button type="button" class="btn ghost">Schedule Later</button>
+      <input type="datetime-local" />
+    </div>
+  </form>
+
+  <div class="card-subsection">
+    <h4>Delivery Report</h4>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Campaign</th>
+            <th>Recipients</th>
+            <th>Sent On</th>
+            <th>Delivered</th>
+            <th>Failed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Walk-in Reminder</td>
+            <td>All Applicants</td>
+            <td>2026-02-11</td>
+            <td>1,240</td>
+            <td>14</td>
+          </tr>
+          <tr>
+            <td>Interview Timing</td>
+            <td>Shortlisted</td>
+            <td>2026-02-09</td>
+            <td>320</td>
+            <td>6</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if comm_section == "whatsapp" %}
+<section class="card comm-section company-communication">
+  <div class="card-header">
+    <div>
+      <h3>WhatsApp Alerts</h3>
+      <p class="muted">Approved templates only. Auto variable replace enabled.</p>
+    </div>
+  </div>
+  <div class="notice-card warning">
+    <strong>Template required:</strong> WhatsApp does not allow random messages. Only approved templates can be sent in bulk.
+  </div>
+  <form class="comm-form">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Template Name</label>
+        <select>
+          <option>Interview Reminder</option>
+          <option>Offer Letter Ready</option>
+          <option>Document Verification</option>
+        </select>
+        <span class="badge success">Approved Template</span>
+      </div>
+      <div class="form-group">
+        <label>Template ID</label>
+        <input type="text" placeholder="META_APPROVED_001" />
+      </div>
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Message Preview</label>
+        <textarea rows="4" placeholder="Preview of the approved template..."></textarea>
+        <div class="variable-row">
+          <span class="muted">Auto variables:</span>
+          <div class="variable-chips">
+            <span class="variable-chip">{name}</span>
+            <span class="variable-chip">{job_title}</span>
+            <span class="variable-chip">{interview_date}</span>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Select Recipients</label>
+        <div class="checkbox-grid">
+          <label><input type="checkbox" /> All Applicants</label>
+          <label><input type="checkbox" /> Shortlisted</label>
+          <label><input type="checkbox" /> Interview Scheduled</label>
+          <label><input type="checkbox" /> Selected</label>
+          <label><input type="checkbox" /> Custom Selected</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Bulk Sending</label>
+        <label class="switch">
+          <input type="checkbox" />
+          <span class="slider"></span>
+        </label>
+        <p class="muted">Enable to send in batches.</p>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn primary">Send Now</button>
+      <button type="button" class="btn ghost">Schedule Later</button>
+      <input type="datetime-local" />
+    </div>
+  </form>
+
+  <div class="card-subsection">
+    <h4>Delivery Status</h4>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Template</th>
+            <th>Approved</th>
+            <th>Sent</th>
+            <th>Delivered</th>
+            <th>Failed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Interview Reminder</td>
+            <td><span class="badge success">Approved</span></td>
+            <td>520</td>
+            <td>498</td>
+            <td>22</td>
+          </tr>
+          <tr>
+            <td>Offer Letter Ready</td>
+            <td><span class="badge success">Approved</span></td>
+            <td>210</td>
+            <td>205</td>
+            <td>5</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if comm_section == "notifications" %}
+<section class="card comm-section company-communication">
+  <div class="card-header">
+    <div>
+      <h3>In-App Notifications</h3>
+      <p class="muted">Bell icon alerts for candidates with read/unread tracking.</p>
+    </div>
+  </div>
+  <div class="notification-types">
+    <div class="type-chip"><i class="fa-solid fa-circle-check"></i> Status Change</div>
+    <div class="type-chip"><i class="fa-solid fa-calendar-check"></i> Interview Scheduled</div>
+    <div class="type-chip"><i class="fa-solid fa-file-signature"></i> Offer Letter</div>
+    <div class="type-chip"><i class="fa-solid fa-bell"></i> Candidate Bell Icon</div>
+  </div>
+  <form class="comm-form">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Notification Title</label>
+        <input type="text" placeholder="e.g., Interview Scheduled" />
+      </div>
+      <div class="form-group">
+        <label>Target Segment</label>
+        <select>
+          <option>All Applicants</option>
+          <option>Shortlisted</option>
+          <option>Interview Scheduled</option>
+          <option>Selected</option>
+          <option>Custom Selection</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Message</label>
+        <textarea rows="4" placeholder="Type notification message..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Deep Link</label>
+        <input type="text" placeholder="Application ID / Job ID / URL" />
+      </div>
+      <div class="form-group">
+        <label>Bell Icon Preview</label>
+        <div class="bell-preview">
+          <i class="fa-solid fa-bell"></i>
+          <span class="badge info">5</span>
+          <span class="muted">Unread count</span>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn primary">Send Now</button>
+      <button type="button" class="btn ghost">Schedule Later</button>
+      <input type="datetime-local" />
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Notification Log</h3>
+      <p class="muted">Read/unread status and linked job detail.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Audience</th>
+          <th>Status</th>
+          <th>Link</th>
+          <th>Sent On</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>New Interview Slot</td>
+          <td>Candidates</td>
+          <td><span class="badge warning">Unread</span></td>
+          <td><a href="#" class="action-link">Open Job</a></td>
+          <td>2026-02-12</td>
+        </tr>
+        <tr>
+          <td>Policy Update</td>
+          <td>All Users</td>
+          <td><span class="badge success">Read</span></td>
+          <td><a href="#" class="action-link">Open Job</a></td>
+          <td>2026-02-09</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% if comm_section == "templates" %}
+<section class="card comm-section company-communication">
+  <div class="card-header">
+    <div>
+      <h3>Message Templates</h3>
+      <p class="muted">Reusable templates with dynamic variables.</p>
+    </div>
+  </div>
+  <div class="template-grid">
+    <article class="template-card">
+      <div class="template-header">
+        <div>
+          <h4>Shortlisting Email</h4>
+          <span class="badge info">Email</span>
+        </div>
+        <button class="action-btn">Use</button>
+      </div>
+      <div class="template-body">
+        Hello {name}, you have been shortlisted for {job_title}. Our team will share the next steps soon.
+      </div>
+      <div class="variable-chips">
+        <span class="variable-chip">{name}</span>
+        <span class="variable-chip">{job_title}</span>
+      </div>
+    </article>
+    <article class="template-card">
+      <div class="template-header">
+        <div>
+          <h4>Interview Call</h4>
+          <span class="badge warning">SMS</span>
+        </div>
+        <button class="action-btn">Use</button>
+      </div>
+      <div class="template-body">
+        Interview scheduled for {job_title} on {interview_date}. Please be available on time.
+      </div>
+      <div class="variable-chips">
+        <span class="variable-chip">{job_title}</span>
+        <span class="variable-chip">{interview_date}</span>
+      </div>
+    </article>
+    <article class="template-card">
+      <div class="template-header">
+        <div>
+          <h4>Rejection Message</h4>
+          <span class="badge neutral">Notification</span>
+        </div>
+        <button class="action-btn">Use</button>
+      </div>
+      <div class="template-body">
+        Hi {name}, thank you for applying to {job_title}. We will keep your profile for future roles.
+      </div>
+      <div class="variable-chips">
+        <span class="variable-chip">{name}</span>
+        <span class="variable-chip">{job_title}</span>
+      </div>
+    </article>
+    <article class="template-card">
+      <div class="template-header">
+        <div>
+          <h4>Offer Letter</h4>
+          <span class="badge success">Email</span>
+        </div>
+        <button class="action-btn">Use</button>
+      </div>
+      <div class="template-body">
+        Congratulations {name}! Your offer for {job_title} is ready. Please check your email for details.
+      </div>
+      <div class="variable-chips">
+        <span class="variable-chip">{name}</span>
+        <span class="variable-chip">{job_title}</span>
+      </div>
+    </article>
+    <article class="template-card">
+      <div class="template-header">
+        <div>
+          <h4>Reminder Email</h4>
+          <span class="badge info">Email</span>
+        </div>
+        <button class="action-btn">Use</button>
+      </div>
+      <div class="template-body">
+        Reminder: your interview for {job_title} is scheduled on {interview_date}.
+      </div>
+      <div class="variable-chips">
+        <span class="variable-chip">{job_title}</span>
+        <span class="variable-chip">{interview_date}</span>
+      </div>
+    </article>
+  </div>
+
+  <div class="card-subsection">
+    <h4>Create / Update Template</h4>
+    <form class="comm-form">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Template Name</label>
+          <input type="text" placeholder="e.g., Interview Call - Backend" />
+        </div>
+        <div class="form-group">
+          <label>Channel</label>
+          <select>
+            <option>Email</option>
+            <option>SMS</option>
+            <option>WhatsApp</option>
+            <option>In-App Notification</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <label>Subject (Email only)</label>
+          <input type="text" placeholder="Subject line" />
+        </div>
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <label>Template Body</label>
+          <textarea rows="5" placeholder="Hello {name}, you have been shortlisted for {job_title}."></textarea>
+        </div>
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <label>Available Variables</label>
+          <div class="variable-chips">
+            <span class="variable-chip">{name}</span>
+            <span class="variable-chip">{job_title}</span>
+            <span class="variable-chip">{interview_date}</span>
+          </div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn primary">Save Template</button>
+        <button type="button" class="btn ghost">Preview</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endif %}
+
+{% if comm_section == "sent-history" %}
+<section class="card comm-section company-communication">
+  <div class="card-header">
+    <div>
+      <h3>Sent History</h3>
+      <p class="muted">Message type, delivery status, failed counts, and timestamps.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Subject / Template</th>
+          <th>Audience</th>
+          <th>Date & Time</th>
+          <th>Recipients</th>
+          <th>Delivered</th>
+          <th>Failed</th>
+          <th>Status</th>
+          <th>Open Rate</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge info">Email</span></td>
+          <td>Shortlisted Interview Update</td>
+          <td>Shortlisted</td>
+          <td>2026-02-12 10:30</td>
+          <td>420</td>
+          <td>410</td>
+          <td>10</td>
+          <td><span class="badge success">Delivered</span></td>
+          <td>38%</td>
+        </tr>
+        <tr>
+          <td><span class="badge warning">SMS</span></td>
+          <td>Walk-in Reminder</td>
+          <td>All Applicants</td>
+          <td>2026-02-11 18:00</td>
+          <td>1,200</td>
+          <td>1,165</td>
+          <td>35</td>
+          <td><span class="badge success">Delivered</span></td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td><span class="badge success">WhatsApp</span></td>
+          <td>Interview Reminder</td>
+          <td>Interview Scheduled</td>
+          <td>2026-02-10 09:00</td>
+          <td>180</td>
+          <td>172</td>
+          <td>8</td>
+          <td><span class="badge warning">In Progress</span></td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td><span class="badge neutral">Notification</span></td>
+          <td>Status Change Alert</td>
+          <td>Candidates</td>
+          <td>2026-02-09 14:20</td>
+          <td>980</td>
+          <td>960</td>
+          <td>20</td>
+          <td><span class="badge success">Delivered</span></td>
+          <td>-</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% if comm_section == "scheduled" %}
+<section class="card comm-section company-communication">
+  <div class="card-header">
+    <div>
+      <h3>Scheduled Messages</h3>
+      <p class="muted">Plan future sends with automatic delivery and cancel options.</p>
+    </div>
+  </div>
+  <div class="schedule-grid">
+    <article class="schedule-card">
+      <div>
+        <h4>Interview Reminder</h4>
+        <p class="muted">WhatsApp - Interview Scheduled</p>
+      </div>
+      <div class="schedule-meta">
+        <span><i class="fa-solid fa-calendar"></i> 2026-02-20 09:00</span>
+        <span class="badge warning">Scheduled</span>
+      </div>
+      <div class="schedule-actions">
+        <button class="action-btn">Cancel</button>
+      </div>
+    </article>
+    <article class="schedule-card">
+      <div>
+        <h4>Offer Letter Email</h4>
+        <p class="muted">Email - Selected</p>
+      </div>
+      <div class="schedule-meta">
+        <span><i class="fa-solid fa-calendar"></i> 2026-02-22 15:30</span>
+        <span class="badge warning">Scheduled</span>
+      </div>
+      <div class="schedule-actions">
+        <button class="action-btn">Cancel</button>
+      </div>
+    </article>
+    <article class="schedule-card">
+      <div>
+        <h4>Status Update Notification</h4>
+        <p class="muted">In-App - All Applicants</p>
+      </div>
+      <div class="schedule-meta">
+        <span><i class="fa-solid fa-calendar"></i> 2026-02-24 11:00</span>
+        <span class="badge warning">Scheduled</span>
+      </div>
+      <div class="schedule-actions">
+        <button class="action-btn">Cancel</button>
+      </div>
+    </article>
+  </div>
+  <div class="reminder-note">
+    <i class="fa-solid fa-bell"></i>
+    <span>Reminder system sends an alert 30 minutes before every scheduled message.</span>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/communication-center.js' %}"></script>
+{% endblock %}

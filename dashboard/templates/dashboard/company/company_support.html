@@ -1,0 +1,482 @@
+{% extends "dashboard/company/company_base.html" %}
+{% load static %}
+
+{% block title %}Customer Support{% endblock %}
+
+{% block content %}
+<section class="page-hero company-hero">
+  <div>
+    <p class="eyebrow">Customer Support</p>
+    <h2>{{ page_title|default:"Customer Support" }}</h2>
+    <p class="muted">{{ page_subtitle|default:"Get help from our support team." }}</p>
+  </div>
+  <div class="hero-badges">
+    <div class="hero-badge">
+      <span>Open Tickets</span>
+      <strong>12</strong>
+      <small>Awaiting response</small>
+    </div>
+    <div class="hero-badge">
+      <span>In Progress</span>
+      <strong>5</strong>
+      <small>Assigned to agents</small>
+    </div>
+    <div class="hero-badge">
+      <span>Resolved</span>
+      <strong>38</strong>
+      <small>Last 30 days</small>
+    </div>
+  </div>
+</section>
+
+{% if support_section == "create" %}
+<section class="card support-card">
+  <div class="card-header">
+    <div>
+      <h3>Create Ticket</h3>
+      <p class="muted">Tell us the issue and our team will respond quickly.</p>
+    </div>
+    <div class="header-badges">
+      <span class="badge info">Email Notification Enabled</span>
+      <span class="badge warning">Max File Size: 10 MB</span>
+    </div>
+  </div>
+  <form class="support-form">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Subject</label>
+        <input type="text" placeholder="Short summary of the issue" />
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select>
+          <option>Technical Issue</option>
+          <option>Billing</option>
+          <option>Job Posting Problem</option>
+          <option>Candidate Issue</option>
+          <option>Account Verification</option>
+          <option>Feature Request</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Priority</label>
+        <select>
+          <option>Low</option>
+          <option selected>Medium</option>
+          <option>High</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Description</label>
+        <textarea rows="6" placeholder="Describe the problem with details, dates, and job IDs."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Attachment</label>
+        <input type="file" />
+        <p class="muted">Upload screenshots or documents.</p>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn primary">Submit Ticket</button>
+      <button type="reset" class="btn ghost">Clear</button>
+    </div>
+  </form>
+</section>
+
+<section class="card support-card">
+  <div class="card-header">
+    <div>
+      <h3>After You Submit</h3>
+      <p class="muted">Ticket ID and confirmations.</p>
+    </div>
+  </div>
+  <div class="support-steps">
+    <div class="support-step">
+      <strong>Ticket ID Generated</strong>
+      <p class="muted">Example: #{{ ticket_id }}</p>
+    </div>
+    <div class="support-step">
+      <strong>Email Confirmation</strong>
+      <p class="muted">We send a confirmation email instantly.</p>
+    </div>
+    <div class="support-step">
+      <strong>Workflow</strong>
+      <p class="muted">Create ticket -> Support reply -> Resolution -> Close</p>
+    </div>
+  </div>
+</section>
+
+<section class="card support-card">
+  <div class="card-header">
+    <div>
+      <h3>Notification Rules</h3>
+      <p class="muted">What updates you will receive.</p>
+    </div>
+  </div>
+  <div class="support-notes">
+    <div class="note-card">
+      <strong>Email Alerts</strong>
+      <p class="muted">Ticket created, support reply, and resolution updates.</p>
+    </div>
+    <div class="note-card">
+      <strong>Dashboard Notifications</strong>
+      <p class="muted">Unread message indicator in the top bar.</p>
+    </div>
+    <div class="note-card">
+      <strong>SMS Alerts (Optional)</strong>
+      <p class="muted">Enable SMS reminders for critical tickets.</p>
+    </div>
+    <div class="note-card">
+      <strong>Security Rules</strong>
+      <p class="muted">Company can view only its tickets. Logs are immutable.</p>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if support_section == "my-tickets" %}
+<section class="card support-card">
+  <div class="card-header">
+    <div>
+      <h3>My Tickets</h3>
+      <p class="muted">All tickets created by your company.</p>
+    </div>
+    <div class="header-actions">
+      <input type="search" placeholder="Search ticket ID or subject" />
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table support-table">
+      <thead>
+        <tr>
+          <th>Ticket ID</th>
+          <th>Subject</th>
+          <th>Category</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>#SUP-1023</td>
+          <td>Cannot post job</td>
+          <td>Job Posting Problem</td>
+          <td><span class="badge warning">High</span></td>
+          <td><span class="badge info">In Progress</span></td>
+          <td>2026-02-15</td>
+          <td><a class="action-link" href="{% url 'dashboard:company_support_detail' 'SUP-1023' %}">View</a></td>
+        </tr>
+        <tr>
+          <td>#SUP-1017</td>
+          <td>Payment failed</td>
+          <td>Billing</td>
+          <td><span class="badge neutral">Medium</span></td>
+          <td><span class="badge warning">Waiting</span></td>
+          <td>2026-02-13</td>
+          <td><a class="action-link" href="{% url 'dashboard:company_support_detail' 'SUP-1017' %}">View</a></td>
+        </tr>
+        <tr>
+          <td>#SUP-1012</td>
+          <td>Feature request: auto shortlist</td>
+          <td>Feature Request</td>
+          <td><span class="badge success">Low</span></td>
+          <td><span class="badge info">Open</span></td>
+          <td>2026-02-11</td>
+          <td><a class="action-link" href="{% url 'dashboard:company_support_detail' 'SUP-1012' %}">View</a></td>
+        </tr>
+        <tr>
+          <td>#SUP-1009</td>
+          <td>Account verification issue</td>
+          <td>Account Verification</td>
+          <td><span class="badge success">Low</span></td>
+          <td><span class="badge success">Resolved</span></td>
+          <td>2026-02-10</td>
+          <td><a class="action-link" href="{% url 'dashboard:company_support_detail' 'SUP-1009' %}">View</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% if support_section == "open" %}
+<section class="card support-card">
+  <div class="card-header">
+    <div>
+      <h3>Open Tickets</h3>
+      <p class="muted">Open and waiting-for-response tickets.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table support-table">
+      <thead>
+        <tr>
+          <th>Ticket ID</th>
+          <th>Subject</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Last Update</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>#SUP-1023</td>
+          <td>Cannot post job</td>
+          <td><span class="badge warning">High</span></td>
+          <td><span class="badge info">In Progress</span></td>
+          <td>2 hours ago</td>
+          <td><a class="action-link" href="{% url 'dashboard:company_support_detail' 'SUP-1023' %}">View</a></td>
+        </tr>
+        <tr>
+          <td>#SUP-1017</td>
+          <td>Payment failed</td>
+          <td><span class="badge neutral">Medium</span></td>
+          <td><span class="badge warning">Waiting</span></td>
+          <td>1 day ago</td>
+          <td><a class="action-link" href="{% url 'dashboard:company_support_detail' 'SUP-1017' %}">View</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% if support_section == "closed" %}
+<section class="card support-card">
+  <div class="card-header">
+    <div>
+      <h3>Closed Tickets</h3>
+      <p class="muted">Resolved and closed issues.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table support-table">
+      <thead>
+        <tr>
+          <th>Ticket ID</th>
+          <th>Subject</th>
+          <th>Status</th>
+          <th>Closed On</th>
+          <th>Feedback</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>#SUP-1009</td>
+          <td>Account verification issue</td>
+          <td><span class="badge success">Closed</span></td>
+          <td>2026-02-12</td>
+          <td>4.5 / 5</td>
+        </tr>
+        <tr>
+          <td>#SUP-1002</td>
+          <td>Candidate complaint</td>
+          <td><span class="badge success">Closed</span></td>
+          <td>2026-02-08</td>
+          <td>5 / 5</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% if support_section == "details" %}
+<section class="card support-card">
+  <div class="card-header">
+    <div>
+      <h3>Ticket #{{ ticket_id }}</h3>
+      <p class="muted">Full conversation and internal timeline.</p>
+    </div>
+    <div class="header-badges">
+      <span class="badge warning">High Priority</span>
+      <span class="badge info">In Progress</span>
+      <span class="badge neutral">SLA: 2h 15m</span>
+    </div>
+  </div>
+  <div class="ticket-detail">
+    <div class="ticket-summary">
+      <div>
+        <strong>Subject</strong>
+        <p class="muted">Cannot post job after approval</p>
+      </div>
+      <div>
+        <strong>Category</strong>
+        <p class="muted">Job Posting Problem</p>
+      </div>
+      <div>
+        <strong>Created</strong>
+        <p class="muted">2026-02-15 10:30</p>
+      </div>
+      <div>
+        <strong>Attachments</strong>
+        <p class="muted">error_screenshot.png</p>
+      </div>
+    </div>
+    <div class="ticket-description">
+      <strong>Description</strong>
+      <p class="muted">When attempting to post a new job, we see an error that says "KYC pending" even though KYC is verified.</p>
+    </div>
+    <div class="ticket-timeline">
+      <strong>Timeline</strong>
+      <div class="timeline-item">2026-02-15 10:30 - Ticket created</div>
+      <div class="timeline-item">2026-02-15 11:05 - Support requested KYC refresh</div>
+      <div class="timeline-item">2026-02-15 12:05 - Escalated to engineering</div>
+    </div>
+  </div>
+</section>
+
+<section class="card support-card">
+  <div class="card-header">
+    <div>
+      <h3>Conversation</h3>
+      <p class="muted">Timeline of support communication.</p>
+    </div>
+  </div>
+  <div class="support-conversation">
+    <div class="message-row company">
+      <div class="message-bubble">
+        <strong>Company</strong>
+        <p>We cannot post a job. The system shows KYC pending.</p>
+        <span class="muted">2026-02-15 10:30</span>
+      </div>
+    </div>
+    <div class="message-row support">
+      <div class="message-bubble">
+        <strong>Support</strong>
+        <p>Please refresh your KYC status and re-upload the document if needed.</p>
+        <span class="muted">2026-02-15 11:05</span>
+      </div>
+    </div>
+    <div class="message-row company">
+      <div class="message-bubble">
+        <strong>Company</strong>
+        <p>Done. KYC shows verified now. Issue still exists.</p>
+        <span class="muted">2026-02-15 11:40</span>
+      </div>
+    </div>
+    <div class="message-row support">
+      <div class="message-bubble">
+        <strong>Support</strong>
+        <p>We have escalated this to engineering. ETA 2 hours.</p>
+        <span class="muted">2026-02-15 12:05</span>
+      </div>
+    </div>
+  </div>
+  <form class="support-reply">
+    <textarea rows="3" placeholder="Write a reply..."></textarea>
+    <div class="reply-actions">
+      <input type="file" />
+      <button class="btn primary" type="button">Send Reply</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+{% if support_section == "knowledge" %}
+<section class="card support-card">
+  <div class="card-header">
+    <div>
+      <h3>Knowledge Base</h3>
+      <p class="muted">Search guides and FAQs.</p>
+    </div>
+    <div class="header-actions">
+      <input type="search" placeholder="Search articles" />
+    </div>
+  </div>
+  <div class="kb-grid">
+    <article class="kb-card">
+      <h4>How to post a job</h4>
+      <p class="muted">Step-by-step job creation and approval workflow.</p>
+      <button class="action-btn">Read Article</button>
+    </article>
+    <article class="kb-card">
+      <h4>How to shortlist candidates</h4>
+      <p class="muted">Use filters, rating, and bulk actions to shortlist.</p>
+      <button class="action-btn">Read Article</button>
+    </article>
+    <article class="kb-card">
+      <h4>Payment FAQs</h4>
+      <p class="muted">Common billing issues and invoice downloads.</p>
+      <button class="action-btn">Read Article</button>
+    </article>
+    <article class="kb-card">
+      <h4>Subscription plans</h4>
+      <p class="muted">Compare plan limits and upgrade steps.</p>
+      <button class="action-btn">Read Article</button>
+    </article>
+    <article class="kb-card">
+      <h4>Account verification</h4>
+      <p class="muted">KYC and verification checklist.</p>
+      <button class="action-btn">Read Article</button>
+    </article>
+  </div>
+</section>
+{% endif %}
+
+{% if support_section == "chat" %}
+<section class="card support-card">
+  <div class="card-header">
+    <div>
+      <h3>Live Chat</h3>
+      <p class="muted">Talk to support in real time. Chat history is saved.</p>
+    </div>
+    <div class="header-badges">
+      <span class="badge success">Online</span>
+      <span class="badge neutral">Typing indicator enabled</span>
+    </div>
+  </div>
+  <div class="chat-shell">
+    <div class="chat-window">
+      <div class="chat-message support">
+        <div class="chat-bubble">
+          <strong>Support</strong>
+          <p>Hi! How can we help you today?</p>
+          <span class="muted">09:10 AM</span>
+        </div>
+      </div>
+      <div class="chat-message company">
+        <div class="chat-bubble">
+          <strong>Company</strong>
+          <p>We are facing a payment error on renewal.</p>
+          <span class="muted">09:12 AM</span>
+        </div>
+      </div>
+      <div class="chat-message support">
+        <div class="chat-bubble">
+          <strong>Support</strong>
+          <p>Thanks. Please share the payment reference ID.</p>
+          <span class="muted">09:13 AM</span>
+        </div>
+      </div>
+      <div class="typing-indicator">
+        <span></span><span></span><span></span>
+        <small class="muted">Support is typing...</small>
+      </div>
+    </div>
+    <div class="chat-sidebar">
+      <div class="chat-info">
+        <h4>Chat Details</h4>
+        <p class="muted">Agent: Priya S.</p>
+        <p class="muted">Avg response: 3 min</p>
+        <p class="muted">SLA: 1 hour</p>
+      </div>
+      <div class="chat-info">
+        <h4>Quick Actions</h4>
+        <button class="action-btn">Share Ticket ID</button>
+        <button class="action-btn">Send Screenshot</button>
+        <button class="action-btn">Escalate</button>
+      </div>
+    </div>
+  </div>
+  <div class="chat-input">
+    <input type="text" placeholder="Type a message..." />
+    <button class="btn primary">Send</button>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

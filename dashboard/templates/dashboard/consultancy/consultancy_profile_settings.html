@@ -1,0 +1,201 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Profile & Settings{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Profile & Settings</p>
+    <h2>Consultancy Profile</h2>
+    <p class="muted">Manage profile, compliance, and notification settings.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Consultancy Information</h3>
+      <p class="muted">Basic details and contact info.</p>
+    </div>
+  </div>
+  <form class="company-form-grid" method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="update_profile" />
+    <div class="company-form-group">
+      <label>Consultancy Name</label>
+      <input type="text" name="name" value="{{ consultancy.name|default:'Consultancy Name' }}" />
+    </div>
+    <div class="company-form-group">
+      <label>Email</label>
+      <input type="email" name="email" value="{{ consultancy.email|default:'consultancy@example.com' }}" />
+    </div>
+    <div class="company-form-group">
+      <label>Phone</label>
+      <input type="text" name="phone" value="{{ consultancy.phone|default:'+91 99999 00000' }}" />
+    </div>
+    <div class="company-form-group">
+      <label>Location</label>
+      <input type="text" name="location" value="{{ consultancy.location|default:'Delhi' }}" />
+    </div>
+    <div class="company-form-group">
+      <label>Contact Position</label>
+      <input type="text" name="contact_position" value="{{ consultancy.contact_position|default:'Manager' }}" />
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Address</label>
+      <textarea rows="2" name="address" placeholder="Full address">{{ consultancy.address|default:'' }}</textarea>
+    </div>
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Save Changes</button>
+      <button class="btn ghost" type="reset">Cancel</button>
+    </div>
+  </form>
+</section>
+
+<section class="card-grid section-block">
+  <article class="card">
+    <div class="card-header">
+      <div>
+        <h3>Profile Photo</h3>
+        <p class="muted">Upload consultancy logo or photo.</p>
+      </div>
+    </div>
+    <div class="logo-upload">
+      <div class="logo-preview">
+        {% if consultancy.profile_image %}
+          <img src="{{ consultancy.profile_image.url }}" alt="Consultancy photo" />
+        {% else %}
+          <span>{{ consultancy.name|default:"C"|first|upper }}</span>
+        {% endif %}
+      </div>
+      <div class="logo-actions">
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="upload_photo" />
+          <input type="file" name="profile_image" accept="image/*" />
+          <button class="btn primary" type="submit">Upload Photo</button>
+        </form>
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="remove_photo" />
+          <button class="btn ghost" type="submit">Remove</button>
+        </form>
+      </div>
+    </div>
+  </article>
+
+  <article class="card">
+    <div class="card-header">
+      <div>
+        <h3>KYC Documents</h3>
+        <p class="muted">Upload multiple verification documents.</p>
+      </div>
+    </div>
+    <form method="post" enctype="multipart/form-data" class="kyc-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="upload_kyc" />
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Document Title</label>
+          <input type="text" name="document_title" placeholder="e.g. GST Certificate, License" />
+        </div>
+        <div class="form-group">
+          <label>Document Type</label>
+          <select name="document_type">
+            <option value="license">License</option>
+            <option value="gst">GST Certificate</option>
+            <option value="incorporation">Certificate of Incorporation</option>
+            <option value="address">Address Proof</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <label>Upload Documents</label>
+          <input type="file" name="kyc_files" class="kyc-file-input" accept=".pdf,image/*" multiple />
+          <p class="muted">Upload multiple files at once (PDF/JPG/PNG).</p>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" type="submit">Upload KYC Documents</button>
+      </div>
+    </form>
+    <div class="kyc-table-wrapper">
+      <div class="card-subheader">
+        <h4>Uploaded Documents</h4>
+        <p class="muted">All KYC documents appear here.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="table kyc-table">
+          <thead>
+            <tr>
+              <th>Document</th>
+              <th>Type</th>
+              <th>Uploaded</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if kyc_documents %}
+              {% for doc in kyc_documents %}
+              <tr>
+                <td><strong>{{ doc.document_title|default:"Document" }}</strong></td>
+                <td>{{ doc.get_document_type_display|default:"--" }}</td>
+                <td>{{ doc.uploaded_at|date:"d M Y"|default:"--" }}</td>
+                <td>
+                  <div class="table-actions">
+                    <a class="action-btn" href="{{ doc.document_file.url }}" target="_blank" rel="noopener">View</a>
+                    <form method="post">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="delete_kyc" />
+                      <input type="hidden" name="doc_id" value="{{ doc.id }}" />
+                      <button class="action-btn danger" type="submit">Remove</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="4" class="muted" style="text-align:center; padding: 16px;">No documents uploaded yet.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+
+  <article class="card">
+    <div class="card-header">
+      <div>
+        <h3>Notification Settings</h3>
+        <p class="muted">Email/SMS alerts</p>
+      </div>
+    </div>
+    <div class="status-controls">
+      <label class="d-flex justify-content-between align-items-center">
+        <span>Candidate Updates</span>
+        <span class="switch">
+          <input type="checkbox" checked />
+          <span class="slider"></span>
+        </span>
+      </label>
+      <label class="d-flex justify-content-between align-items-center">
+        <span>Interview Reminders</span>
+        <span class="switch">
+          <input type="checkbox" checked />
+          <span class="slider"></span>
+        </span>
+      </label>
+      <label class="d-flex justify-content-between align-items-center">
+        <span>Payment Updates</span>
+        <span class="switch">
+          <input type="checkbox" />
+          <span class="slider"></span>
+        </span>
+      </label>
+    </div>
+  </article>
+</section>
+{% endblock %}

@@ -1,0 +1,227 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Candidate Panel{% endblock %} | Job Exhibition</title>
+    <link rel="icon" href="{% static 'dashboard/favicon.ico' %}" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}" />
+    {% block extra_css %}{% endblock %}
+  </head>
+  <body class="candidate-dashboard">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <div class="app-shell">
+      <aside class="sidebar candidate-sidebar">
+        <div class="brand">
+          <div class="brand-mark">
+            <img src="{% static 'dashboard/img/je-logo.svg' %}" alt="Job Exhibition logo" />
+          </div>
+          <div class="brand-text">
+            <h1 class="style-1"><span class="brand-job">Job</span> <span class="brand-exhibition">Exhibition</span></h1>
+            <span class="brand-subtitle">Candidate Panel</span>
+          </div>
+</div>
+
+        <div class="company-user candidate-user">
+          <div class="company-logo-stack">
+            <div class="company-logo" style="--progress: {{ candidate.profile_completion|default:0 }};">
+              {% if candidate.profile_image %}
+                <img src="{{ candidate.profile_image.url }}" alt="Candidate photo" />
+              {% else %}
+                <span>{{ candidate.name|default:"C"|first|upper }}</span>
+              {% endif %}
+            </div>
+            <span class="profile-progress-text">{{ candidate.profile_completion|default:0 }}% Complete</span>
+          </div>
+          <div class="company-user-meta">
+            <strong>{{ candidate.name|default:"candidate" }}</strong>
+            <span>{{ candidate.account_status|default:"Active" }} Candidate</span>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_job_search' or request.resolver_match.url_name == 'candidate_job_detail' %}active{% endif %}" href="{% url 'dashboard:candidate_job_search' %}">
+            <span class="nav-icon"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <span>Job Search</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_dashboard' %}active{% endif %}" href="{% url 'dashboard:candidate_dashboard' %}">
+            <span class="nav-icon"><i class="fa-solid fa-chart-line"></i></span>
+            <span>Dashboard</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_saved_jobs' %}active{% endif %}" href="{% url 'dashboard:candidate_saved_jobs' %}">
+            <span class="nav-icon"><i class="fa-solid fa-bookmark"></i></span>
+            <span>Saved Jobs</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_applications' %}active{% endif %}" href="{% url 'dashboard:candidate_applications' %}">
+            <span class="nav-icon"><i class="fa-solid fa-file-lines"></i></span>
+            <span>My Applications</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_interviews' %}active{% endif %}" href="{% url 'dashboard:candidate_interviews' %}">
+            <span class="nav-icon"><i class="fa-solid fa-calendar-check"></i></span>
+            <span>Interviews</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_messages' %}active{% endif %}" href="{% url 'dashboard:candidate_messages' %}">
+            <span class="nav-icon"><i class="fa-solid fa-comments"></i></span>
+            <span>Messages</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_notifications' %}active{% endif %}" href="{% url 'dashboard:candidate_notifications' %}">
+            <span class="nav-icon"><i class="fa-solid fa-bell"></i></span>
+            <span>Notifications</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_profile' %}active{% endif %}" href="{% url 'dashboard:candidate_profile' %}">
+            <span class="nav-icon"><i class="fa-solid fa-user"></i></span>
+            <span>My Profile</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_resume_manager' %}active{% endif %}" href="{% url 'dashboard:candidate_resume_manager' %}">
+            <span class="nav-icon"><i class="fa-solid fa-file"></i></span>
+            <span>Resume Manager</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_subscription' %}active{% endif %}" href="{% url 'dashboard:candidate_subscription' %}">
+            <span class="nav-icon"><i class="fa-solid fa-crown"></i></span>
+            <span>Subscription</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_settings' %}active{% endif %}" href="{% url 'dashboard:candidate_settings' %}">
+            <span class="nav-icon"><i class="fa-solid fa-gear"></i></span>
+            <span>Settings</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_support' %}active{% endif %}" href="{% url 'dashboard:candidate_support' %}">
+            <span class="nav-icon"><i class="fa-solid fa-headset"></i></span>
+            <span>Support</span>
+          </a>
+          <a class="nav-item" href="{% url 'dashboard:candidate_logout' %}">
+            <span class="nav-icon"><i class="fa-solid fa-right-from-bracket"></i></span>
+            <span>Logout</span>
+          </a>
+        </nav>
+
+        {% if candidate_subscription_info %}
+        <section class="candidate-subscription-widget">
+          <h4>Subscription</h4>
+          {% if candidate_subscription_info.is_premium %}
+            <p class="plan-title">Premium Candidate</p>
+            <p class="plan-price">Active plan</p>
+            <ul>
+              <li>Resume boost</li>
+              <li>Profile highlighted</li>
+              <li>Priority applications</li>
+            </ul>
+          {% else %}
+            <p class="plan-title">Free Candidate</p>
+            <p class="plan-price">Upgrade: Rs. 199 / month</p>
+            <ul>
+              <li>Apply to jobs</li>
+              <li>Create profile</li>
+              <li>Upload resume</li>
+            </ul>
+          {% endif %}
+          <a class="plan-link" href="{% url 'dashboard:candidate_subscription' %}">
+            {% if candidate_subscription_info.is_premium %}Manage Plan{% else %}Upgrade Plan{% endif %}
+          </a>
+        </section>
+        {% endif %}
+
+        {% if candidate_sidebar_ad %}
+        <section class="candidate-sidebar-ad">
+          <h4>Admin Advertisement</h4>
+          {% if candidate_sidebar_ad.media_file %}
+            <div class="ad-media">
+              {% if candidate_sidebar_ad.media_kind == "video" %}
+                <video class="ad-video" autoplay muted loop playsinline preload="metadata">
+                  <source src="{{ candidate_sidebar_ad.media_file.url }}" />
+                </video>
+                <button class="ad-sound-toggle" type="button" data-ad-sound-toggle aria-pressed="false">
+                  <i class="fa-solid fa-volume-xmark"></i>
+                  <span>Sound</span>
+                </button>
+              {% elif candidate_sidebar_ad.media_kind == "image" %}
+                <img src="{{ candidate_sidebar_ad.media_file.url }}" alt="Advertisement media" class="ad-image" loading="lazy" />
+              {% endif %}
+            </div>
+          {% endif %}
+          <strong>{{ candidate_sidebar_ad.title|default:"Admin Update" }}</strong>
+          <p>{{ candidate_sidebar_ad.message|truncatewords:20 }}</p>
+          <span class="ad-date">{{ candidate_sidebar_ad.created_at|date:"d M Y" }}</span>
+        </section>
+        {% endif %}
+
+      </aside>
+
+      <main class="main">
+        <header class="page-header">
+          <div class="topbar">
+            <div class="top-actions">
+              <div class="sidebar-control">
+  <button class="sidebar-control-btn" type="button" data-sidebar-toggle aria-label="Toggle sidebar">
+    <i class="fa-solid fa-bars"></i>
+    <span>Responsive Collapsible Sidebar</span>
+  </button>
+</div>
+<button class="icon-btn fullscreen-toggle" type="button" data-fullscreen-toggle aria-label="Toggle fullscreen">
+  <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+</button>
+              <button class="icon-btn compact" id="darkModeToggle" aria-label="Toggle dark mode">
+                <i class="fa-solid fa-moon"></i>
+              </button>
+              <a class="icon-btn compact" href="{% url 'dashboard:candidate_messages' %}" aria-label="Messages">
+                <i class="fa-regular fa-envelope"></i>
+              </a>
+              <details class="notification-dropdown">
+                <summary class="icon-btn" aria-label="Notifications">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
+                  {% if messages %}<span class="notif-dot"></span>{% endif %}
+                </summary>
+                <div class="notification-menu">
+                  <h4>Notifications</h4>
+                  {% if messages %}
+                  <ul class="notification-list">
+                    {% for message in messages %}
+                    <li>{{ message }}</li>
+                    {% endfor %}
+                  </ul>
+                  {% else %}
+                  <p class="muted">No notifications yet.</p>
+                  {% endif %}
+                </div>
+              </details>
+            </div>
+            <details class="profile-dropdown">
+              <summary class="profile-summary">
+                <div class="profile-avatar">{{ candidate.name|default:"C"|first|upper }}</div>
+                <div class="profile-meta">
+                  <strong>{{ candidate.name|default:"candidate" }}</strong>
+                  <span>Candidate Account</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+              </summary>
+              <div class="profile-menu">
+                <a class="menu-item" href="{% url 'dashboard:candidate_profile' %}">My Profile</a>
+                <a class="menu-item logout" href="{% url 'dashboard:candidate_logout' %}">Logout</a>
+              </div>
+            </details>
+          </div>
+        </header>
+
+        {% if messages %}
+        <div class="message-stack" style="padding: 0 24px; margin-bottom: 16px;">
+          {% for message in messages %}
+            <div class="alert alert-{{ message.tags|default:'info' }} mb-2">{{ message }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+
+    <script src="{% static 'dashboard/js/dashboard.js' %}"></script>
+    <script src="{% static 'dashboard/js/candidate-realtime.js' %}"></script>
+    <script src="{% static 'dashboard/js/candidate-ui.js' %}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+  </body>
+</html>
+

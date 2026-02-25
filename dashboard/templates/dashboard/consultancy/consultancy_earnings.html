@@ -1,0 +1,119 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Earnings & Commission{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Earnings</p>
+    <h2>Earnings & Commission</h2>
+    <p class="muted">Track total earnings, pending approvals, and payout history.</p>
+  </div>
+</section>
+
+<section class="pill-grid">
+  <article class="pill-card gradient-1">
+    <div class="pill-icon"><i class="fa-solid fa-coins"></i></div>
+    <div>
+      <p class="pill-title">Total Commission Earned</p>
+      <strong class="pill-value">INR {{ summary.total_commission|default:0 }}</strong>
+      <span class="pill-sub">Lifetime</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-2">
+    <div class="pill-icon"><i class="fa-solid fa-hourglass-half"></i></div>
+    <div>
+      <p class="pill-title">Pending Approval</p>
+      <strong class="pill-value">INR {{ summary.pending_payments|default:0 }}</strong>
+      <span class="pill-sub">Awaiting approval</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-3">
+    <div class="pill-icon"><i class="fa-solid fa-check"></i></div>
+    <div>
+      <p class="pill-title">Approved But Unpaid</p>
+      <strong class="pill-value">INR {{ summary.approved_unpaid|default:0 }}</strong>
+      <span class="pill-sub">Ready for payout</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-4">
+    <div class="pill-icon"><i class="fa-solid fa-circle-check"></i></div>
+    <div>
+      <p class="pill-title">Paid Total</p>
+      <strong class="pill-value">INR {{ summary.paid_total|default:0 }}</strong>
+      <span class="pill-sub">Released payouts</span>
+    </div>
+  </article>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Monthly Earnings</h3>
+      <p class="muted">Commission summary by month.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th>Placements</th>
+          <th>Commission</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in earnings %}
+        <tr>
+          <td><strong>{{ row.month }}</strong></td>
+          <td>{{ row.placements }}</td>
+          <td>{{ row.commission }}</td>
+          <td>
+            <span class="badge {% if row.status == 'Paid' %}success{% else %}warning{% endif %}">{{ row.status }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Payout History</h3>
+      <p class="muted">Invoice-wise payout tracking.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Invoice ID</th>
+          <th>Placement</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th>Payment Mode</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in earnings %}
+        <tr>
+          <td><strong>INV-{{ forloop.counter|add:1000 }}</strong></td>
+          <td>{{ row.placements }} placements</td>
+          <td>{{ row.commission }}</td>
+          <td>
+            <span class="badge {% if row.status == 'Paid' %}success{% elif row.status == 'Pending' %}warning{% else %}info{% endif %}">{{ row.status }}</span>
+          </td>
+          <td>{{ row.month }}</td>
+          <td>{% if row.status == 'Paid' %}Bank Transfer{% else %}Processing{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

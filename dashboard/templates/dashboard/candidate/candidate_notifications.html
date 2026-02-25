@@ -1,0 +1,86 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}Notifications{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Notifications</p>
+    <h2>Alerts & Updates</h2>
+    <p class="muted">Stay informed about job and application changes.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Admin Advertisement</h3>
+      <p class="muted">Latest ad posted for your subscription audience.</p>
+    </div>
+  </div>
+  {% if advertisement %}
+    <div class="activity-item ad-item">
+      {% if advertisement.media_file %}
+        <div class="ad-media">
+          {% if advertisement.media_kind == "video" %}
+            <video class="ad-video" autoplay muted loop playsinline preload="metadata">
+              <source src="{{ advertisement.media_file.url }}" />
+            </video>
+            <button class="ad-sound-toggle" type="button" data-ad-sound-toggle aria-pressed="false">
+              <i class="fa-solid fa-volume-xmark"></i>
+              <span>Sound</span>
+            </button>
+          {% elif advertisement.media_kind == "image" %}
+            <img src="{{ advertisement.media_file.url }}" alt="Advertisement media" class="ad-image" loading="lazy" />
+          {% endif %}
+        </div>
+      {% endif %}
+      <div class="ad-item-content">
+        <strong>{{ advertisement.title|default:"Admin Update" }}</strong>
+        <span class="muted">{{ advertisement.message }}</span>
+        <span class="muted">Audience: {{ advertisement.segment|default:"General"|cut:"_"|title }}</span>
+      </div>
+      <span class="activity-time">{{ advertisement.created_at|date:"d M Y" }}</span>
+    </div>
+  {% else %}
+    <div class="activity-item">
+      <div>
+        <strong>No advertisement yet</strong>
+        <span class="muted">Latest admin ad will show here.</span>
+      </div>
+      <span class="activity-time">--</span>
+    </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Recent Notifications</h3>
+      <p class="muted">Job approved, interview scheduled, status changed, and recommendations.</p>
+    </div>
+  </div>
+  <div class="activity-list">
+    {% if notifications %}
+      {% for note in notifications %}
+      <div class="activity-item">
+        <div>
+          <strong>{{ note.title }}</strong>
+          <span class="muted">{{ note.message }}</span>
+        </div>
+        <span class="activity-time">{{ note.date }}</span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="activity-item">
+        <div>
+          <strong>No notifications yet</strong>
+          <span class="muted">Your alerts will appear here.</span>
+        </div>
+        <span class="activity-time">--</span>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

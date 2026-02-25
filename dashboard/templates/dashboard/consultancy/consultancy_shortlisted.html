@@ -1,0 +1,52 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Shortlisted{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Shortlisted</p>
+    <h2>Shortlisted Candidates</h2>
+    <p class="muted">Move candidates into interview rounds.</p>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Shortlisted Pipeline</h3>
+      <p class="muted">High potential candidates for hiring teams.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Candidate</th>
+          <th>Job</th>
+          <th>Company</th>
+          <th>Stage</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in shortlisted %}
+        <tr>
+          <td><strong>{{ item.candidate }}</strong></td>
+          <td>{{ item.job }}</td>
+          <td>{{ item.company }}</td>
+          <td><span class="badge info">{{ item.stage }}</span></td>
+          <td>
+            <div class="table-actions">
+              <a class="action-btn" href="{% url 'dashboard:consultancy_interviews' %}#schedule-interview">Schedule Interview</a>
+              <a class="action-btn" href="{% url 'dashboard:consultancy_applications' %}">View</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

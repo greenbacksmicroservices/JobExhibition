@@ -1,0 +1,179 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}Candidate Dashboard{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Candidate Dashboard</p>
+    <h2>Welcome back, {{ candidate.name|default:"Candidate" }}</h2>
+    <p class="muted">Track applications, interviews, and recommendations in one place.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn primary" href="{% url 'dashboard:candidate_resume_manager' %}">Update Resume</a>
+    <a class="btn ghost" href="{% url 'dashboard:candidate_profile' %}">Complete Profile</a>
+    <a class="btn ghost" href="{% url 'dashboard:candidate_job_search' %}">Browse Jobs</a>
+  </div>
+</section>
+
+<section class="dashboard-row candidate-top-row">
+  <article class="card compact-card metrics-graph-card">
+    <div class="card-header">
+      <div>
+        <h3>Performance Graph</h3>
+        <p class="muted">Applications, shortlist, interviews, saved jobs, and recommendations.</p>
+      </div>
+    </div>
+    <div class="candidate-metric-bars">
+      {% for item in metric_cards %}
+      <div class="candidate-metric-row">
+        <div class="metric-meta">
+          <strong>{{ item.label }}</strong>
+          <span>{{ item.sub }}</span>
+        </div>
+        <div class="metric-value" {% if item.metric_id %}id="{{ item.metric_id }}"{% endif %}>{{ item.value }}</div>
+        <div class="metric-track">
+          <span class="metric-fill" data-metric-key="{{ item.metric_key }}" style="width: {{ item.width }}%;"></span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </article>
+
+  <article class="card compact-card">
+    <div class="card-header">
+      <div>
+        <h3>Admin Announcements</h3>
+        <p class="muted">Latest messages shared for candidates.</p>
+      </div>
+    </div>
+    <div class="activity-list">
+      {% if advertisement %}
+        <div class="activity-item ad-item">
+          <div class="ad-item-content">
+            <strong>{{ advertisement.title|default:"Admin Update" }}</strong>
+            <span class="muted">{{ advertisement.message }}</span>
+            <span class="muted">Audience: {{ advertisement.segment|default:"General"|cut:"_"|title }}</span>
+          </div>
+          {% if advertisement.media_file %}
+            <div class="ad-media">
+              {% if advertisement.media_kind == "video" %}
+                <video class="ad-video" autoplay muted loop playsinline preload="metadata">
+                  <source src="{{ advertisement.media_file.url }}" />
+                </video>
+                <button class="ad-sound-toggle" type="button" data-ad-sound-toggle aria-pressed="false">
+                  <i class="fa-solid fa-volume-xmark"></i>
+                  <span>Sound</span>
+                </button>
+              {% elif advertisement.media_kind == "image" %}
+                <img src="{{ advertisement.media_file.url }}" alt="Advertisement media" class="ad-image" loading="lazy" />
+              {% endif %}
+            </div>
+          {% endif %}
+          <span class="activity-time">{{ advertisement.created_at|date:"d M" }}</span>
+        </div>
+      {% else %}
+        <div class="activity-item">
+          <div>
+            <strong>No announcements yet</strong>
+            <span class="muted">Admin advertisements will appear here.</span>
+          </div>
+          <span class="activity-time">--</span>
+        </div>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="dashboard-row">
+  <article class="card compact-card">
+    <div class="card-header">
+      <div>
+        <h3>Recommended Jobs</h3>
+        <p class="muted">Based on your profile</p>
+      </div>
+      <a class="btn ghost" href="{% url 'dashboard:candidate_job_search' %}">View All</a>
+    </div>
+    <div class="activity-list">
+      {% if recommended_jobs %}
+        {% for job in recommended_jobs %}
+        <div class="activity-item">
+          <div>
+            <strong>{{ job.title }}</strong>
+            <span class="muted">{{ job.company }} - {{ job.location|default:"Remote" }}</span>
+          </div>
+          <a class="link-button" href="{% url 'dashboard:candidate_job_detail' job.job_id %}">View</a>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="activity-item">
+          <div>
+            <strong>No recommendations yet</strong>
+            <span class="muted">Complete your profile to unlock matches.</span>
+          </div>
+          <span class="activity-time">--</span>
+        </div>
+      {% endif %}
+    </div>
+  </article>
+
+  <article class="card compact-card">
+    <div class="card-header">
+      <div>
+        <h3>Recent Applications</h3>
+        <p class="muted">Latest submissions</p>
+      </div>
+    </div>
+    <div class="activity-list">
+      {% if applications %}
+        {% for app in applications %}
+        <div class="activity-item">
+          <div>
+            <strong>{{ app.job_title }}</strong>
+            <span class="muted">{{ app.company }}</span>
+          </div>
+          <span class="activity-time">{{ app.applied_date|date:"d M Y"|default:"--" }}</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="activity-item">
+          <div>
+            <strong>No applications yet</strong>
+            <span class="muted">Start applying to grow your timeline.</span>
+          </div>
+          <span class="activity-time">--</span>
+        </div>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Professional Features</h3>
+      <p class="muted">AI recommendations, skill gap analysis, and interview prep tools.</p>
+    </div>
+  </div>
+  <div class="card-grid">
+    <article class="card">
+      <h4>AI Job Recommendation</h4>
+      <p class="muted">Match roles based on skills and resume.</p>
+    </article>
+    <article class="card">
+      <h4>Resume Auto Parsing</h4>
+      <p class="muted">Extract skills and experience automatically.</p>
+    </article>
+    <article class="card">
+      <h4>Skill Gap Analysis</h4>
+      <p class="muted">Identify missing skills for target roles.</p>
+    </article>
+    <article class="card">
+      <h4>Interview Preparation Tips</h4>
+      <p class="muted">Personalized tips for upcoming rounds.</p>
+    </article>
+  </div>
+</section>
+{% endblock %}
+

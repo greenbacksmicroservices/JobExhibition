@@ -1,0 +1,95 @@
+{% extends "dashboard/company/company_base.html" %}
+{% load static %}
+
+{% block title %}Security{% endblock %}
+
+{% block content %}
+<section class="page-hero company-hero">
+  <div>
+    <p class="eyebrow">Protection</p>
+    <h2>Security & Privacy</h2>
+    <p class="muted">Manage your account security and access.</p>
+  </div>
+</section>
+
+<div style="max-width: 700px;">
+  <div class="card">
+    <div class="card-header">
+      <h3>Active Sessions</h3>
+      <p class="muted">Devices currently logged in to your account</p>
+    </div>
+    <div class="activity-list" style="padding: 20px;">
+      <div class="activity-item">
+        <div>
+          <strong>Windows PC - Chrome</strong>
+          <span class="muted">Last accessed: Today at 2:30 PM</span>
+        </div>
+        <span class="badge success">Current Session</span>
+      </div>
+      <div class="activity-item">
+        <div>
+          <strong>iPhone 13 - Safari</strong>
+          <span class="muted">Last accessed: Yesterday at 5:15 PM</span>
+        </div>
+        <button class="action-btn warning" style="cursor: pointer;">Logout</button>
+      </div>
+      <div class="activity-item">
+        <div>
+          <strong>MacBook Pro - Safari</strong>
+          <span class="muted">Last accessed: 3 days ago</span>
+        </div>
+        <button class="action-btn warning" style="cursor: pointer;">Logout</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 20px;">
+    <div class="card-header">
+      <h3>Two-Factor Authentication</h3>
+    </div>
+    <div style="padding: 20px;">
+      <p style="font-size: 13px; color: #374151; margin-bottom: 16px;">Add an extra layer of security to your account by enabling two-factor authentication.</p>
+      <button class="btn primary">Enable 2FA</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 20px;">
+    <div class="card-header">
+      <h3>Login History</h3>
+      <p class="muted">Recent login attempts</p>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Date & Time</th>
+            <th>Device</th>
+            <th>IP Address</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>17 Feb 2026, 2:30 PM</td>
+            <td>Windows PC - Chrome</td>
+            <td>192.168.1.100</td>
+            <td><span class="badge success">Success</span></td>
+          </tr>
+          <tr>
+            <td>16 Feb 2026, 5:15 PM</td>
+            <td>iPhone 13 - Safari</td>
+            <td>203.0.113.45</td>
+            <td><span class="badge success">Success</span></td>
+          </tr>
+          <tr>
+            <td>15 Feb 2026, 10:20 AM</td>
+            <td>Unknown - Chrome</td>
+            <td>198.51.100.78</td>
+            <td><span class="badge danger">Failed</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

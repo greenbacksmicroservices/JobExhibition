@@ -1,0 +1,78 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Reports{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Reports</p>
+    <h2>Performance Analytics</h2>
+    <p class="muted">Conversion rates, placement counts, and earnings insights.</p>
+  </div>
+</section>
+
+<section class="pill-grid">
+  <article class="pill-card gradient-1">
+    <div class="pill-icon"><i class="fa-solid fa-percentage"></i></div>
+    <div>
+      <p class="pill-title">Conversion Rate</p>
+      <strong class="pill-value">{{ reports.conversion_rate }}</strong>
+      <span class="pill-sub">Submitted -> Placed</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-2">
+    <div class="pill-icon"><i class="fa-solid fa-user-check"></i></div>
+    <div>
+      <p class="pill-title">Interview to Selection</p>
+      <strong class="pill-value">{{ reports.interview_to_selection }}</strong>
+      <span class="pill-sub">Interview success</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-3">
+    <div class="pill-icon"><i class="fa-solid fa-briefcase"></i></div>
+    <div>
+      <p class="pill-title">Placement Count</p>
+      <strong class="pill-value">{{ reports.placements_count }}</strong>
+      <span class="pill-sub">Total placements</span>
+    </div>
+  </article>
+</section>
+
+<section class="graph-grid">
+  <article class="card chart-card">
+    <div class="chart-header">
+      <div>
+        <h3>Placements Per Company</h3>
+        <p class="muted">Top hiring partners</p>
+      </div>
+    </div>
+    <div class="bar-list">
+      {% for row in reports.placements_per_company %}
+      <div class="bar-row">
+        <span>{{ row.company }}</span>
+        <div class="bar-track"><span class="bar-fill" data-value="{{ row.count }}"></span></div>
+        <strong data-bar-value>{{ row.count }}</strong>
+      </div>
+      {% endfor %}
+    </div>
+  </article>
+  <article class="card chart-card">
+    <div class="chart-header">
+      <div>
+        <h3>Monthly Earnings</h3>
+        <p class="muted">Commission trend</p>
+      </div>
+    </div>
+    <div class="trend-chart">
+      {% for row in reports.monthly_earnings %}
+      <div class="trend-bar" data-count="{{ row.amount|cut:',' }}">
+        <span class="trend-count">INR {{ row.amount }}</span>
+        <span class="trend-fill" style="height: 0;"></span>
+        <span class="trend-label">{{ row.month }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </article>
+</section>
+{% endblock %}

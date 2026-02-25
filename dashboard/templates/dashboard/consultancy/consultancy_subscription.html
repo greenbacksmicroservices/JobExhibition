@@ -1,0 +1,238 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Billing & Subscription{% endblock %}
+
+{% block content %}
+<section class="page-hero company-hero">
+  <div>
+    <p class="eyebrow">Subscription</p>
+    <h2>Consultancy Subscription</h2>
+    <p class="muted">Manage your plan, billing, and available upgrades.</p>
+  </div>
+</section>
+
+<div class="card" style="max-width: 640px; margin: 0 auto 20px;">
+  <div class="card-header">
+    <h3>Current Plan</h3>
+  </div>
+  <div style="padding: 30px; text-align: center; border-bottom: 1px solid #e5e7eb;">
+    <p style="color: #6b7280; font-size: 13px; margin-bottom: 8px;">Your Current Subscription</p>
+    <h2 style="font-size: 32px; margin: 16px 0;">{{ consultancy.plan_type|default:consultancy.plan_name|default:"Free" }}</h2>
+    <p style="font-size: 14px; color: #374151;">Valid until <strong>{{ consultancy.plan_expiry|date:"d M Y"|default:"12 Mar 2026" }}</strong></p>
+  </div>
+  <div style="padding: 30px;">
+    <div class="info-grid" style="gap: 16px; margin-bottom: 20px;">
+      <div class="info-row">
+        <span class="label">Plan Status</span>
+        <span class="badge success">Active</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Renewal Date</span>
+        <strong>{{ consultancy.plan_expiry|date:"d M Y"|default:"12 Mar 2026" }}</strong>
+      </div>
+      <div class="info-row">
+        <span class="label">Payment Status</span>
+        <span class="badge success">{{ consultancy.payment_status|default:"Paid" }}</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Next Billing</span>
+        <strong>INR 2,499</strong>
+      </div>
+    </div>
+    <div style="display: flex; gap: 10px;">
+      <button class="btn primary">Upgrade Plan</button>
+      <button class="btn ghost">View Invoice</button>
+    </div>
+  </div>
+</div>
+
+<section class="section-block">
+  <div class="section-header">
+    <div>
+      <h3>Recruiter / Consultancy Plans</h3>
+      <p class="muted">Compare plans and choose what fits your hiring needs.</p>
+    </div>
+  </div>
+  <div class="plan-grid">
+    <article class="plan-card">
+      <div class="plan-header">
+        <span class="plan-tag free">Free Plan</span>
+        <span class="plan-tier">Starter (Free Forever)</span>
+      </div>
+      <p class="plan-desc">Best for new users to try the platform.</p>
+      <div class="plan-cost">
+        <strong>INR 0</strong>
+        <span class="muted">No billing required</span>
+      </div>
+      <ul class="plan-features">
+        <li><span>Job Posts</span><strong>3 Free Jobs (Lifetime)</strong></li>
+        <li><span>Job Validity</span><strong>15 days</strong></li>
+        <li><span>Resume View</span><strong>View only</strong></li>
+        <li><span>Resume Download</span><strong>No</strong></li>
+        <li><span>Candidate Chat</span><strong>No</strong></li>
+        <li><span>Auto Match</span><strong>No</strong></li>
+        <li><span>Interview Scheduler</span><strong>No</strong></li>
+        <li><span>Support</span><strong>Email only</strong></li>
+        <li><span>Branding</span><strong>Job Exhibition branding</strong></li>
+      </ul>
+      <div class="plan-note">Upgrade trigger: After 3rd job -> "Please subscribe to post new job".</div>
+    </article>
+
+    <article class="plan-card">
+      <div class="plan-header">
+        <span class="plan-tag basic">Basic Plan</span>
+        <span class="plan-tier">Basic Recruiter</span>
+      </div>
+      <p class="plan-desc">For small companies and local consultancies.</p>
+      <div class="plan-cost">
+        <strong>INR 999 / month</strong>
+        <span class="muted">INR 2,499 / 3 months</span>
+      </div>
+      <ul class="plan-features">
+        <li><span>Job Posts</span><strong>10 / month</strong></li>
+        <li><span>Job Validity</span><strong>30 days</strong></li>
+        <li><span>Resume View</span><strong>Yes</strong></li>
+        <li><span>Resume Download</span><strong>No</strong></li>
+        <li><span>Candidate Chat</span><strong>Limited</strong></li>
+        <li><span>Interview Scheduling</span><strong>No</strong></li>
+        <li><span>Auto Match</span><strong>No</strong></li>
+        <li><span>Shortlisting</span><strong>Manual</strong></li>
+        <li><span>Support</span><strong>Email</strong></li>
+      </ul>
+    </article>
+
+    <article class="plan-card recommended">
+      <div class="plan-header">
+        <span class="plan-tag standard">Standard Plan</span>
+        <span class="plan-flag">Most Recommended</span>
+      </div>
+      <p class="plan-desc">Best value for growing hiring teams.</p>
+      <div class="plan-cost">
+        <strong>INR 2,499 / month</strong>
+        <span class="muted">INR 6,999 / 3 months</span>
+      </div>
+      <ul class="plan-features">
+        <li><span>Job Posts</span><strong>30 / month</strong></li>
+        <li><span>Job Validity</span><strong>45 days</strong></li>
+        <li><span>Resume View</span><strong>Yes</strong></li>
+        <li><span>Resume Download</span><strong>Limited (100)</strong></li>
+        <li><span>Candidate Chat</span><strong>Yes</strong></li>
+        <li><span>Interview Scheduling</span><strong>Yes</strong></li>
+        <li><span>Auto Match Candidates</span><strong>Yes</strong></li>
+        <li><span>Candidate Ranking</span><strong>Yes</strong></li>
+        <li><span>Featured Job</span><strong>3 / month</strong></li>
+        <li><span>Support</span><strong>Priority Email</strong></li>
+      </ul>
+    </article>
+
+    <article class="plan-card">
+      <div class="plan-header">
+        <span class="plan-tag premium">Premium / Gold</span>
+        <span class="plan-tier">Enterprise Plan</span>
+      </div>
+      <p class="plan-desc">High volume hiring with advanced automation.</p>
+      <div class="plan-cost">
+        <strong>INR 4,999 / month</strong>
+        <span class="muted">INR 12,999 / 3 months</span>
+      </div>
+      <ul class="plan-features">
+        <li><span>Job Posts</span><strong>Unlimited</strong></li>
+        <li><span>Job Validity</span><strong>60 days</strong></li>
+        <li><span>Resume View</span><strong>Unlimited</strong></li>
+        <li><span>Resume Download</span><strong>Unlimited</strong></li>
+        <li><span>Candidate Chat</span><strong>Unlimited</strong></li>
+        <li><span>Interview Scheduler</span><strong>Advanced</strong></li>
+        <li><span>Auto Match</span><strong>AI-based</strong></li>
+        <li><span>Candidate Pool Manager</span><strong>Yes</strong></li>
+        <li><span>Featured Jobs</span><strong>Unlimited</strong></li>
+        <li><span>Company Branding</span><strong>Highlighted</strong></li>
+        <li><span>Analytics Dashboard</span><strong>Advanced</strong></li>
+        <li><span>Support</span><strong>WhatsApp + Email</strong></li>
+        <li><span>Dedicated Account Manager</span><strong>Yes</strong></li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<section class="section-block">
+  <div class="section-header">
+    <div>
+      <h3>Add-ons / Pay-Per-Use</h3>
+      <p class="muted">These add-ons can be used with any plan.</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Add-on</th>
+            <th>Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Job Boost (7 days)</td>
+            <td>INR 199</td>
+          </tr>
+          <tr>
+            <td>Featured Job</td>
+            <td>INR 299</td>
+          </tr>
+          <tr>
+            <td>Resume Download Pack (50)</td>
+            <td>INR 499</td>
+          </tr>
+          <tr>
+            <td>Unlock Contact Details</td>
+            <td>INR 99</td>
+          </tr>
+          <tr>
+            <td>WhatsApp Alert to Candidates</td>
+            <td>INR 149</td>
+          </tr>
+          <tr>
+            <td>Extra Job Post</td>
+            <td>INR 199</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="section-block">
+  <div class="section-header">
+    <div>
+      <h3>Candidate Subscription (Optional - Future)</h3>
+      <p class="muted">Optional plans for candidates on the platform.</p>
+    </div>
+  </div>
+  <div class="plan-grid">
+    <article class="plan-card">
+      <div class="plan-header">
+        <span class="plan-tag candidate">Free Candidate</span>
+      </div>
+      <ul class="plan-features">
+        <li><span>Apply to Jobs</span><strong>Yes</strong></li>
+        <li><span>Create Profile</span><strong>Yes</strong></li>
+        <li><span>Upload Resume</span><strong>Yes</strong></li>
+      </ul>
+    </article>
+    <article class="plan-card">
+      <div class="plan-header">
+        <span class="plan-tag candidate">Premium Candidate</span>
+        <span class="plan-tier">INR 199 / month</span>
+      </div>
+      <ul class="plan-features">
+        <li><span>Resume Boost</span><strong>Yes</strong></li>
+        <li><span>Profile Highlighted</span><strong>Yes</strong></li>
+        <li><span>Early Job Alerts</span><strong>Yes</strong></li>
+        <li><span>See Recruiter Views</span><strong>Yes</strong></li>
+        <li><span>Priority Applications</span><strong>Yes</strong></li>
+      </ul>
+    </article>
+  </div>
+</section>
+{% endblock %}

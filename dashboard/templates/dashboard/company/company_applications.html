@@ -1,0 +1,431 @@
+{% extends "dashboard/company/company_base.html" %}
+{% load static %}
+
+{% block title %}Applications{% endblock %}
+
+{% block content %}
+<section class="page-hero company-hero">
+  <div>
+    <p class="eyebrow">Management</p>
+    <h2>Applications</h2>
+    <p class="muted">Track, filter, and manage all candidate applications.</p>
+  </div>
+  <div class="hero-badges">
+    <div class="hero-badge">
+      <span>Total Applications</span>
+      <strong>{{ total_applications }}</strong>
+      <small>All time</small>
+    </div>
+    <div class="hero-badge">
+      <span>New This Week</span>
+      <strong>{{ new_applications }}</strong>
+      <small>Last 7 days</small>
+    </div>
+  </div>
+</section>
+
+<section class="pill-grid">
+  <article class="pill-card gradient-1">
+    <div class="pill-icon"><i class="fa-solid fa-file-lines"></i></div>
+    <div>
+      <p class="pill-title">Total Applications</p>
+      <strong class="pill-value">{{ total_applications }}</strong>
+      <span class="pill-sub">All applications</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-2">
+    <div class="pill-icon"><i class="fa-solid fa-bolt"></i></div>
+    <div>
+      <p class="pill-title">New Applications</p>
+      <strong class="pill-value">{{ new_applications }}</strong>
+      <span class="pill-sub">Last 7 days</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-3">
+    <div class="pill-icon"><i class="fa-solid fa-user-check"></i></div>
+    <div>
+      <p class="pill-title">Shortlisted</p>
+      <strong class="pill-value">{{ shortlisted_applications }}</strong>
+      <span class="pill-sub">Ready for interview</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-4">
+    <div class="pill-icon"><i class="fa-solid fa-calendar-check"></i></div>
+    <div>
+      <p class="pill-title">Interview Scheduled</p>
+      <strong class="pill-value">{{ interview_applications }}</strong>
+      <span class="pill-sub">In pipeline</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-5">
+    <div class="pill-icon"><i class="fa-solid fa-trophy"></i></div>
+    <div>
+      <p class="pill-title">Selected</p>
+      <strong class="pill-value">{{ selected_applications }}</strong>
+      <span class="pill-sub">Final stage</span>
+    </div>
+  </article>
+</section>
+
+<div class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Filters & Search</h3>
+      <p class="muted">Filter by job, status, experience, skills, date, or location.</p>
+    </div>
+  </div>
+  <form class="filters-grid" method="get">
+    <div class="filter-group">
+      <label>Search</label>
+      <input type="text" name="search" value="{{ filters.search }}" placeholder="Name, email, resume keyword" />
+    </div>
+    <div class="filter-group">
+      <label>Job</label>
+      <select name="job">
+        <option value="">All Jobs</option>
+        {% for title in job_titles %}
+          <option value="{{ title }}" {% if filters.job == title %}selected{% endif %}>{{ title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Status</label>
+      <select name="status">
+        <option value="all" {% if filters.status == "all" %}selected{% endif %}>All Status</option>
+        {% for status in status_choices %}
+          <option value="{{ status }}" {% if filters.status == status %}selected{% endif %}>{{ status }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Experience</label>
+      <select name="experience">
+        <option value="">Any</option>
+        {% for exp in experience_choices %}
+          <option value="{{ exp }}" {% if filters.experience == exp %}selected{% endif %}>{{ exp }} years</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Skills</label>
+      <input type="text" name="skills" value="{{ filters.skills }}" placeholder="e.g. React, SQL" />
+    </div>
+    <div class="filter-group">
+      <label>Location</label>
+      <input type="text" name="location" value="{{ filters.location }}" placeholder="City" />
+    </div>
+    <div class="filter-group">
+      <label>Date From</label>
+      <input type="date" name="date_from" value="{{ filters.date_from }}" />
+    </div>
+    <div class="filter-group">
+      <label>Date To</label>
+      <input type="date" name="date_to" value="{{ filters.date_to }}" />
+    </div>
+    <div class="filter-actions">
+      <button class="btn primary" type="submit">Apply Filters</button>
+      <a class="btn ghost" href="{% url 'dashboard:company_applications' %}">Clear</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <div>
+      <h3>All Applications</h3>
+      <p class="muted">Manage candidates, schedule interviews, and update statuses.</p>
+    </div>
+    <form id="bulkForm" method="post" class="bulk-actions">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="bulk" />
+      <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+      <select name="bulk_action" required>
+        <option value="" selected disabled>Bulk Actions</option>
+        <option value="shortlist">Bulk Shortlist</option>
+        <option value="reject">Bulk Reject</option>
+        <option value="email">Bulk Email</option>
+        <option value="download">Bulk Download Resume</option>
+        <option value="archive">Bulk Move to Archive</option>
+      </select>
+      <button class="btn ghost" type="submit">Apply</button>
+    </form>
+  </div>
+
+  {% if applications %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="selectAllApplications" /></th>
+          <th>Photo</th>
+          <th>Candidate Name</th>
+          <th>Applied Job</th>
+          <th>Applied Date</th>
+          <th>Experience</th>
+          <th>Skills</th>
+          <th>Expected Salary</th>
+          <th>Location</th>
+          <th>Status</th>
+          <th>Rating</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for app in applications %}
+        <tr
+          data-app-id="{{ app.application_id }}"
+          data-name="{{ app.candidate_name|default:''|escapejs }}"
+          data-email="{{ app.candidate_email|default:''|escapejs }}"
+          data-phone="{{ app.candidate_phone|default:''|escapejs }}"
+          data-location="{{ app.candidate_location|default:''|escapejs }}"
+          data-experience="{{ app.experience|default:''|escapejs }}"
+          data-current-company="{{ app.current_company|default:''|escapejs }}"
+          data-notice-period="{{ app.notice_period|default:''|escapejs }}"
+          data-job-title="{{ app.job_title|default:''|escapejs }}"
+          data-status="{{ app.display_status|default:''|escapejs }}"
+          data-skills="{{ app.skills|default:''|escapejs }}"
+          data-skill-match="{{ app.skill_match|default:'' }}"
+          data-expected-salary="{{ app.expected_salary|default:''|escapejs }}"
+          data-cover-letter="{{ app.cover_letter|default:''|escapejs }}"
+          data-internal-notes="{{ app.internal_notes|default:''|escapejs }}"
+          data-interview-feedback="{{ app.interview_feedback|default:''|escapejs }}"
+          data-rating="{{ app.rating|default:'' }}"
+          data-applied-date="{% if app.applied_date %}{{ app.applied_date|date:'d M Y' }}{% else %}{{ app.created_at|date:'d M Y' }}{% endif %}"
+          data-applied-time="{{ app.created_at|date:'h:i A' }}"
+          data-resume-preview-url="{% if app.has_resume %}{% url 'dashboard:company_application_resume' app.application_id %}{% endif %}"
+          data-resume-download-url="{% if app.has_resume %}{% url 'dashboard:company_application_resume' app.application_id %}?download=1{% endif %}"
+          data-resume-name="{{ app.resume_filename|default:''|escapejs }}"
+          data-interview-date="{% if app.interview_date %}{{ app.interview_date|date:'Y-m-d' }}{% endif %}"
+          data-interview-time="{{ app.interview_time|default:''|escapejs }}"
+          data-interview-mode="{{ app.interview_mode|default:''|escapejs }}"
+          data-meeting-link="{{ app.meeting_link|default:''|escapejs }}"
+          data-interviewer="{{ app.interviewer|default:''|escapejs }}"
+        >
+          <td>
+            <input type="checkbox" form="bulkForm" class="row-select" name="selected_ids" value="{{ app.application_id }}" />
+          </td>
+          <td>
+            <div class="avatar">
+              {% if app.profile_image_url %}
+                <img src="{{ app.profile_image_url }}" alt="{{ app.candidate_name|default:'Candidate' }}" />
+              {% else %}
+                <span>{{ app.candidate_name|default:"C"|first|upper }}</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            <button type="button" class="link-button" data-action="view-application">
+              {{ app.candidate_name|default:"N/A" }}
+            </button>
+            <div class="muted">{{ app.candidate_email|default:"--" }}</div>
+          </td>
+          <td>
+            <a class="link-button" href="{% url 'dashboard:company_jobs' %}">
+              {{ app.job_title|default:"--" }}
+            </a>
+          </td>
+          <td>
+            <strong>{% if app.applied_date %}{{ app.applied_date|date:"d M Y" }}{% else %}{{ app.created_at|date:"d M Y" }}{% endif %}</strong>
+            <div class="muted">{{ app.created_at|date:"h:i A" }}</div>
+          </td>
+          <td>{{ app.experience|default:"--" }}</td>
+          <td>
+            {% if app.skill_tags %}
+              <div class="skill-tags">
+                {% for skill in app.skill_tags %}
+                  <span class="skill-tag">{{ skill }}</span>
+                {% endfor %}
+                {% if app.all_skill_tags|length > 3 %}
+                  <span class="skill-tag more">+{{ app.all_skill_tags|length|add:"-3" }} more</span>
+                {% endif %}
+              </div>
+            {% else %}
+              <span class="muted">--</span>
+            {% endif %}
+          </td>
+          <td>{{ app.expected_salary|default:"--" }}</td>
+          <td>{{ app.candidate_location|default:"--" }}</td>
+          <td>
+            {% with app.display_status|default:"Applied" as status %}
+              <span class="badge {% if status == 'Selected' %}success{% elif status == 'Shortlisted' %}info{% elif status == 'Interview' %}warning{% elif status == 'Rejected' %}danger{% elif status == 'Applied' %}neutral{% else %}neutral{% endif %}">
+                {{ status }}
+              </span>
+            {% endwith %}
+          </td>
+          <td>
+            {% if app.rating %}
+              <div class="rating-stars">
+                {% for star in star_range %}
+                  <i class="fa-solid fa-star {% if star > app.rating %}muted-star{% endif %}"></i>
+                {% endfor %}
+              </div>
+            {% else %}
+              <span class="muted">--</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="table-actions">
+              <button class="action-btn" type="button" data-action="view-application">View</button>
+              <button class="action-btn warning" type="button" data-action="schedule-interview">Schedule</button>
+              {% if app.has_resume %}
+                <a class="action-btn" href="{% url 'dashboard:company_application_resume' app.application_id %}?download=1">Download</a>
+              {% else %}
+                <button class="action-btn" type="button" disabled>Download</button>
+              {% endif %}
+            </div>
+            <form method="post" class="inline-form">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="update_status" />
+              <input type="hidden" name="application_id" value="{{ app.application_id }}" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <select name="status">
+                {% for status in status_choices %}
+                  <option value="{{ status }}" {% if app.display_status == status %}selected{% endif %}>{{ status }}</option>
+                {% endfor %}
+              </select>
+              <button class="action-btn" type="submit">Change</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="padding: 40px; text-align: center;">
+    <p style="color: #6b7280; font-size: 14px;">No applications received yet.</p>
+  </div>
+  {% endif %}
+</div>
+
+<div class="modal fade" id="candidateDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="detailModalTitle">Candidate Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-detail-grid">
+          <div class="modal-card">
+            <h6>Profile Details</h6>
+            <div class="detail-list">
+              <div><span>Full Name</span> <strong id="detailName">--</strong></div>
+              <div><span>Email</span> <strong id="detailEmail">--</strong></div>
+              <div><span>Phone</span> <strong id="detailPhone">--</strong></div>
+              <div><span>Location</span> <strong id="detailLocation">--</strong></div>
+              <div><span>Total Experience</span> <strong id="detailExperience">--</strong></div>
+              <div><span>Current Company</span> <strong id="detailCompany">--</strong></div>
+              <div><span>Notice Period</span> <strong id="detailNotice">--</strong></div>
+              <div><span>Expected Salary</span> <strong id="detailExpectedSalary">--</strong></div>
+              <div><span>Status</span> <strong id="detailStatus">--</strong></div>
+            </div>
+          </div>
+          <div class="modal-card">
+            <h6>Resume</h6>
+            <div class="resume-card">
+              <div>
+                <strong id="detailResumeName">Resume.pdf</strong>
+                <div class="muted" id="detailResumeMeta">Preview available</div>
+              </div>
+              <div class="table-actions">
+                <a class="action-btn" id="detailResumePreview" href="#" target="_blank" rel="noreferrer">Preview</a>
+                <a class="action-btn" id="detailResumeDownload" href="#">Download</a>
+              </div>
+            </div>
+            <div class="muted" id="detailResumeEmpty">No resume uploaded.</div>
+          </div>
+          <div class="modal-card">
+            <h6>Skills</h6>
+            <div class="skill-tags" id="detailSkills">--</div>
+            <div class="match-meter" id="detailSkillMatch">
+              <span></span>
+            </div>
+            <div class="muted" id="detailSkillMatchLabel">Skill match: --</div>
+          </div>
+          <div class="modal-card">
+            <h6>Cover Letter</h6>
+            <p id="detailCoverLetter" class="muted">--</p>
+          </div>
+        </div>
+        <form method="post" id="notesForm" class="notes-form">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="save_notes" />
+          <input type="hidden" name="application_id" id="notesApplicationId" />
+          <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+          <div class="modal-detail-grid">
+            <div class="modal-card">
+              <h6>Internal Notes (Private)</h6>
+              <textarea name="internal_notes" id="detailInternalNotes" rows="4" placeholder="Add HR notes for internal use..."></textarea>
+            </div>
+            <div class="modal-card">
+              <h6>Interview Remarks</h6>
+              <textarea name="interview_feedback" id="detailInterviewRemarks" rows="4" placeholder="Add interview feedback..."></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn ghost" data-bs-dismiss="modal">Close</button>
+            <button type="submit" class="btn primary">Save Notes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="scheduleInterviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" id="scheduleForm">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="schedule_interview" />
+        <input type="hidden" name="application_id" id="scheduleApplicationId" />
+        <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+        <div class="modal-header">
+          <h5 class="modal-title" id="scheduleModalTitle">Schedule Interview</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="company-form-grid">
+            <div class="company-form-group">
+              <label>Date</label>
+              <input type="date" name="interview_date" id="scheduleDate" required />
+            </div>
+            <div class="company-form-group">
+              <label>Time</label>
+              <input type="time" name="interview_time" id="scheduleTime" required />
+            </div>
+            <div class="company-form-group">
+              <label>Mode</label>
+              <select name="interview_mode" id="scheduleMode">
+                <option value="Online">Online</option>
+                <option value="Offline">Offline</option>
+              </select>
+            </div>
+            <div class="company-form-group">
+              <label>Meeting Link</label>
+              <input type="url" name="meeting_link" id="scheduleLink" placeholder="https://" />
+            </div>
+            <div class="company-form-group">
+              <label>Interviewer</label>
+              <input type="text" name="interviewer" id="scheduleInterviewer" placeholder="Interviewer name" />
+            </div>
+            <div class="company-form-group company-form-full">
+              <label>Feedback Form</label>
+              <textarea name="interview_feedback" id="scheduleFeedback" rows="3" placeholder="Add interview feedback notes..."></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn ghost" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn primary">Save Schedule</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/company-applications.js' %}"></script>
+{% endblock %}

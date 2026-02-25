@@ -1,0 +1,303 @@
+{% extends "dashboard/company/company_base.html" %}
+{% load static %}
+
+{% block title %}Job Management{% endblock %}
+
+{% block content %}
+<section class="page-hero company-hero">
+  <div>
+    <p class="eyebrow">Management</p>
+    <h2>Job Management</h2>
+    <p class="muted">Create, manage and track your job listings.</p>
+  </div>
+  <div class="hero-badges">
+    <div class="hero-badge">
+      <span>Total Jobs</span>
+      <strong>{{ total_jobs }}</strong>
+    </div>
+    <div class="hero-badge">
+      <span>Approved</span>
+      <strong>{{ approved_jobs }}</strong>
+    </div>
+    <div class="hero-badge">
+      <span>Pending</span>
+      <strong>{{ pending_jobs }}</strong>
+    </div>
+  </div>
+</section>
+
+<section class="pill-grid">
+  <article class="pill-card gradient-1">
+    <div class="pill-icon"><i class="fa-solid fa-briefcase"></i></div>
+    <div>
+      <p class="pill-title">Total Jobs</p>
+      <strong class="pill-value">{{ total_jobs }}</strong>
+      <span class="pill-sub">All time</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-2">
+    <div class="pill-icon"><i class="fa-solid fa-check-circle"></i></div>
+    <div>
+      <p class="pill-title">Approved Jobs</p>
+      <strong class="pill-value">{{ approved_jobs }}</strong>
+      <span class="pill-sub">Live listings</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-3">
+    <div class="pill-icon"><i class="fa-solid fa-hourglass-half"></i></div>
+    <div>
+      <p class="pill-title">Pending Jobs</p>
+      <strong class="pill-value">{{ pending_jobs }}</strong>
+      <span class="pill-sub">Awaiting review</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-4">
+    <div class="pill-icon"><i class="fa-solid fa-times-circle"></i></div>
+    <div>
+      <p class="pill-title">Rejected Jobs</p>
+      <strong class="pill-value">{{ rejected_jobs }}</strong>
+      <span class="pill-sub">Not approved</span>
+    </div>
+  </article>
+</section>
+
+{% if form_mode != "list" %}
+<section class="card section-block" id="post-new-job">
+  <div class="card-header">
+    <div>
+      <h3>{{ section_title }}</h3>
+      <p class="muted">{% if form_mode == "view" %}Review the job details below.{% elif form_mode == "edit" %}Update the job details and resubmit.{% else %}Create a new job listing for your company.{% endif %}</p>
+    </div>
+  </div>
+  <form class="company-form-grid" method="post">
+    {% csrf_token %}
+    {% if edit_job %}
+      <input type="hidden" name="job_id" value="{{ edit_job.job_id }}" />
+    {% endif %}
+    <div class="company-form-group">
+      <label>Job Title</label>
+      <input type="text" name="title" value="{{ edit_job.title|default:'' }}" placeholder="e.g. Senior UI/UX Designer" {% if form_mode == "view" %}readonly{% endif %} />
+    </div>
+    <div class="company-form-group">
+      <label>Category</label>
+      <input type="text" name="category" value="{{ edit_job.category|default:'' }}" placeholder="e.g. Design, Engineering" {% if form_mode == "view" %}readonly{% endif %} />
+    </div>
+    <div class="company-form-group">
+      <label>Job Type</label>
+      <select name="job_type" {% if form_mode == "view" %}disabled{% endif %}>
+        <option value="Full-time" {% if edit_job.job_type == "Full-time" %}selected{% endif %}>Full-time</option>
+        <option value="Part-time" {% if edit_job.job_type == "Part-time" %}selected{% endif %}>Part-time</option>
+        <option value="Contract" {% if edit_job.job_type == "Contract" %}selected{% endif %}>Contract</option>
+        <option value="Remote" {% if edit_job.job_type == "Remote" %}selected{% endif %}>Remote</option>
+      </select>
+    </div>
+    <div class="company-form-group">
+      <label>Location</label>
+      <input type="text" name="location" value="{{ edit_job.location|default:'' }}" placeholder="e.g. Delhi, India" {% if form_mode == "view" %}readonly{% endif %} />
+    </div>
+    <div class="company-form-group">
+      <label>Salary Range</label>
+      <input type="text" name="salary" value="{{ edit_job.salary|default:'' }}" placeholder="e.g. 6 - 10 LPA" {% if form_mode == "view" %}readonly{% endif %} />
+    </div>
+    <div class="company-form-group">
+      <label>Experience</label>
+      <input type="text" name="experience" value="{{ edit_job.experience|default:'' }}" placeholder="e.g. 3-5 years" {% if form_mode == "view" %}readonly{% endif %} />
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Skills</label>
+      <input type="text" name="skills" value="{{ edit_job.skills|default:'' }}" placeholder="Comma separated skills" {% if form_mode == "view" %}readonly{% endif %} />
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Job Description</label>
+      <textarea rows="4" name="description" placeholder="Write a short job description..." {% if form_mode == "view" %}readonly{% endif %}>{{ edit_job.description|default:'' }}</textarea>
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Requirements</label>
+      <textarea rows="3" name="requirements" placeholder="List job requirements..." {% if form_mode == "view" %}readonly{% endif %}>{{ edit_job.requirements|default:'' }}</textarea>
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Job Status</label>
+      {% if edit_job %}
+        {% with edit_job.status|default:"Pending" as job_status %}
+          <input type="hidden" name="status" id="jobStatusValue" value="{{ job_status }}" />
+          <select name="status_choice" id="jobStatusSelect" {% if form_mode == "view" %}disabled{% endif %}>
+            <option value="draft" {% if job_status|lower == "pending" or job_status|lower == "draft" %}selected{% endif %}>Draft</option>
+            <option value="active" {% if job_status|lower == "approved" or job_status|lower == "active" %}selected{% endif %}>Active</option>
+            <option value="paused" {% if job_status|lower == "paused" %}selected{% endif %}>Paused</option>
+            <option value="closed" {% if job_status|lower == "rejected" or job_status|lower == "closed" %}selected{% endif %}>Closed</option>
+            <option value="expired" {% if job_status|lower == "expired" %}selected{% endif %}>Expired</option>
+            <option value="archived" {% if job_status|lower == "reported" or job_status|lower == "archived" %}selected{% endif %}>Archived</option>
+          </select>
+        {% endwith %}
+      {% else %}
+        {% with "Pending" as job_status %}
+          <input type="hidden" name="status" id="jobStatusValue" value="{{ job_status }}" />
+          <select name="status_choice" id="jobStatusSelect" {% if form_mode == "view" %}disabled{% endif %}>
+            <option value="draft" {% if job_status|lower == "pending" or job_status|lower == "draft" %}selected{% endif %}>Draft</option>
+            <option value="active" {% if job_status|lower == "approved" or job_status|lower == "active" %}selected{% endif %}>Active</option>
+            <option value="paused" {% if job_status|lower == "paused" %}selected{% endif %}>Paused</option>
+            <option value="closed" {% if job_status|lower == "rejected" or job_status|lower == "closed" %}selected{% endif %}>Closed</option>
+            <option value="expired" {% if job_status|lower == "expired" %}selected{% endif %}>Expired</option>
+            <option value="archived" {% if job_status|lower == "reported" or job_status|lower == "archived" %}selected{% endif %}>Archived</option>
+          </select>
+        {% endwith %}
+      {% endif %}
+      <span class="muted">Choose status to control visibility of this job.</span>
+    </div>
+    {% if form_mode != "view" %}
+    <div class="company-form-actions">
+      {% if form_mode == "edit" %}
+        <button class="btn primary" type="submit" name="action" value="update">Update Job</button>
+      {% else %}
+        <button class="btn ghost" type="submit" name="action" value="draft">Save as Draft</button>
+        <button class="btn primary" type="submit" name="action" value="publish">Publish Job</button>
+      {% endif %}
+    </div>
+    {% if form_mode == "edit" %}
+    <div class="job-status-quick" data-job-status-controls>
+      <span class="label">Quick Status:</span>
+      <button class="status-chip" type="button" data-job-status="draft">Draft</button>
+      <button class="status-chip" type="button" data-job-status="active">Active</button>
+      <button class="status-chip" type="button" data-job-status="paused">Paused</button>
+      <button class="status-chip" type="button" data-job-status="closed">Closed</button>
+      <button class="status-chip" type="button" data-job-status="expired">Expired</button>
+      <button class="status-chip" type="button" data-job-status="archived">Archived</button>
+    </div>
+    {% endif %}
+    {% endif %}
+  </form>
+</section>
+{% else %}
+<div class="card">
+  <div class="card-header">
+    <div>
+      <h3>{{ section_title }}</h3>
+      <p class="muted">Manage your job listings by status.</p>
+    </div>
+    <a class="btn primary" href="{% url 'dashboard:company_jobs' %}?action=new#post-new-job">Post New Job</a>
+  </div>
+  
+  {% if jobs %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Job Title</th>
+          <th>Category</th>
+          <th>Status</th>
+          <th>Applications</th>
+          <th>Posted Date</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td><strong>{{ job.title|default:"N/A" }}</strong></td>
+          <td>{{ job.category|default:"--" }}</td>
+          <td>
+            {% with job.status|default:"pending"|lower as status %}
+              <span class="badge {% if status == 'active' or status == 'approved' %}success{% elif status == 'draft' %}neutral{% elif status == 'paused' or status == 'pending' %}warning{% elif status == 'closed' %}info{% elif status == 'expired' or status == 'rejected' %}danger{% elif status == 'archived' %}neutral{% else %}warning{% endif %}">
+                {{ status|title }}
+              </span>
+            {% endwith %}
+          </td>
+          <td>{{ job.applicants|default:0 }}</td>
+          <td>{{ job.created_at|date:"d M Y"|default:"--" }}</td>
+          <td>
+            <div class="table-actions">
+              <a class="action-btn" href="{% url 'dashboard:company_jobs' %}?action=view&job_id={{ job.job_id }}#post-new-job">View</a>
+              <a class="action-btn" href="{% url 'dashboard:company_jobs' %}?action=edit&job_id={{ job.job_id }}#post-new-job">Edit</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="padding: 40px; text-align: center;">
+    <p style="color: #6b7280; font-size: 14px;">No jobs found for this section.</p>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Job Status System</h3>
+      <p class="muted">Very important status choices for your job pipeline.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Meaning</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge neutral">Draft</span></td>
+          <td>Saved but not published</td>
+        </tr>
+        <tr>
+          <td><span class="badge success">Active</span></td>
+          <td>Live and visible</td>
+        </tr>
+        <tr>
+          <td><span class="badge warning">Paused</span></td>
+          <td>Temporarily stopped</td>
+        </tr>
+        <tr>
+          <td><span class="badge info">Closed</span></td>
+          <td>Hiring completed</td>
+        </tr>
+        <tr>
+          <td><span class="badge danger">Expired</span></td>
+          <td>Last date over</td>
+        </tr>
+        <tr>
+          <td><span class="badge neutral">Archived</span></td>
+          <td>Hidden but saved</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Job Analytics (Optional Advanced)</h3>
+      <p class="muted">Quick summary for performance tracking.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Total Views</th>
+          <th>Total Applications</th>
+          <th>Shortlisted</th>
+          <th>Conversion Rate</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{ job_analytics.total_views|default:0 }}</td>
+          <td>{{ job_analytics.total_applications|default:0 }}</td>
+          <td>{{ job_analytics.shortlisted|default:0 }}</td>
+          <td>{{ job_analytics.conversion_rate|default:"0%" }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/company-jobs.js' %}"></script>
+{% endblock %}

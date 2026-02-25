@@ -1,0 +1,94 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}Interviews{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Interviews</p>
+    <h2>Interview Schedule</h2>
+    <p class="muted">Manage upcoming interviews and reminders.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Reminder System</h3>
+      <p class="muted">Get notified 24h and 1h before interviews.</p>
+    </div>
+  </div>
+  <div class="status-controls">
+    <label class="d-flex justify-content-between align-items-center">
+      <span>24 Hours Reminder</span>
+      <span class="switch">
+        <input type="checkbox" checked />
+        <span class="slider"></span>
+      </span>
+    </label>
+    <label class="d-flex justify-content-between align-items-center">
+      <span>1 Hour Reminder</span>
+      <span class="switch">
+        <input type="checkbox" checked />
+        <span class="slider"></span>
+      </span>
+    </label>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Interview List</h3>
+      <p class="muted">Interview date, time, and status.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Company</th>
+          <th>Role</th>
+          <th>Date</th>
+          <th>Time</th>
+          <th>Mode</th>
+          <th>Meeting Link</th>
+          <th>Interviewer</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if interviews %}
+          {% for interview in interviews %}
+          <tr>
+            <td><strong>{{ interview.company }}</strong></td>
+            <td>{{ interview.job_title }}</td>
+            <td>{{ interview.interview_date|date:"d M Y"|default:"--" }}</td>
+            <td>{{ interview.interview_time|time:"g:i A"|default:"--" }}</td>
+            <td>{{ interview.mode }}</td>
+            <td>
+              {% if interview.meeting_link %}
+                <a class="link-button" href="{{ interview.meeting_link }}" target="_blank" rel="noopener">Join</a>
+              {% else %}
+                --
+              {% endif %}
+            </td>
+            <td>{{ interview.interviewer|default:"--" }}</td>
+            <td>
+              <span class="badge {% if interview.status == 'scheduled' %}info{% elif interview.status == 'rescheduled' %}warning{% elif interview.status == 'completed' %}success{% else %}neutral{% endif %}">
+                {{ interview.get_status_display }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="8" class="muted" style="text-align:center; padding: 16px;">No interviews scheduled yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

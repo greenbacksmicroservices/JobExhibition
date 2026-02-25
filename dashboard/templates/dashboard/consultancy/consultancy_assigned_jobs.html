@@ -1,0 +1,116 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}My Job Assignments{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">My Job Assignments</p>
+    <h2>Consultancy Working Dashboard</h2>
+    <p class="muted">Track submissions, shortlisted candidates, and placements in real time.</p>
+  </div>
+</section>
+
+<section class="pill-grid">
+  <article class="pill-card gradient-1">
+    <div class="pill-icon"><i class="fa-solid fa-briefcase"></i></div>
+    <div>
+      <p class="pill-title">Total Assigned Jobs</p>
+      <strong class="pill-value" data-count="{{ assignment_stats.total_assigned }}">{{ assignment_stats.total_assigned }}</strong>
+      <span class="pill-sub">Active pipeline</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-2">
+    <div class="pill-icon"><i class="fa-solid fa-ban"></i></div>
+    <div>
+      <p class="pill-title">Jobs With No Submission</p>
+      <strong class="pill-value" data-count="{{ assignment_stats.jobs_no_submission }}">{{ assignment_stats.jobs_no_submission }}</strong>
+      <span class="pill-sub">Action needed</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-3">
+    <div class="pill-icon"><i class="fa-solid fa-user-group"></i></div>
+    <div>
+      <p class="pill-title">Jobs With Active Candidates</p>
+      <strong class="pill-value" data-count="{{ assignment_stats.jobs_active_candidates }}">{{ assignment_stats.jobs_active_candidates }}</strong>
+      <span class="pill-sub">In review</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-4">
+    <div class="pill-icon"><i class="fa-solid fa-circle-check"></i></div>
+    <div>
+      <p class="pill-title">Jobs Closed</p>
+      <strong class="pill-value" data-count="{{ assignment_stats.jobs_closed }}">{{ assignment_stats.jobs_closed }}</strong>
+      <span class="pill-sub">Closed requirements</span>
+    </div>
+  </article>
+  <article class="pill-card gradient-5">
+    <div class="pill-icon"><i class="fa-solid fa-trophy"></i></div>
+    <div>
+      <p class="pill-title">Total Placements</p>
+      <strong class="pill-value" data-count="{{ assignment_stats.total_placements }}">{{ assignment_stats.total_placements }}</strong>
+      <span class="pill-sub">Successful hires</span>
+    </div>
+  </article>
+</section>
+
+<section class="card" id="job-tracking">
+  <div class="card-header">
+    <div>
+      <h3>My Assignments Detailed View</h3>
+      <p class="muted">Submission tracking by job stage.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th>Company</th>
+          <th>Total Submissions</th>
+          <th>Shortlisted</th>
+          <th>Interview</th>
+          <th>Selected</th>
+          <th>Placed</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if assignment_rows %}
+          {% for row in assignment_rows %}
+          <tr>
+            <td>
+              <strong>{{ row.title }}</strong>
+              <div class="muted">{{ row.job_id }}</div>
+            </td>
+            <td>{{ row.company }}</td>
+            <td>{{ row.total_submissions }}</td>
+            <td>{{ row.shortlisted }}</td>
+            <td>{{ row.interview }}</td>
+            <td>{{ row.selected }}</td>
+            <td>{{ row.placed }}</td>
+            <td>
+              <span class="badge {% if row.status == 'Active' %}success{% elif row.status == 'Urgent' %}warning{% elif row.status == 'Closed' %}danger{% else %}neutral{% endif %}">
+                {{ row.status }}
+              </span>
+            </td>
+            <td>
+              <div class="table-actions">
+                <a class="action-btn" href="{% url 'dashboard:consultancy_job_detail' row.job_id %}">View Details</a>
+                <a class="action-btn" href="{% url 'dashboard:consultancy_applications' %}?job_id={{ row.job_id }}">View Submissions</a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="9" class="muted" style="text-align:center; padding: 16px;">No assignments available yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

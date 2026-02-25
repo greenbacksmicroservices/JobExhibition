@@ -1,0 +1,604 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ page_title|default:"Security & Audit" }} | Job Exhibition Admin</title>
+    <link rel="icon" href="{% static 'dashboard/favicon.ico' %}" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/user-management.css' %}" />
+  </head>
+  <body class="user-management security-management">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+    </div>
+    <div class="toast-container" id="toastContainer"></div>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+                <div class="brand">
+          <div class="brand-mark"><img src="{% static 'dashboard/img/je-logo.svg' %}" alt="Job Exhibition logo" /></div>
+          <div class="brand-text">
+            <h1 class="style-1"><span class="brand-job">Job</span> <span class="brand-exhibition">Exhibition</span></h1>
+            <span class="brand-subtitle">Admin Control</span>
+          </div>
+</div>
+
+
+        
+        <div class="company-user admin-user">
+          <div class="company-logo-stack">
+            <div class="company-logo" style="--progress: 100;">
+              {% if admin_profile and admin_profile.photo %}
+                <img src="{{ admin_profile.photo.url }}" alt="Admin photo" />
+              {% else %}
+                <span>{{ request.user.username|default:"A"|first|upper }}</span>
+              {% endif %}
+            </div>
+            <span class="profile-progress-text">100% Complete</span>
+          </div>
+          <div class="company-user-meta">
+            <strong>{{ request.user.username|default:"Admin" }}</strong>
+            <span>Platform Admin</span>
+          </div>
+        </div>
+
+<nav class="sidebar-nav">
+          <a class="nav-item" href="{% url 'dashboard:dashboard' %}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+            <span>Dashboard</span>
+          </a>
+
+          <div class="nav-section open">
+            <button class="nav-item nav-toggle" type="button" data-target="userManagement" aria-expanded="true" aria-controls="userManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span>User Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="userManagement">
+              <a class="nav-sub" href="{% url 'dashboard:companies' %}">Companies</a>
+              <a class="nav-sub" href="{% url 'dashboard:consultancies' %}">Consultancies</a>
+              <a class="nav-sub" href="{% url 'dashboard:candidates' %}">Candidates</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="jobManagement" aria-expanded="false" aria-controls="jobManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M14,2H6A2,2 0 0,0 4,4V20a2,2 0 0,0 2,2H18a2,2 0 0,0 2,-2V8L14,2M18,20H6V4H13V9H18V20"/></svg>
+                <span>Job Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="jobManagement">
+              <a class="nav-sub" href="{% url 'dashboard:jobs' %}">All Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_pending' %}">Pending Approval</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_approved' %}">Approved Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_rejected' %}">Rejected Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_reported' %}">Reported Jobs</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="applicationManagement" aria-expanded="false" aria-controls="applicationManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75-3.54-4.3 5.41h13.2L11.96 6.29z"/></svg>
+                <span>Application Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="applicationManagement">
+              <a class="nav-sub" href="{% url 'dashboard:applications' %}">All Applications</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_interview' %}">Interview Scheduled</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_selected' %}">Selected</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_rejected' %}">Rejected</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_offer' %}">Offer Issued</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="subscriptionBilling" aria-expanded="false" aria-controls="subscriptionBilling">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+                <span>Subscription &amp; Billing</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="subscriptionBilling">
+              <a class="nav-sub{% if section == 'overview' %} active{% endif %}" href="{% url 'dashboard:subscriptions' %}">Overview</a>
+              <a class="nav-sub{% if section == 'free-paid' %} active{% endif %}" href="{% url 'dashboard:subscriptions_free_paid' %}">Who is Free / Paid</a>
+              <a class="nav-sub{% if section == 'expiry-alerts' %} active{% endif %}" href="{% url 'dashboard:subscriptions_expiry_alerts' %}">Expiry Alerts</a>
+              <a class="nav-sub{% if section == 'revenue-charts' %} active{% endif %}" href="{% url 'dashboard:subscriptions_revenue' %}">Revenue Charts</a>
+              <a class="nav-sub{% if section == 'manual-assign' %} active{% endif %}" href="{% url 'dashboard:subscriptions_manual_assign' %}">Manual Plan Assign</a>
+            </div>
+          </div>
+                  <a class="nav-item" href="{% url 'dashboard:advertisement_management' %}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75-3.54-4.3 5.41h13.2L11.96 6.29z"/></svg>
+            <span>Advertisement Management</span>
+          </a>
+                            <div class="nav-section{% if comm_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="communicationCenter" aria-expanded="{% if comm_section %}true{% else %}false{% endif %}" aria-controls="communicationCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v16l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                <span>Communication Center</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="communicationCenter">
+              <a class="nav-sub{% if comm_section == 'bulk-email' %} active{% endif %}" href="{% url 'dashboard:communication_bulk_email' %}">Bulk Email</a>
+              <a class="nav-sub{% if comm_section == 'bulk-sms' %} active{% endif %}" href="{% url 'dashboard:communication_bulk_sms' %}">Bulk SMS</a>
+              <a class="nav-sub{% if comm_section == 'notifications' %} active{% endif %}" href="{% url 'dashboard:communication_notifications' %}">Notifications</a>
+              <a class="nav-sub{% if comm_section == 'whatsapp' %} active{% endif %}" href="{% url 'dashboard:communication_whatsapp' %}">WhatsApp Alerts</a>
+              <a class="nav-sub{% if comm_section == 'chat-monitor' %} active{% endif %}" href="{% url 'dashboard:message_monitor' %}">Chat Monitoring</a>
+            </div>
+          </div>
+                  
+          <div class="nav-section{% if support_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="supportCenter" aria-expanded="{% if support_section %}true{% else %}false{% endif %}" aria-controls="supportCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a7 7 0 0 1 7 7v2a5 5 0 0 1-5 5h-1v3h-2v-3H9a5 5 0 0 1-5-5V9a7 7 0 0 1 7-7zm0 2a5 5 0 0 0-5 5v2a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3V9a5 5 0 0 0-5-5z"/></svg>
+                <span>Customer Support</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="supportCenter">
+              <a class="nav-sub{% if support_section == 'dashboard' %} active{% endif %}" href="{% url 'dashboard:support_center' %}">Support Dashboard</a>
+              <a class="nav-sub{% if support_section == 'all' %} active{% endif %}" href="{% url 'dashboard:support_tickets' %}">All Tickets</a>
+              <a class="nav-sub{% if support_section == 'high' %} active{% endif %}" href="{% url 'dashboard:support_high_priority' %}">High Priority</a>
+              <a class="nav-sub{% if support_section == 'assigned' %} active{% endif %}" href="{% url 'dashboard:support_assigned' %}">Assigned Tickets</a>
+              <a class="nav-sub{% if support_section == 'unassigned' %} active{% endif %}" href="{% url 'dashboard:support_unassigned' %}">Unassigned</a>
+              <a class="nav-sub{% if support_section == 'closed' %} active{% endif %}" href="{% url 'dashboard:support_closed' %}">Closed</a>
+              <a class="nav-sub{% if support_section == 'analytics' %} active{% endif %}" href="{% url 'dashboard:support_analytics' %}">Support Analytics</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if grievance_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="grievanceCenter" aria-expanded="{% if grievance_section %}true{% else %}false{% endif %}" aria-controls="grievanceCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 15h-1.5v-1.5H12V17zm0-4.5h-1.5V7H12v5.5z"/></svg>
+                <span>Grievance / Reports</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="grievanceCenter">
+              <a class="nav-sub{% if grievance_section == 'complaints' %} active{% endif %}" href="{% url 'dashboard:grievance_complaints' %}">User Complaints</a>
+              <a class="nav-sub{% if grievance_section == 'job-reports' %} active{% endif %}" href="{% url 'dashboard:grievance_job_reports' %}">Job Reports</a>
+              <a class="nav-sub{% if grievance_section == 'abuse-fraud' %} active{% endif %}" href="{% url 'dashboard:grievance_abuse_fraud' %}">Abuse / Fraud</a>
+              <a class="nav-sub{% if grievance_section == 'resolution-log' %} active{% endif %}" href="{% url 'dashboard:grievance_resolution_log' %}">Resolution Log</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if audit_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="securityAudit" aria-expanded="{% if audit_section %}true{% else %}false{% endif %}" aria-controls="securityAudit">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+                <span>Security &amp; Audit</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="securityAudit">
+              <a class="nav-sub{% if audit_section == 'login-history' %} active{% endif %}" href="{% url 'dashboard:security_login_history' %}">Login History</a>
+              <a class="nav-sub{% if audit_section == 'ip-logs' %} active{% endif %}" href="{% url 'dashboard:security_ip_logs' %}">IP Logs</a>
+              <a class="nav-sub{% if audit_section == 'admin-activity' %} active{% endif %}" href="{% url 'dashboard:security_admin_activity' %}">Admin Activity Logs</a>
+              <a class="nav-sub{% if audit_section == 'role-permissions' %} active{% endif %}" href="{% url 'dashboard:security_role_permissions' %}">Role Permissions</a>
+            </div>
+          </div>
+        </nav>
+      </aside>
+
+                              <main class="main user-page" id="security-audit">
+        <header class="page-header">
+          <div class="topbar">
+<div class="top-actions">
+              <div class="sidebar-control">
+  <button class="sidebar-control-btn" type="button" data-sidebar-toggle aria-label="Toggle sidebar">
+    <i class="fa-solid fa-bars"></i>
+    <span>Responsive Collapsible Sidebar</span>
+  </button>
+</div>
+<button class="icon-btn fullscreen-toggle" type="button" data-fullscreen-toggle aria-label="Toggle fullscreen">
+  <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+</button>
+
+              <button class="icon-btn compact" id="darkModeToggle" aria-label="Toggle dark mode">
+                <i class="fa-solid fa-moon"></i>
+              </button>
+              <a class="icon-btn compact" href="{% url 'dashboard:message_monitor' %}" aria-label="Messages">
+                <i class="fa-regular fa-envelope"></i>
+              </a>
+              <details class="notification-dropdown">
+                <summary class="icon-btn" aria-label="Notifications">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
+                  {% if messages %}<span class="notif-dot"></span>{% endif %}
+                </summary>
+                <div class="notification-menu">
+                  <h4>Notifications</h4>
+                  {% if messages %}
+                  <ul class="notification-list">
+                    {% for message in messages %}
+                    <li>{{ message }}</li>
+                    {% endfor %}
+                  </ul>
+                  {% else %}
+                  <p class="muted">No notifications yet.</p>
+                  {% endif %}
+                </div>
+              </details>
+            </div>
+            <details class="profile-dropdown">
+              <summary class="profile-summary">
+                <div class="profile-avatar">{{ request.user.username|default:"A"|first|upper }}</div>
+                <div class="profile-meta">
+                  <strong>{{ request.user.username|default:"Admin" }}</strong>
+                  <span>Platform Administrator</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+              </summary>
+              <div class="profile-menu">
+                              {% if request.user.last_login %}
+                              <a class="menu-item last-login-info" href="{% url 'dashboard:admin_profile_last_login' %}">
+                                <strong>Last Login</strong>
+                                <span>{{ request.user.last_login|date:"M d, Y H:i" }}</span>
+                              </a>
+                              {% endif %}
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile' %}">
+                                <i class="fa-solid fa-user"></i> My Profile
+                              </a>
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile_photo' %}">
+                                <i class="fa-solid fa-image"></i> Upload Photo
+                              </a>
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile_password' %}">
+                                <i class="fa-solid fa-key"></i> Change Password
+                              </a>
+                              <a class="menu-item logout" href="{% url 'dashboard:logout' %}">
+                                <i class="fa-solid fa-right-from-bracket"></i> Logout
+                              </a>
+              </div>
+              </details>
+          </div>
+        </header>
+
+        <section class="page-hero">
+          <div>
+            <p class="eyebrow">Security &amp; Audit</p>
+            <h2>{{ page_title|default:"Login History" }}</h2>
+            <p class="muted">{{ page_subtitle|default:"Monitor access, IP activity, and admin actions." }}</p>
+          </div>
+        </section>
+
+        {% if audit_section == "login-history" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Login History</h3>
+              <p class="muted">Track each login with device, browser, and status details.</p>
+            </div>
+          </div>
+          <div class="metric-grid">
+            <div class="metric-tile">
+              <span class="label">Total Logins</span>
+              <strong>{{ total_logins|default:0 }}</strong>
+            </div>
+            <div class="metric-tile">
+              <span class="label">Success</span>
+              <strong>{{ success_count|default:0 }}</strong>
+            </div>
+            <div class="metric-tile">
+              <span class="label">Failed</span>
+              <strong>{{ failed_count|default:0 }}</strong>
+            </div>
+            <div class="metric-tile">
+              <span class="label">Recent Rows</span>
+              <strong>{{ login_entries|length }}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Login History Table</h3>
+              <p class="muted">User and admin access activity.</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Account Type</th>
+                  <th>User / Email</th>
+                  <th>Login Time</th>
+                  <th>IP Address</th>
+                  <th>User Agent</th>
+                  <th>Notes</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for entry in login_entries %}
+                <tr>
+                  <td>{{ entry.get_account_type_display }}</td>
+                  <td>{{ entry.username_or_email|default:"--" }}</td>
+                  <td>{{ entry.created_at|date:"Y-m-d H:i" }}</td>
+                  <td>{{ entry.ip_address|default:"--" }}</td>
+                  <td>{{ entry.user_agent|default:"--"|truncatechars:60 }}</td>
+                  <td>{{ entry.note|default:"--" }}</td>
+                  <td>
+                    {% if entry.is_success %}
+                    <span class="badge success">Success</span>
+                    {% else %}
+                    <span class="badge danger">Failed</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="7" class="text-center text-muted">No login history available yet.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if audit_section == "ip-logs" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>IP Logs</h3>
+              <p class="muted">Track IP addresses for critical actions across the platform.</p>
+            </div>
+          </div>
+          <div class="details-grid">
+            <div class="details-card">
+              <h6>Login IP</h6>
+              <div class="ip-grid">
+                <span class="ip-chip">103.24.18.12</span>
+                <span class="ip-chip">49.204.18.102</span>
+                <span class="ip-chip">192.168.10.45</span>
+              </div>
+            </div>
+            <div class="details-card">
+              <h6>Job Post IP</h6>
+              <div class="ip-grid">
+                <span class="ip-chip">103.24.19.55</span>
+                <span class="ip-chip">110.226.10.8</span>
+                <span class="ip-chip">49.204.77.20</span>
+              </div>
+            </div>
+            <div class="details-card">
+              <h6>Payment IP</h6>
+              <div class="ip-grid">
+                <span class="ip-chip">103.24.20.31</span>
+                <span class="ip-chip">172.16.22.11</span>
+                <span class="ip-chip">49.204.88.62</span>
+              </div>
+            </div>
+            <div class="details-card">
+              <h6>Complaint Submit IP</h6>
+              <div class="ip-grid">
+                <span class="ip-chip">103.24.18.88</span>
+                <span class="ip-chip">49.204.19.14</span>
+                <span class="ip-chip">10.10.1.8</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Advanced IP Features</h3>
+              <p class="muted">Security controls applied to suspicious or risky IP activity.</p>
+            </div>
+          </div>
+          <ul class="checklist">
+            <li>Suspicious IP detection</li>
+            <li>Blacklist IP</li>
+            <li>Geo-location check</li>
+            <li>Multiple country login alert</li>
+          </ul>
+        </section>
+        {% endif %}
+
+        {% if audit_section == "admin-activity" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Admin Activity Logs</h3>
+              <p class="muted">Track critical admin actions with status transitions.</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Action</th>
+                  <th>Module</th>
+                  <th>Reference ID</th>
+                  <th>Old Status</th>
+                  <th>New Status</th>
+                  <th>Admin</th>
+                  <th>Action IP</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Job Approved</td>
+                  <td>Jobs</td>
+                  <td>102</td>
+                  <td>Pending</td>
+                  <td>Approved</td>
+                  <td>Admin A</td>
+                  <td>103.24.18.12</td>
+                  <td>2026-02-16 10:22</td>
+                </tr>
+                <tr>
+                  <td>User Suspended</td>
+                  <td>Users</td>
+                  <td>U-209</td>
+                  <td>Active</td>
+                  <td>Suspended</td>
+                  <td>Admin B</td>
+                  <td>49.204.18.102</td>
+                  <td>2026-02-15 18:10</td>
+                </tr>
+                <tr>
+                  <td>Settings Change</td>
+                  <td>Platform</td>
+                  <td>CFG-11</td>
+                  <td>OTP: Off</td>
+                  <td>OTP: On</td>
+                  <td>Admin A</td>
+                  <td>103.24.19.55</td>
+                  <td>2026-02-15 11:35</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if audit_section == "role-permissions" %}
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Role Permissions</h3>
+              <p class="muted">Define module access and visibility for sub-admins.</p>
+            </div>
+          </div>
+          <div class="tag-grid">
+            <span class="tag-pill">Jobs</span>
+            <span class="tag-pill">Applications</span>
+            <span class="tag-pill">Payments</span>
+            <span class="tag-pill">Reports</span>
+            <span class="tag-pill">Settings</span>
+            <span class="tag-pill">Audit Logs</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Sub-Admin Management</h3>
+              <p class="muted">Add new sub-admins and manage access levels.</p>
+            </div>
+            <button class="btn primary">Add New Sub-Admin</button>
+          </div>
+          <form class="settings-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Sub-Admin Name</label>
+                <input type="text" placeholder="Riya Mehta" />
+              </div>
+              <div class="form-group">
+                <label>Email</label>
+                <input type="email" placeholder="riya.m@email.com" />
+              </div>
+              <div class="form-group">
+                <label>Role</label>
+                <select>
+                  <option>Content Moderator</option>
+                  <option>Payment Reviewer</option>
+                  <option>Support Admin</option>
+                  <option>Supervised Admin</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Status</label>
+                <select>
+                  <option>Active</option>
+                  <option>Inactive</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn primary">Save Sub-Admin</button>
+              <button type="button" class="btn ghost">Reset</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Sub-Admin Table</h3>
+              <p class="muted">Manage existing sub-admin accounts.</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Last Active</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Riya Mehta</td>
+                  <td>riya.m@email.com</td>
+                  <td>Content Moderator</td>
+                  <td>2026-02-16</td>
+                  <td><span class="badge success">Active</span></td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="action-btn">Edit Details</button>
+                      <button class="action-btn danger">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Anuj Sharma</td>
+                  <td>anuj.s@email.com</td>
+                  <td>Payment Reviewer</td>
+                  <td>2026-02-14</td>
+                  <td><span class="badge warning">Inactive</span></td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="action-btn">Edit Details</button>
+                      <button class="action-btn danger">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+      </main>
+    </div>
+
+    <script src="{% static 'dashboard/js/dashboard.js' %}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,107 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Placements{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Placements</p>
+    <h2>Placements & Commission</h2>
+    <p class="muted">Track successful hires and payout status.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="tab-nav">
+    <a class="tab-pill {% if filter_status == 'active' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=active">Active Placements</a>
+    <a class="tab-pill {% if filter_status == 'pending' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=pending">Pending Approval</a>
+    <a class="tab-pill {% if filter_status == 'completed' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=completed">Completed Placements</a>
+    <a class="tab-pill {% if filter_status == 'cancelled' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=cancelled">Cancelled</a>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Commission Models</h3>
+      <p class="muted">Fixed fee, percentage, or milestone-based.</p>
+    </div>
+  </div>
+  <div class="card-grid">
+    <article class="card">
+      <h4>Fixed Fee</h4>
+      <p class="muted">INR 25,000 per hire</p>
+    </article>
+    <article class="card">
+      <h4>Percentage Model</h4>
+      <p class="muted">10% of annual CTC</p>
+    </article>
+    <article class="card">
+      <h4>Milestone Based</h4>
+      <p class="muted">Stage-wise commission release</p>
+    </article>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Placement Tracker</h3>
+      <p class="muted">Candidate, company, job, salary, and commission.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Candidate</th>
+          <th>Company</th>
+          <th>Job</th>
+          <th>Salary</th>
+          <th>Joining Date</th>
+          <th>Commission</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if placements %}
+          {% for row in placements %}
+          <tr>
+            <td><strong>{{ row.candidate }}</strong></td>
+            <td>{{ row.company }}</td>
+            <td>{{ row.job }}</td>
+            <td>{{ row.salary }}</td>
+            <td>{{ row.joining_date }}</td>
+            <td>{{ row.commission }}</td>
+            <td>
+              <span class="badge {% if row.status == 'Paid' %}success{% elif row.status == 'Pending Approval' %}warning{% elif row.status == 'Cancelled' %}danger{% else %}info{% endif %}">
+                {{ row.status }}
+              </span>
+            </td>
+            <td>
+              <form method="post" class="table-actions">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="update_placement_status" />
+                <input type="hidden" name="application_id" value="{{ row.application_id }}" />
+                <select name="placement_status">
+                  {% for status in placement_status_choices %}
+                    <option value="{{ status }}" {% if status == row.status %}selected{% endif %}>{{ status }}</option>
+                  {% endfor %}
+                </select>
+                <button class="action-btn" type="submit">Update</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="8" class="muted" style="text-align:center; padding: 16px;">No placements available for this section.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

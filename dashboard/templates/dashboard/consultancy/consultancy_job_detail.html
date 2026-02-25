@@ -1,0 +1,80 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Job Details{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Job Details</p>
+    <h2>{{ job.title }}</h2>
+    <p class="muted">{{ job.company }}  {{ job.location }}  {{ job.job_type }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn primary" href="{% url 'dashboard:consultancy_candidate_pool' %}?job_id={{ job.job_id }}#submit-candidate">Submit Candidate</a>
+    <a class="btn ghost" href="{% url 'dashboard:consultancy_applications' %}?job_id={{ job.job_id }}">View Submissions</a>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Job Overview</h3>
+      <p class="muted">Key details for this assigned job.</p>
+    </div>
+  </div>
+  <div class="detail-grid">
+    <article class="card detail-card">
+      <h4>Salary</h4>
+      <p class="muted">{{ job.salary|default:"Not disclosed" }}</p>
+    </article>
+    <article class="card detail-card">
+      <h4>Experience</h4>
+      <p class="muted">{{ job.experience|default:"Flexible" }}</p>
+    </article>
+    <article class="card detail-card">
+      <h4>Skills Required</h4>
+      <p class="muted">{{ job.skills|default:"Open" }}</p>
+    </article>
+    <article class="card detail-card">
+      <h4>Deadline</h4>
+      <p class="muted">{{ assignment.deadline|date:"d M Y"|default:"--" }}</p>
+    </article>
+    <article class="card detail-card">
+      <h4>Positions</h4>
+      <p class="muted">{{ assignment.positions }}</p>
+    </article>
+    <article class="card detail-card">
+      <h4>Commission Type</h4>
+      <p class="muted">{{ assignment.commission_type }} ({{ commission_display }})</p>
+    </article>
+    <article class="card detail-card">
+      <h4>Submissions</h4>
+      <p class="muted">{{ submissions }}</p>
+    </article>
+    <article class="card detail-card">
+      <h4>Status</h4>
+      <p class="muted">{{ assignment.status }}</p>
+    </article>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Role Summary</h3>
+      <p class="muted">Description and requirements.</p>
+    </div>
+  </div>
+  <div class="detail-grid">
+    <article class="card detail-card">
+      <h4>Description</h4>
+      <p class="muted">{{ job.description|default:"--" }}</p>
+    </article>
+    <article class="card detail-card">
+      <h4>Requirements</h4>
+      <p class="muted">{{ job.requirements|default:"--" }}</p>
+    </article>
+  </div>
+</section>
+{% endblock %}

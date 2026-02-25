@@ -1,0 +1,77 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}Subscription{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Subscription</p>
+    <h2>Candidate Subscription</h2>
+    <p class="muted">Choose Free or Premium plan for better visibility and early job alerts.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Current Plan</h3>
+      <p class="muted">{{ subscription.plan|default:"Free" }} {% if is_premium %}(Premium Candidate){% else %}(Free Candidate){% endif %}</p>
+    </div>
+    {% if is_premium and expiry %}
+      <span class="badge success">Expiry: {{ expiry|date:"d M Y" }}</span>
+    {% else %}
+      <span class="badge neutral">Free Access</span>
+    {% endif %}
+  </div>
+</section>
+
+<section class="plan-grid">
+  <article class="plan-card">
+    <div class="plan-header">
+      <span class="plan-tag candidate">Free Candidate</span>
+    </div>
+    <h4 class="plan-tier">Free Candidate</h4>
+    <p class="plan-desc">Core features for every candidate.</p>
+    <ul class="plan-features">
+      <li>Apply to jobs</li>
+      <li>Create profile</li>
+      <li>Upload resume</li>
+    </ul>
+    {% if is_premium %}
+    <form method="post" data-loading-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="downgrade_free" />
+      <button class="btn ghost" type="submit">Switch to Free</button>
+    </form>
+    {% else %}
+      <span class="badge success">Current Plan</span>
+    {% endif %}
+  </article>
+
+  <article class="plan-card recommended">
+    <div class="plan-header">
+      <span class="plan-tag premium">Premium Candidate (Optional)</span>
+      <span class="plan-flag">Recommended</span>
+    </div>
+    <h4 class="plan-tier">Premium Candidate</h4>
+    <div class="plan-cost"><strong>Rs.199</strong><span>/ month</span></div>
+    <ul class="plan-features">
+      <li>Resume boost</li>
+      <li>Profile highlighted</li>
+      <li>Early job alerts</li>
+      <li>See recruiter views</li>
+      <li>Priority applications</li>
+    </ul>
+    {% if is_premium %}
+      <span class="badge success">Active</span>
+    {% else %}
+    <form method="post" data-loading-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="upgrade_premium" />
+      <button class="btn primary" type="submit">Activate Premium</button>
+    </form>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}

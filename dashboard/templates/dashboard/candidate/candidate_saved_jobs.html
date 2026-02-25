@@ -1,0 +1,56 @@
+{% extends "dashboard/candidate/candidate_base.html" %}
+{% load static %}
+
+{% block title %}Saved Jobs{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Saved Jobs</p>
+    <h2>Jobs You Saved</h2>
+    <p class="muted">Apply anytime from your saved list.</p>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Saved Jobs</h3>
+      <p class="muted">You can apply or remove them later.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th>Company</th>
+          <th>Location</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if saved_jobs %}
+          {% for job in saved_jobs %}
+          <tr>
+            <td><strong>{{ job.title }}</strong></td>
+            <td>{{ job.company }}</td>
+            <td>{{ job.location }}</td>
+            <td>
+              <div class="table-actions">
+                <button class="action-btn" type="button">Apply</button>
+                <button class="action-btn danger" type="button">Remove</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="4" class="muted" style="text-align:center; padding: 16px;">No saved jobs yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

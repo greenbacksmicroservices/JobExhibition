@@ -1,0 +1,277 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobExhibition | Login</title>
+    <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/devicon.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .skills-bg {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .skill-item {
+            position: absolute;
+            bottom: -120px;
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(8px);
+            padding: 12px 24px;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+            animation: floatUp linear infinite;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+        }
+
+        .skill-item i { font-size: 1.6rem; color: #0077b6; }
+        .skill-item span { font-size: 0.9rem; font-weight: 600; color: #0077b6; }
+
+        @keyframes floatUp {
+            0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-115vh) rotate(15deg); opacity: 0; }
+        }
+
+        .login-card {
+            position: relative;
+            z-index: 10;
+            width: 440px;
+            max-width: calc(100% - 24px);
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            border-radius: 40px;
+            padding: 50px 40px;
+            box-shadow: 0 30px 60px rgba(0, 119, 182, 0.15);
+            text-align: center;
+            animation: entranceShake 1.2s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+        }
+
+        @keyframes entranceShake {
+            0% { transform: scale(0.5) translateY(200px); opacity: 0; }
+            60% { transform: scale(1.05) translateY(-10px); opacity: 1; }
+            80% { transform: scale(0.98) translateY(5px); }
+            100% { transform: scale(1) translateY(0); }
+        }
+
+        h2 { color: #0077b6; font-size: 2.2rem; font-weight: 800; margin-bottom: 6px; }
+        .subtitle { color: #5b7c99; margin-bottom: 24px; font-size: 0.95rem; }
+
+        .alert {
+            background: #ffeded;
+            color: #d90429;
+            padding: 12px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            font-size: 0.85rem;
+            border: 1px solid #ffcfcf;
+            text-align: left;
+        }
+
+        .form-group { margin-bottom: 20px; text-align: left; }
+        .input-wrapper { position: relative; }
+
+        .input-wrapper input {
+            width: 100%;
+            padding: 16px 50px;
+            background: #fff;
+            border: 2px solid transparent;
+            border-radius: 20px;
+            color: #333;
+            font-size: 1rem;
+            outline: none;
+            transition: 0.3s;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.03);
+        }
+
+        .input-wrapper i.icon-left {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #a1c4fd;
+            font-size: 1.4rem;
+        }
+
+        .input-wrapper input:focus {
+            border-color: #a1c4fd;
+            box-shadow: 0 0 20px rgba(161, 196, 253, 0.4);
+        }
+
+        .toggle-btn {
+            position: absolute;
+            right: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #ccc;
+            font-size: 1.2rem;
+        }
+
+        .flex-links {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            padding: 0 5px;
+        }
+
+        .flex-links a {
+            font-size: 0.85rem;
+            color: #0077b6;
+            text-decoration: none;
+            font-weight: 600;
+            transition: 0.3s;
+        }
+
+        .flex-links a:hover { text-decoration: underline; color: #00b4d8; }
+
+        .btn-login {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(90deg, #00b4d8, #0077b6);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: 0.4s;
+            box-shadow: 0 10px 20px rgba(0, 119, 182, 0.2);
+        }
+
+        .btn-login:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(0, 119, 182, 0.3);
+        }
+
+        .new-user-section {
+            margin-top: 22px;
+            font-size: 0.9rem;
+            color: #5b7c99;
+            display: grid;
+            gap: 10px;
+        }
+
+        .register-links {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .register-links a {
+            color: #0077b6;
+            text-decoration: none;
+            font-weight: 700;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(0, 119, 182, 0.2);
+            font-size: 0.82rem;
+        }
+
+        .login-note {
+            margin-top: 24px;
+            color: #88a;
+            font-size: 0.75rem;
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+            padding-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="skills-bg">
+        <div class="skill-item" style="left: 5%; animation-duration: 10s;"><i class="devicon-php-plain"></i><span>PHP</span></div>
+        <div class="skill-item" style="left: 15%; animation-duration: 14s; animation-delay: 2s;"><i class="devicon-laravel-plain"></i><span>Laravel</span></div>
+        <div class="skill-item" style="left: 28%; animation-duration: 12s; animation-delay: 1s;"><i class="devicon-react-original"></i><span>React</span></div>
+        <div class="skill-item" style="left: 42%; animation-duration: 16s; animation-delay: 4s;"><i class='bx bx-trending-up'></i><span>SEO</span></div>
+        <div class="skill-item" style="left: 55%; animation-duration: 11s; animation-delay: 3s;"><i class="devicon-python-plain"></i><span>Python</span></div>
+        <div class="skill-item" style="left: 68%; animation-duration: 15s;"><i class="devicon-docker-plain"></i><span>Docker</span></div>
+        <div class="skill-item" style="left: 80%; animation-duration: 13s; animation-delay: 5s;"><i class='bx bxs-user-detail'></i><span>HR</span></div>
+        <div class="skill-item" style="left: 90%; animation-duration: 17s;"><i class='bx bx-keyboard'></i><span>Data Entry</span></div>
+        <div class="skill-item" style="left: 12%; animation-duration: 18s; animation-delay: 6s;"><i class='bx bxs-calculator'></i><span>Tally</span></div>
+        <div class="skill-item" style="left: 35%; animation-duration: 14s; animation-delay: 8s;"><i class='bx bx-bullseye'></i><span>Marketing</span></div>
+        <div class="skill-item" style="left: 62%; animation-duration: 12s; animation-delay: 2s;"><i class="devicon-mysql-plain"></i><span>MySQL</span></div>
+    </div>
+
+    <div class="login-card">
+        <h2>JobExhibition</h2>
+        <p class="subtitle">Login using username or email</p>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert"><i class='bx bx-error-circle'></i> {{ message }}</div>
+            {% endfor %}
+        {% endif %}
+
+        <form method="post" action="">
+            {% csrf_token %}
+
+            <div class="form-group">
+                <div class="input-wrapper">
+                    <i class='bx bxs-user-circle icon-left'></i>
+                    <input type="text" name="username" placeholder="Username or Email" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <div class="input-wrapper">
+                    <i class='bx bxs-key icon-left'></i>
+                    <input type="password" name="password" id="login_password" placeholder="Password" required>
+                    <i class='bx bx-show toggle-btn' onclick="togglePassword('login_password')"></i>
+                </div>
+            </div>
+
+            <div class="flex-links">
+                <span></span>
+                <a href="{% url 'dashboard:forgot_password' %}">Forgot Password?</a>
+            </div>
+
+            <button type="submit" class="btn-login">Login</button>
+        </form>
+
+        <div class="new-user-section">
+            <span>New user? Register here</span>
+            <div class="register-links">
+                <a href="{% url 'dashboard:company_register' %}">Company</a>
+                <a href="{% url 'dashboard:consultancy_register' %}">Consultancy</a>
+                <a href="{% url 'dashboard:candidate_register' %}">Candidate</a>
+            </div>
+        </div>
+
+        <div class="login-note">
+            Secure Login • 2026
+        </div>
+    </div>
+
+    <script>
+        function togglePassword(inputId) {
+            const pass = document.getElementById(inputId);
+            if (!pass) return;
+            pass.type = pass.type === "password" ? "text" : "password";
+        }
+    </script>
+</body>
+</html>

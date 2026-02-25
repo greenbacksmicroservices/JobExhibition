@@ -1,0 +1,86 @@
+{% extends "dashboard/consultancy/consultancy_base.html" %}
+{% load static %}
+
+{% block title %}Applications{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Applications</p>
+    <h2>Candidate Submissions</h2>
+    <p class="muted">Track status flow from submission to placement.</p>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Status Flow</h3>
+      <p class="muted">Submitted -> Under Review -> Shortlisted -> Interview -> Selected -> Placed</p>
+    </div>
+  </div>
+  <div class="summary-tags">
+    <span class="badge info">Submitted</span>
+    <span class="badge warning">Under Review</span>
+    <span class="badge success">Shortlisted</span>
+    <span class="badge neutral">Interview</span>
+    <span class="badge info">Selected</span>
+    <span class="badge success">Placed</span>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h3>Application Tracker</h3>
+      <p class="muted">Consultancy-managed submissions.</p>
+      {% if job_filter %}
+      <span class="badge info">Filtered by {{ job_filter }}</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Candidate</th>
+          <th>Job</th>
+          <th>Company</th>
+          <th>Status</th>
+          <th>Update</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in applications %}
+        <tr>
+          <td><strong>{{ item.candidate }}</strong></td>
+          <td>{{ item.job }}</td>
+          <td>{{ item.company }}</td>
+          <td>
+            <span class="badge {% if item.display_status == 'Submitted' %}info{% elif item.display_status == 'Under Review' %}warning{% elif item.display_status == 'Shortlisted' %}success{% elif item.display_status == 'Interview' %}neutral{% elif item.display_status == 'Selected' %}info{% else %}success{% endif %}">
+              {{ item.display_status }}
+            </span>
+          </td>
+          <td>
+            <form method="post" class="table-actions">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="update_status" />
+              <input type="hidden" name="application_id" value="{{ item.application_id }}" />
+              {% if job_filter %}
+              <input type="hidden" name="job_id" value="{{ job_filter }}" />
+              {% endif %}
+              <select name="status">
+                {% for status in status_choices %}
+                  <option value="{{ status }}" {% if status == item.raw_status %}selected{% endif %}>{{ status }}</option>
+                {% endfor %}
+              </select>
+              <button class="action-btn" type="submit">Update</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
@@ -82,4 +83,10 @@ def candidate_panel_context(request):
             "price_monthly": 199,
             "expiry": expiry,
         },
+    }
+
+
+def static_assets_context(request):
+    return {
+        "static_asset_version": getattr(settings, "STATIC_ASSET_VERSION", "1"),
     }

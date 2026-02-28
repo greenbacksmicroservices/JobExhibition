@@ -116,6 +116,69 @@ COMMON_SKILL_KEYWORDS = [
     "salesforce",
 ]
 
+REGISTER_ROLE_GROUPS = [
+    {
+        "title": "IT Jobs",
+        "roles": [
+            "Software Engineer",
+            "Web Developer",
+            "Mobile App Developer",
+            "Python Developer",
+            "Java Developer",
+            "PHP Developer",
+            "React / Angular Developer",
+            "Data Analyst",
+            "Data Scientist",
+            "Cybersecurity Analyst",
+            "Cloud Engineer",
+            "DevOps Engineer",
+            "Network Engineer",
+            "UI / UX Designer",
+            "QA Engineer",
+            "IT Support Engineer",
+            "System Administrator",
+            "Project Manager",
+            "Product Manager",
+        ],
+    },
+    {
+        "title": "Non-IT Jobs",
+        "roles": [
+            "Accountant",
+            "Relationship Manager",
+            "Production Supervisor",
+            "Nurse",
+            "Lab Technician",
+            "Sales Executive",
+            "Digital Marketing Executive",
+            "Store Manager",
+            "Warehouse Executive",
+            "Supply Chain Manager",
+            "Civil Engineer",
+            "Site Supervisor",
+            "Teacher",
+            "Receptionist",
+            "Chef",
+            "Automobile Engineer",
+            "Government Jobs",
+            "Driver",
+            "Security Guard",
+            "Housekeeping",
+        ],
+    },
+    {
+        "title": "Work Type",
+        "roles": [
+            "Full Time",
+            "Part Time",
+            "Work From Home",
+            "Freelance",
+            "Internship",
+            "Contract",
+        ],
+    },
+]
+
 
 def _resolve_subscription_segment(plan_type, payment_status, plan_expiry):
     plan_type = (plan_type or "").strip()
@@ -775,6 +838,16 @@ def _extract_skills_from_resume(file_obj):
         if re.search(pattern, text):
             found.append(keyword.title())
     return found
+
+
+def register_options_view(request):
+    return render(
+        request,
+        "dashboard/register_options.html",
+        {
+            "role_groups": REGISTER_ROLE_GROUPS,
+        },
+    )
 
 
 def login_view(request):
@@ -1539,7 +1612,8 @@ def consultancy_register_view(request):
 
 def candidate_register_view(request):
     flow_key = "candidate"
-    form_data = {}
+    preferred_role = (request.GET.get("role") or "").strip()
+    form_data = {"current_job_title": preferred_role} if preferred_role else {}
     captcha_question = _get_registration_captcha_question(request, flow_key)
 
     if request.method == "POST":

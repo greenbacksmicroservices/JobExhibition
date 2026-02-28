@@ -21,7 +21,7 @@
     <div class="app-shell">
       <aside class="sidebar">
                 <div class="brand">
-          <div class="brand-mark"><img src="{% static 'dashboard/img/je-logo.svg' %}" alt="Job Exhibition logo" /></div>
+          <div class="brand-mark"><img src="{% static 'dashboard/img/je-logo.svg' %}?v={{ static_asset_version }}" alt="Job Exhibition logo" /></div>
           <div class="brand-text">
             <h1 class="style-1"><span class="brand-job">Job</span> <span class="brand-exhibition">Exhibition</span></h1>
             <span class="brand-subtitle">Admin Control</span>
@@ -564,6 +564,7 @@
     <script src="{% static 'dashboard/js/dashboard.js' %}"></script>
       </body>
 </html>
+
 
 
 

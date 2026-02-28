@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JobExhibition | Login</title>
-    <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/devicon.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800&display=swap');
@@ -27,6 +27,18 @@
             inset: 0;
             z-index: 0;
             overflow: hidden;
+        }
+
+        .brand-watermark {
+            position: absolute;
+            width: 320px;
+            max-width: 70vw;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0.11;
+            filter: blur(0.3px);
+            pointer-events: none;
         }
 
         .skill-item {
@@ -252,6 +264,24 @@
             font-size: 0.82rem;
         }
 
+        .role-register-links {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .role-register-links a {
+            color: #0f172a;
+            text-decoration: none;
+            font-weight: 600;
+            padding: 7px 11px;
+            border-radius: 999px;
+            background: rgba(224, 242, 254, 0.9);
+            border: 1px solid rgba(14, 116, 144, 0.2);
+            font-size: 0.78rem;
+        }
+
         .login-note {
             margin-top: 24px;
             color: #88a;
@@ -275,17 +305,8 @@
 </head>
 <body>
     <div class="skills-bg">
-        <div class="skill-item" style="left: 5%; animation-duration: 10s;"><i class="devicon-php-plain"></i><span>PHP</span></div>
-        <div class="skill-item" style="left: 15%; animation-duration: 14s; animation-delay: 2s;"><i class="devicon-laravel-plain"></i><span>Laravel</span></div>
-        <div class="skill-item" style="left: 28%; animation-duration: 12s; animation-delay: 1s;"><i class="devicon-react-original"></i><span>React</span></div>
-        <div class="skill-item" style="left: 42%; animation-duration: 16s; animation-delay: 4s;"><i class='bx bx-trending-up'></i><span>SEO</span></div>
-        <div class="skill-item" style="left: 55%; animation-duration: 11s; animation-delay: 3s;"><i class="devicon-python-plain"></i><span>Python</span></div>
-        <div class="skill-item" style="left: 68%; animation-duration: 15s;"><i class="devicon-docker-plain"></i><span>Docker</span></div>
-        <div class="skill-item" style="left: 80%; animation-duration: 13s; animation-delay: 5s;"><i class='bx bxs-user-detail'></i><span>HR</span></div>
-        <div class="skill-item" style="left: 90%; animation-duration: 17s;"><i class='bx bx-keyboard'></i><span>Data Entry</span></div>
-        <div class="skill-item" style="left: 12%; animation-duration: 18s; animation-delay: 6s;"><i class='bx bxs-calculator'></i><span>Tally</span></div>
-        <div class="skill-item" style="left: 35%; animation-duration: 14s; animation-delay: 8s;"><i class='bx bx-bullseye'></i><span>Marketing</span></div>
-        <div class="skill-item" style="left: 62%; animation-duration: 12s; animation-delay: 2s;"><i class="devicon-mysql-plain"></i><span>MySQL</span></div>
+        <img class="brand-watermark" src="{% static 'dashboard/img/je-logo.svg' %}?v={{ static_asset_version }}" alt="Job Exhibition logo" />
+        <div id="skillsFloatContainer"></div>
     </div>
 
     <div class="login-card">

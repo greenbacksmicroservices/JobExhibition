@@ -8,8 +8,8 @@
     <link rel="icon" href="{% static 'dashboard/favicon.ico' %}" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-    <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}" />
-    <link rel="stylesheet" href="{% static 'dashboard/css/user-management.css' %}" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}?v={{ static_asset_version }}" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/user-management.css' %}?v={{ static_asset_version }}" />
   </head>
   <body class="user-management" data-user-type="candidates" data-has-subscription="false" data-has-kyc="false" data-has-resume="true" data-user-singular="Candidate">
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -21,7 +21,7 @@
     <div class="app-shell">
       <aside class="sidebar">
                 <div class="brand">
-          <div class="brand-mark"><img src="{% static 'dashboard/img/je-logo.svg' %}" alt="Job Exhibition logo" /></div>
+          <div class="brand-mark"><img src="{% static 'dashboard/img/je-logo.svg' %}?v={{ static_asset_version }}" alt="Job Exhibition logo" /></div>
           <div class="brand-text">
             <h1 class="style-1"><span class="brand-job">Job</span> <span class="brand-exhibition">Exhibition</span></h1>
             <span class="brand-subtitle">Admin Control</span>
@@ -475,10 +475,11 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{% static 'dashboard/js/dashboard.js' %}"></script>
-    <script src="{% static 'dashboard/js/user-management.js' %}"></script>
+    <script src="{% static 'dashboard/js/dashboard.js' %}?v={{ static_asset_version }}"></script>
+    <script src="{% static 'dashboard/js/user-management.js' %}?v={{ static_asset_version }}"></script>
   </body>
 </html>
+
 
 
 

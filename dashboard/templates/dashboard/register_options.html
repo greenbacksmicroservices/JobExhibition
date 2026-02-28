@@ -1,0 +1,180 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register Here | Job Exhibition</title>
+  <link href="https://cdn.jsdelivr.net/npm/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-1: #dbeafe;
+      --bg-2: #e0f2fe;
+      --card: rgba(255, 255, 255, 0.86);
+      --text: #0f172a;
+      --muted: #475569;
+      --primary: #0369a1;
+      --border: rgba(14, 116, 144, 0.16);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      font-family: "Poppins", "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background: linear-gradient(135deg, var(--bg-1), var(--bg-2));
+      padding: 24px;
+    }
+
+    .shell { max-width: 1100px; margin: 0 auto; display: grid; gap: 18px; }
+
+    .topbar {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand img { width: 40px; height: 40px; border-radius: 10px; }
+    .brand h1 { font-size: 1.05rem; font-weight: 700; }
+    .brand p { color: var(--muted); font-size: 0.82rem; }
+
+    .back-link {
+      text-decoration: none;
+      color: var(--primary);
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 20px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .panel h2 { font-size: 1.25rem; }
+    .panel p { color: var(--muted); }
+
+    .account-links {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .account-card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      text-decoration: none;
+      color: inherit;
+      background: rgba(255, 255, 255, 0.78);
+      display: grid;
+      gap: 8px;
+    }
+
+    .account-card i { color: var(--primary); font-size: 1.3rem; }
+    .account-card strong { font-size: 0.98rem; }
+    .account-card span { color: var(--muted); font-size: 0.84rem; }
+
+    .groups {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+    }
+
+    .group {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.82);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .group h3 { font-size: 1rem; color: #075985; }
+
+    .role-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .role-list a {
+      text-decoration: none;
+      color: #0f172a;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <img src="{% static 'dashboard/img/je-logo.svg' %}?v={{ static_asset_version }}" alt="Job Exhibition logo" />
+        <div>
+          <h1>Register Here</h1>
+          <p>Choose account type and job role</p>
+        </div>
+      </div>
+      <a class="back-link" href="{% url 'dashboard:login' %}">
+        <i class="bx bx-arrow-back"></i> Back to Login
+      </a>
+    </header>
+
+    <section class="panel">
+      <h2>Create Your Account</h2>
+      <p>Direct registration links for each user type.</p>
+      <div class="account-links">
+        <a class="account-card" href="{% url 'dashboard:candidate_register' %}">
+          <i class="bx bxs-user"></i>
+          <strong>Candidate Register</strong>
+          <span>For job seekers</span>
+        </a>
+        <a class="account-card" href="{% url 'dashboard:company_register' %}">
+          <i class="bx bxs-buildings"></i>
+          <strong>Company Register</strong>
+          <span>For employers and recruiters</span>
+        </a>
+        <a class="account-card" href="{% url 'dashboard:consultancy_register' %}">
+          <i class="bx bxs-group"></i>
+          <strong>Consultancy Register</strong>
+          <span>For agencies and placement consultants</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Role Based Candidate Registration</h2>
+      <p>Pick your role and open candidate registration with role pre-selected in current job title.</p>
+      <div class="groups">
+        {% for group in role_groups %}
+          <article class="group">
+            <h3>{{ group.title }}</h3>
+            <div class="role-list">
+              {% for role in group.roles %}
+                <a href="{% url 'dashboard:candidate_register' %}?role={{ role|urlencode }}">{{ role }}</a>
+              {% endfor %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</body>
+</html>

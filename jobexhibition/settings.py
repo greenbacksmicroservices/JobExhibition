@@ -58,12 +58,20 @@ def _env_str(key, default=""):
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-*=&sde3n-m0o*h6(jntu+-k%8lmc@@2x&!voya)_8t+1!$3!!j'
+SECRET_KEY = _env_str(
+    "DJANGO_SECRET_KEY",
+    _env_str("SECRET_KEY", "django-insecure-*=&sde3n-m0o*h6(jntu+-k%8lmc@@2x&!voya)_8t+1!$3!!j"),
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = _env_bool("DJANGO_DEBUG", default=True)
 
 ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS", ["localhost", "127.0.0.1"])
+CSRF_TRUSTED_ORIGINS = _env_list("DJANGO_CSRF_TRUSTED_ORIGINS", [])
+
+USE_X_FORWARDED_HOST = _env_bool("DJANGO_USE_X_FORWARDED_HOST", default=True)
+if _env_bool("DJANGO_TRUST_X_FORWARDED_PROTO", default=True):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
 # Application definition
@@ -104,6 +112,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'dashboard.context_processors.admin_profile_context',
                 'dashboard.context_processors.candidate_panel_context',
+                'dashboard.context_processors.static_assets_context',
             ],
         },
     },
@@ -115,12 +124,37 @@ WSGI_APPLICATION = 'jobexhibition.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+DB_ENGINE = _env_str("DB_ENGINE", "django.db.backends.mysql")
+
+if DB_ENGINE in {"sqlite", "django.db.backends.sqlite3"}:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': _env_str("DB_SQLITE_PATH", str(BASE_DIR / 'db.sqlite3')),
+        }
     }
-}
+else:
+    db_options = {
+        'charset': 'utf8mb4',
+        'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        'connect_timeout': _env_int("DB_CONNECT_TIMEOUT", 20),
+    }
+    db_ssl_ca = _env_str("DB_SSL_CA", "")
+    if db_ssl_ca:
+        db_options['ssl'] = {'ca': db_ssl_ca}
+
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': _env_str("DB_NAME", "u529002218_jobdekhao123"),
+            'USER': _env_str("DB_USER", "u529002218_jobdekhao123"),
+            'PASSWORD': _env_str("DB_PASSWORD", "Jobdekhao123"),
+            'HOST': _env_str("DB_HOST", "srv685.hstgr.io"),
+            'PORT': _env_str("DB_PORT", "3306"),
+            'CONN_MAX_AGE': _env_int("DB_CONN_MAX_AGE", 60),
+            'OPTIONS': db_options,
+        }
+    }
 
 
 # Password validation
@@ -160,8 +194,12 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ASSET_VERSION = _env_str("STATIC_ASSET_VERSION", "1")
 if not DEBUG:
-    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    STATICFILES_STORAGE = _env_str(
+        "DJANGO_STATICFILES_STORAGE",
+        "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    )
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -173,6 +211,14 @@ DEFAULT_FROM_EMAIL = 'no-reply@jobexhibition.local'
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/admin-dashboard/'
 LOGOUT_REDIRECT_URL = '/login/'
+
+# Production hardening toggles for VPS deployments (safe defaults).
+SECURE_SSL_REDIRECT = _env_bool("DJANGO_SECURE_SSL_REDIRECT", default=False)
+SESSION_COOKIE_SECURE = _env_bool("DJANGO_SESSION_COOKIE_SECURE", default=not DEBUG)
+CSRF_COOKIE_SECURE = _env_bool("DJANGO_CSRF_COOKIE_SECURE", default=not DEBUG)
+SECURE_HSTS_SECONDS = _env_int("DJANGO_SECURE_HSTS_SECONDS", 0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False)
+SECURE_HSTS_PRELOAD = _env_bool("DJANGO_SECURE_HSTS_PRELOAD", default=False)
 
 # OTP / SMS settings
 OTP_SMS_API_KEY = _env_str(

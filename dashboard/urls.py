@@ -7,6 +7,7 @@ app_name = "dashboard"
 urlpatterns = [
     path("welcome/", views.welcome_view, name="welcome"),
     path("login/", views.login_view, name="login"),
+    path("register-here/", views.register_options_view, name="register_options"),
     path("forgot-password/", views.forgot_password_view, name="forgot_password"),
     path("reset-password/<str:token>/", views.password_reset_confirm_view, name="password_reset_confirm"),
     path("verify-email/<str:token>/", views.verify_email_view, name="verify_email"),

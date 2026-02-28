@@ -54,6 +54,55 @@ def _env_str(key, default=""):
     return value
 
 
+def _git_head_version():
+    git_dir = BASE_DIR / ".git"
+    head_path = git_dir / "HEAD"
+    if not head_path.exists():
+        return ""
+    try:
+        head_ref = head_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    if not head_ref:
+        return ""
+    if head_ref.startswith("ref:"):
+        ref_path = git_dir / head_ref.split(" ", 1)[1].strip()
+        if not ref_path.exists():
+            return ""
+        try:
+            return ref_path.read_text(encoding="utf-8").strip()[:12]
+        except OSError:
+            return ""
+    return head_ref[:12]
+
+
+def _resolve_static_asset_version():
+    configured = _env_str("STATIC_ASSET_VERSION", "")
+    if configured:
+        return configured
+
+    commit_env_keys = [
+        "SOURCE_VERSION",
+        "RAILWAY_GIT_COMMIT_SHA",
+        "RENDER_GIT_COMMIT",
+        "VERCEL_GIT_COMMIT_SHA",
+    ]
+    for key in commit_env_keys:
+        value = _env_str(key, "")
+        if value:
+            return value[:12]
+
+    git_version = _git_head_version()
+    if git_version:
+        return git_version
+
+    static_dir = BASE_DIR / "static"
+    try:
+        return str(int(static_dir.stat().st_mtime))
+    except OSError:
+        return "1"
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
@@ -194,7 +243,7 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
-STATIC_ASSET_VERSION = _env_str("STATIC_ASSET_VERSION", "1")
+STATIC_ASSET_VERSION = _resolve_static_asset_version()
 if not DEBUG:
     STATICFILES_STORAGE = _env_str(
         "DJANGO_STATICFILES_STORAGE",

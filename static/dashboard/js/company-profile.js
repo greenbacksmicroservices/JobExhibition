@@ -120,15 +120,19 @@ document.addEventListener('DOMContentLoaded', () => {
       <td><strong>${escapeHtml(titleValue)}</strong></td>
       <td>${escapeHtml(typeLabel)}</td>
       <td>Pending upload</td>
-      <td><a class="action-btn" href="${fileUrl}" target="_blank" rel="noopener">View</a></td>
+      <td>
+        <div class="table-actions">
+          <a class="action-btn" href="${fileUrl}" target="_blank" rel="noopener">View</a>
+          <a class="action-btn" href="${fileUrl}" download>Download</a>
+        </div>
+      </td>
     `;
 
-    const link = row.querySelector('a');
-    if (link) {
+    row.querySelectorAll('a').forEach((link) => {
       link.addEventListener('click', () => {
         setTimeout(() => URL.revokeObjectURL(fileUrl), 10000);
       });
-    }
+    });
   };
 
   const attachKycCardHandlers = (card) => {

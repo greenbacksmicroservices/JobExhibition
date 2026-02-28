@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .models import Candidate, Consultancy, LoginHistory
@@ -34,6 +34,7 @@ class DashboardViewTests(TestCase):
         self.assertEqual(response.context["failed_count"], 65)
         self.assertEqual(len(response.context["login_entries"]), 100)
 
+    @override_settings(LOGIN_OTP_REQUIRED=False)
     def test_candidate_login_sets_welcome_target_to_job_search(self):
         Candidate.objects.create(
             name="can-login",

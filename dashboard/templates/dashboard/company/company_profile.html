@@ -210,7 +210,10 @@
                 <td>{{ doc.uploaded_at|date:"d M Y"|default:"--" }}</td>
                 <td>
                   {% if doc.file %}
-                    <a class="action-btn" href="{{ doc.file.url }}" target="_blank" rel="noopener">View</a>
+                    <div class="table-actions">
+                      <a class="action-btn" href="{{ doc.file.url }}" target="_blank" rel="noopener">View</a>
+                      <a class="action-btn" href="{{ doc.file.url }}" download>Download</a>
+                    </div>
                   {% else %}
                     <span class="muted">--</span>
                   {% endif %}
@@ -223,7 +226,10 @@
                 <td>Registration Document</td>
                 <td>--</td>
                 <td>
-                  <a class="action-btn" href="{{ company.registration_document.url }}" target="_blank" rel="noopener">View</a>
+                  <div class="table-actions">
+                    <a class="action-btn" href="{{ company.registration_document.url }}" target="_blank" rel="noopener">View</a>
+                    <a class="action-btn" href="{{ company.registration_document.url }}" download>Download</a>
+                  </div>
                 </td>
               </tr>
             {% else %}

@@ -35,6 +35,18 @@ def _candidate_subscription_segment(email):
     return "subscribed", subscription
 
 
+def _active_advertisement_for(audience, segment):
+    ads = Advertisement.objects.filter(
+        audience=audience,
+        is_active=True,
+    ).order_by("-created_at")
+    scoped = ads.filter(Q(segment=segment) | Q(segment="") | Q(segment__isnull=True)).first()
+    if scoped:
+        return scoped
+    generic = ads.filter(Q(segment="") | Q(segment__isnull=True)).first()
+    return generic or ads.first()
+
+
 def candidate_panel_context(request):
     candidate_id = request.session.get("candidate_id")
     if not candidate_id:
@@ -51,15 +63,7 @@ def candidate_panel_context(request):
         }
 
     segment, subscription = _candidate_subscription_segment(candidate.email)
-    sidebar_ad = (
-        Advertisement.objects.filter(
-            audience="candidate",
-            is_active=True,
-        )
-        .filter(Q(segment=segment) | Q(segment="") | Q(segment__isnull=True))
-        .order_by("-created_at")
-        .first()
-    )
+    sidebar_ad = _active_advertisement_for("candidate", segment)
 
     plan_name = "Free Candidate"
     expiry = None

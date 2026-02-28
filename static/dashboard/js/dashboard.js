@@ -143,12 +143,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Smooth scroll for sidebar
   const sidebar = document.querySelector('.sidebar');
   if (sidebar) {
-    sidebar.addEventListener('wheel', (e) => {
-      sidebar.scrollBy({
-        top: e.deltaY,
-        behavior: 'smooth'
-      });
-    }, { passive: true });
+    sidebar.style.scrollBehavior = 'smooth';
+    sidebar.style.webkitOverflowScrolling = 'touch';
   }
 
   // Close mobile sidebar on navigation
@@ -205,6 +201,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const adVideos = Array.from(document.querySelectorAll('.ad-media video'));
+  const safePlay = (video) => {
+    if (!video) return;
+    const promise = video.play();
+    if (promise && typeof promise.catch === 'function') {
+      promise.catch(() => {});
+    }
+  };
   const setMutedState = (video, muted) => {
     video.muted = muted;
     video.defaultMuted = muted;
@@ -218,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
   adVideos.forEach((video) => {
     setMutedState(video, true);
     const tryPlay = () => {
-      video.play().catch(() => {});
+      safePlay(video);
     };
     if (video.readyState >= 2) {
       tryPlay();
@@ -227,9 +230,50 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  const hasAudioTrack = (video) => {
+    if (typeof video.mozHasAudio === 'boolean') {
+      return video.mozHasAudio;
+    }
+    if (typeof video.webkitAudioDecodedByteCount === 'number') {
+      return video.webkitAudioDecodedByteCount > 0;
+    }
+    if (video.audioTracks && typeof video.audioTracks.length === 'number') {
+      return video.audioTracks.length > 0;
+    }
+    return true;
+  };
+
+  const setSoundState = (video, soundEnabled) => {
+    setMutedState(video, !soundEnabled);
+    if (soundEnabled) {
+      video.volume = 1;
+      if (video.audioTracks && typeof video.audioTracks.length === 'number') {
+        for (let idx = 0; idx < video.audioTracks.length; idx += 1) {
+          video.audioTracks[idx].enabled = true;
+        }
+      }
+    }
+    safePlay(video);
+  };
+
   const updateSoundButton = (button, video) => {
     const icon = button.querySelector('i');
     const label = button.querySelector('span');
+    if (!hasAudioTrack(video)) {
+      button.setAttribute('aria-pressed', 'false');
+      button.setAttribute('aria-label', 'No audio track');
+      button.disabled = true;
+      if (icon) {
+        icon.classList.remove('fa-volume-high');
+        icon.classList.add('fa-volume-xmark');
+      }
+      if (label) {
+        label.textContent = 'No Audio';
+      }
+      return;
+    }
+
+    button.disabled = false;
     if (video.muted) {
       button.setAttribute('aria-pressed', 'false');
       button.setAttribute('aria-label', 'Enable sound');
@@ -268,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (shouldUnmute) {
         adVideos.forEach((otherVideo) => {
           if (otherVideo === video) return;
-          setMutedState(otherVideo, true);
+          setSoundState(otherVideo, false);
           const otherButton = videoToButton.get(otherVideo);
           if (otherButton) {
             updateSoundButton(otherButton, otherVideo);
@@ -276,11 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
 
-      setMutedState(video, !shouldUnmute);
-      if (!video.muted) {
-        video.volume = 1;
-      }
-      video.play().catch(() => {});
+      setSoundState(video, shouldUnmute);
       updateSoundButton(button, video);
     });
   });

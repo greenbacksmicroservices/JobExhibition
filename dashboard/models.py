@@ -191,6 +191,29 @@ class Company(UserBase):
     auto_renew = models.BooleanField(default=False)
 
 
+class CompanyKycDocument(models.Model):
+    DOCUMENT_TYPE_CHOICES = [
+        ("gst_certificate", "GST Certificate"),
+        ("cin_certificate", "CIN Certificate"),
+        ("incorporation", "Certificate of Incorporation"),
+        ("address_proof", "Address Proof"),
+        ("other", "Other"),
+    ]
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="kyc_documents",
+    )
+    title = models.CharField(max_length=120, blank=True)
+    document_type = models.CharField(max_length=40, choices=DOCUMENT_TYPE_CHOICES, blank=True)
+    file = models.FileField(upload_to="documents/companies/kyc/")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"{self.company.name} - {self.title or self.document_type or 'Document'}"
+
+
 class Consultancy(UserBase):
     company_type = models.CharField(max_length=40, blank=True)
     registration_number = models.CharField(max_length=120, blank=True)

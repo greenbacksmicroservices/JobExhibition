@@ -147,6 +147,13 @@
         <option value="download">Bulk Download Resume</option>
         <option value="archive">Bulk Move to Archive</option>
       </select>
+      <input
+        type="text"
+        name="bulk_rejection_remark"
+        id="bulkRejectRemark"
+        placeholder="Bulk reject remark (required for reject)"
+        style="min-width: 220px; display: none;"
+      />
       <button class="btn ghost" type="submit">Apply</button>
     </form>
   </div>
@@ -200,6 +207,7 @@
           data-interview-mode="{{ app.interview_mode|default:''|escapejs }}"
           data-meeting-link="{{ app.meeting_link|default:''|escapejs }}"
           data-interviewer="{{ app.interviewer|default:''|escapejs }}"
+          data-rejection-remark="{{ app.rejection_remark|default:''|escapejs }}"
         >
           <td>
             <input type="checkbox" form="bulkForm" class="row-select" name="selected_ids" value="{{ app.application_id }}" />
@@ -283,6 +291,14 @@
                   <option value="{{ status }}" {% if app.display_status == status %}selected{% endif %}>{{ status }}</option>
                 {% endfor %}
               </select>
+              <input
+                type="text"
+                name="rejection_remark"
+                value="{{ app.rejection_remark|default:'' }}"
+                placeholder="Reason (required for Rejected)"
+                class="rejection-remark-input"
+                style="{% if app.display_status != 'Rejected' %}display:none;{% endif %}"
+              />
               <button class="action-btn" type="submit">Change</button>
             </form>
           </td>

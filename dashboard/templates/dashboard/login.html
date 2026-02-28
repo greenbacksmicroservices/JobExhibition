@@ -166,6 +166,66 @@
             box-shadow: 0 15px 30px rgba(0, 119, 182, 0.3);
         }
 
+        .form-row-actions { display: grid; gap: 10px; }
+
+        .btn-secondary {
+            width: 100%;
+            padding: 16px;
+            background: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(3, 105, 161, 0.12);
+        }
+
+        .otp-login-section {
+            margin-top: 12px;
+            padding: 14px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.78);
+            border: 1px solid rgba(3, 105, 161, 0.15);
+            display: none;
+        }
+
+        .auth-form.otp-mode .otp-login-section {
+            display: block;
+        }
+
+        .auth-form.otp-mode .password-group,
+        .auth-form.otp-mode .password-links,
+        .auth-form.otp-mode .password-login-actions,
+        .auth-form.otp-mode .otp-toggle-wrap {
+            display: none;
+        }
+
+        .otp-mode-head {
+            display: none;
+            margin-bottom: 10px;
+            color: #0369a1;
+            font-size: 0.84rem;
+            font-weight: 600;
+            text-align: left;
+            padding-left: 4px;
+        }
+
+        .auth-form.otp-mode .otp-mode-head {
+            display: block;
+        }
+
+        .otp-login-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
         .new-user-section {
             margin-top: 22px;
             font-size: 0.9rem;
@@ -199,6 +259,18 @@
             border-top: 1px solid rgba(0, 0, 0, 0.05);
             padding-top: 15px;
         }
+
+        .btn-link {
+            background: transparent;
+            border: none;
+            color: #0369a1;
+            font-size: 0.84rem;
+            font-weight: 600;
+            text-decoration: underline;
+            cursor: pointer;
+            padding: 0;
+            text-align: left;
+        }
     </style>
 </head>
 <body>
@@ -226,30 +298,53 @@
             {% endfor %}
         {% endif %}
 
-        <form method="post" action="">
+        <form method="post" action="" id="loginForm" class="auth-form{% if form_data.otp_mode == '1' %} otp-mode{% endif %}">
             {% csrf_token %}
 
             <div class="form-group">
                 <div class="input-wrapper">
                     <i class='bx bxs-user-circle icon-left'></i>
-                    <input type="text" name="username" placeholder="Username or Email" required>
+                    <input type="text" name="username" value="{{ form_data.username|default:'' }}" placeholder="Username or Email" required>
                 </div>
             </div>
 
-            <div class="form-group">
+            <div class="form-group password-group">
                 <div class="input-wrapper">
                     <i class='bx bxs-key icon-left'></i>
-                    <input type="password" name="password" id="login_password" placeholder="Password" required>
+                    <input type="password" name="password" id="login_password" placeholder="Password">
                     <i class='bx bx-show toggle-btn' onclick="togglePassword('login_password')"></i>
                 </div>
             </div>
 
-            <div class="flex-links">
+            <div class="flex-links password-links">
                 <span></span>
                 <a href="{% url 'dashboard:forgot_password' %}">Forgot Password?</a>
             </div>
 
-            <button type="submit" class="btn-login">Login</button>
+            <div class="form-row-actions password-login-actions">
+                <button type="submit" name="action" value="login" class="btn-login">Login</button>
+            </div>
+
+            <div style="margin-top: 10px;" class="otp-toggle-wrap">
+                <button type="button" class="btn-secondary" id="showOtpLoginBtn">Login with OTP</button>
+            </div>
+
+            <div id="otpLoginSection" class="otp-login-section">
+                <div class="otp-mode-head">OTP mode active: username/email + OTP se login karein.</div>
+                <div class="form-group">
+                    <div class="input-wrapper">
+                        <i class='bx bxs-message-square-dots icon-left'></i>
+                        <input type="text" id="loginOtpInput" name="login_otp" value="{{ form_data.login_otp|default:'' }}" placeholder="Enter OTP">
+                    </div>
+                </div>
+                <div style="margin: 2px 0 12px 0;">
+                    <button type="button" class="btn-link" id="usePasswordLoginBtn">Use password login instead</button>
+                </div>
+                <div class="otp-login-actions">
+                    <button type="submit" name="action" value="send_login_otp" class="btn-secondary">Send OTP</button>
+                    <button type="submit" name="action" value="login_with_otp" class="btn-secondary">Enter OTP</button>
+                </div>
+            </div>
         </form>
 
         <div class="new-user-section">
@@ -271,6 +366,44 @@
             const pass = document.getElementById(inputId);
             if (!pass) return;
             pass.type = pass.type === "password" ? "text" : "password";
+        }
+
+        const loginForm = document.getElementById('loginForm');
+        const otpToggleBtn = document.getElementById('showOtpLoginBtn');
+        const usePasswordBtn = document.getElementById('usePasswordLoginBtn');
+        const otpInput = document.getElementById('loginOtpInput');
+        const passwordInput = document.getElementById('login_password');
+
+        function setOtpMode(enabled) {
+            if (!loginForm) return;
+            loginForm.classList.toggle('otp-mode', !!enabled);
+            if (enabled) {
+                if (passwordInput) {
+                    passwordInput.value = "";
+                }
+                if (otpInput) {
+                    otpInput.focus();
+                }
+                return;
+            }
+            if (otpInput) {
+                otpInput.value = "";
+            }
+            if (passwordInput) {
+                passwordInput.focus();
+            }
+        }
+
+        if (otpToggleBtn) {
+            otpToggleBtn.addEventListener('click', function () {
+                setOtpMode(true);
+            });
+        }
+
+        if (usePasswordBtn) {
+            usePasswordBtn.addEventListener('click', function () {
+                setOtpMode(false);
+            });
         }
     </script>
 </body>

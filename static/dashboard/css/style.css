@@ -654,6 +654,8 @@ body.sidebar-collapsed .nav-sub {
     min-height: 100vh;
     height: 100vh;
     overflow-y: auto;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
     transition: margin-left 0.3s ease;
 }
 
@@ -2293,6 +2295,11 @@ details[open] .chevron {
 
 .ad-sound-toggle i {
     font-size: 12px;
+}
+
+.ad-sound-toggle:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
 }
 
 .activity-time {

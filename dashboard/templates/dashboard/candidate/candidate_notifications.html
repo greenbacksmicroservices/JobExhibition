@@ -19,29 +19,30 @@
       <p class="muted">Latest ad posted for your subscription audience.</p>
     </div>
   </div>
-  {% if advertisement %}
+  {% with current_ad=advertisement|default:candidate_sidebar_ad %}
+  {% if current_ad %}
     <div class="activity-item ad-item">
-      {% if advertisement.media_file %}
+      {% if current_ad.media_file %}
         <div class="ad-media">
-          {% if advertisement.media_kind == "video" %}
+          {% if current_ad.media_kind == "video" %}
             <video class="ad-video" autoplay muted loop playsinline preload="metadata">
-              <source src="{{ advertisement.media_file.url }}" />
+              <source src="{{ current_ad.media_file.url }}" />
             </video>
             <button class="ad-sound-toggle" type="button" data-ad-sound-toggle aria-pressed="false">
               <i class="fa-solid fa-volume-xmark"></i>
               <span>Sound</span>
             </button>
-          {% elif advertisement.media_kind == "image" %}
-            <img src="{{ advertisement.media_file.url }}" alt="Advertisement media" class="ad-image" loading="lazy" />
+          {% elif current_ad.media_kind == "image" %}
+            <img src="{{ current_ad.media_file.url }}" alt="Advertisement media" class="ad-image" loading="lazy" />
           {% endif %}
         </div>
       {% endif %}
       <div class="ad-item-content">
-        <strong>{{ advertisement.title|default:"Admin Update" }}</strong>
-        <span class="muted">{{ advertisement.message }}</span>
-        <span class="muted">Audience: {{ advertisement.segment|default:"General"|cut:"_"|title }}</span>
+        <strong>{{ current_ad.title|default:"Admin Update" }}</strong>
+        <span class="muted">{{ current_ad.message }}</span>
+        <span class="muted">Audience: {{ current_ad.segment|default:"General"|cut:"_"|title }}</span>
       </div>
-      <span class="activity-time">{{ advertisement.created_at|date:"d M Y" }}</span>
+      <span class="activity-time">{{ current_ad.created_at|date:"d M Y" }}</span>
     </div>
   {% else %}
     <div class="activity-item">
@@ -52,6 +53,7 @@
       <span class="activity-time">--</span>
     </div>
   {% endif %}
+  {% endwith %}
 </section>
 
 <section class="card">

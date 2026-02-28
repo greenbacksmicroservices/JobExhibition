@@ -28,6 +28,59 @@
     box.addEventListener('change', updateSelectAllState);
   });
 
+  const toggleRowRejectionRemark = (form) => {
+    if (!form) return;
+    const statusSelect = form.querySelector('select[name="status"]');
+    const remarkInput = form.querySelector('.rejection-remark-input');
+    if (!statusSelect || !remarkInput) return;
+    const isRejected = (statusSelect.value || '').toLowerCase() === 'rejected';
+    remarkInput.style.display = isRejected ? 'block' : 'none';
+    remarkInput.required = isRejected;
+  };
+
+  document.querySelectorAll('form.inline-form').forEach((form) => {
+    const statusSelect = form.querySelector('select[name="status"]');
+    if (statusSelect) {
+      statusSelect.addEventListener('change', () => toggleRowRejectionRemark(form));
+      toggleRowRejectionRemark(form);
+    }
+    form.addEventListener('submit', (event) => {
+      const currentStatus = (statusSelect && statusSelect.value ? statusSelect.value : '').toLowerCase();
+      const remarkInput = form.querySelector('.rejection-remark-input');
+      if (currentStatus === 'rejected' && remarkInput && !remarkInput.value.trim()) {
+        event.preventDefault();
+        alert('Please add rejection remark before rejecting this candidate.');
+      }
+    });
+  });
+
+  const bulkForm = document.getElementById('bulkForm');
+  const bulkActionSelect = bulkForm ? bulkForm.querySelector('select[name="bulk_action"]') : null;
+  const bulkRejectRemark = document.getElementById('bulkRejectRemark');
+
+  const toggleBulkRemarkField = () => {
+    if (!bulkActionSelect || !bulkRejectRemark) return;
+    const isReject = (bulkActionSelect.value || '').toLowerCase() === 'reject';
+    bulkRejectRemark.style.display = isReject ? 'inline-flex' : 'none';
+    bulkRejectRemark.required = isReject;
+  };
+
+  if (bulkActionSelect) {
+    bulkActionSelect.addEventListener('change', toggleBulkRemarkField);
+    toggleBulkRemarkField();
+  }
+
+  if (bulkForm) {
+    bulkForm.addEventListener('submit', (event) => {
+      if (!bulkActionSelect || !bulkRejectRemark) return;
+      const isReject = (bulkActionSelect.value || '').toLowerCase() === 'reject';
+      if (isReject && !bulkRejectRemark.value.trim()) {
+        event.preventDefault();
+        alert('Please add rejection remark for bulk reject action.');
+      }
+    });
+  }
+
   const text = (value, fallback = '--') => {
     return value && String(value).trim() ? value : fallback;
   };

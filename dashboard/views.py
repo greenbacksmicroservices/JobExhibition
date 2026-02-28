@@ -47,6 +47,7 @@ from .models import (
     CandidateResume,
     CandidateSkill,
     Company,
+    CompanyKycDocument,
     Consultancy,
     ConsultancyKycDocument,
     EmailVerificationToken,
@@ -60,6 +61,7 @@ from .models import (
     SubscriptionPlan,
     SubscriptionLog,
 )
+from .otp.sms import send_otp_sms
 
 PIPELINE_STATUSES = [
     "Applied",
@@ -86,6 +88,8 @@ FREE_EMAIL_DOMAINS = {
 }
 CAPTCHA_SESSION_PREFIX = "registration_captcha_"
 OTP_SESSION_PREFIX = "registration_otp_"
+LOGIN_OTP_SESSION_KEY = "login_otp_payload"
+PASSWORD_RESET_OTP_SESSION_KEY = "password_reset_otp_payload"
 OTP_TTL_SECONDS = 10 * 60
 MIN_PROFILE_COMPLETION_TO_APPLY = 60
 PASSWORD_RESET_TTL_MINUTES = 30
@@ -151,9 +155,12 @@ def _active_advertisement_for(audience, segment=""):
     ads = Advertisement.objects.filter(
         audience=audience,
         is_active=True,
-    )
-    ads = ads.filter(Q(segment=segment) | Q(segment="") | Q(segment__isnull=True))
-    return ads.order_by("-created_at").first()
+    ).order_by("-created_at")
+    scoped = ads.filter(Q(segment=segment) | Q(segment="") | Q(segment__isnull=True)).first()
+    if scoped:
+        return scoped
+    generic = ads.filter(Q(segment="") | Q(segment__isnull=True)).first()
+    return generic or ads.first()
 
 
 def _consultancy_job_status(status):
@@ -484,19 +491,33 @@ def _validate_registration_captcha(request, flow_key, answer):
     return bool(expected and expected == (answer or "").strip())
 
 
-def _issue_registration_otp(request, flow_key, phone):
+def _mask_phone_number(phone):
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) < 4:
+        return "****"
+    return f"{'*' * max(len(digits) - 4, 0)}{digits[-4:]}"
+
+
+def _issue_session_otp(request, session_key, phone, extra_payload=None):
+    clean_phone = (phone or "").strip()
     otp_value = f"{random.randint(100000, 999999)}"
-    session_key = f"{OTP_SESSION_PREFIX}{flow_key}"
-    request.session[session_key] = {
-        "phone": (phone or "").strip(),
+    is_sent, error_message = send_otp_sms(clean_phone, otp_value)
+    if not is_sent:
+        request.session.pop(session_key, None)
+        return "", error_message or "Unable to send OTP right now. Please try again."
+
+    payload = {
+        "phone": clean_phone,
         "otp": otp_value,
         "created_at": int(timezone.now().timestamp()),
     }
-    return otp_value
+    if extra_payload:
+        payload.update(extra_payload)
+    request.session[session_key] = payload
+    return otp_value, ""
 
 
-def _validate_registration_otp(request, flow_key, phone, otp_value):
-    session_key = f"{OTP_SESSION_PREFIX}{flow_key}"
+def _validate_session_otp(request, session_key, phone, otp_value):
     payload = request.session.get(session_key) or {}
     expected_phone = (payload.get("phone") or "").strip()
     expected_otp = (payload.get("otp") or "").strip()
@@ -511,8 +532,22 @@ def _validate_registration_otp(request, flow_key, phone, otp_value):
     return expected_otp == (otp_value or "").strip()
 
 
+def _clear_session_otp(request, session_key):
+    request.session.pop(session_key, None)
+
+
+def _issue_registration_otp(request, flow_key, phone):
+    session_key = f"{OTP_SESSION_PREFIX}{flow_key}"
+    return _issue_session_otp(request, session_key, phone)
+
+
+def _validate_registration_otp(request, flow_key, phone, otp_value):
+    session_key = f"{OTP_SESSION_PREFIX}{flow_key}"
+    return _validate_session_otp(request, session_key, phone, otp_value)
+
+
 def _clear_registration_otp(request, flow_key):
-    request.session.pop(f"{OTP_SESSION_PREFIX}{flow_key}", None)
+    _clear_session_otp(request, f"{OTP_SESSION_PREFIX}{flow_key}")
 
 
 def _client_ip(request):
@@ -618,6 +653,32 @@ def _find_password_reset_account(identifier):
         return ("candidate", candidate, candidate.email)
 
     return (None, None, "")
+
+
+def _resolve_account_phone(account_type, account):
+    if not account:
+        return ""
+    account_type = (account_type or "").strip().lower()
+    if account_type == "admin":
+        try:
+            profile = account.admin_profile
+        except AdminProfile.DoesNotExist:
+            profile = None
+        return ((profile.phone if profile else "") or "").strip()
+    if account_type == "company":
+        return ((getattr(account, "phone", "") or getattr(account, "hr_phone", "")) or "").strip()
+    if account_type == "consultancy":
+        return (
+            (
+                getattr(account, "phone", "")
+                or getattr(account, "alt_phone", "")
+                or getattr(account, "owner_phone", "")
+            )
+            or ""
+        ).strip()
+    if account_type == "candidate":
+        return ((getattr(account, "phone", "") or getattr(account, "alt_phone", "")) or "").strip()
+    return ""
 
 
 def _create_password_reset_token(account_type, account_id, email):
@@ -733,23 +794,136 @@ def login_view(request):
     if request.session.get("candidate_id"):
         return redirect("dashboard:candidate_job_search")
 
+    form_data = {"username": "", "login_otp": "", "otp_mode": "0"}
+
+    def _render_login():
+        return render(request, "dashboard/login.html", {"form_data": form_data})
+
     if request.method == "POST":
+        action = (request.POST.get("action") or "login").strip().lower()
         username = (request.POST.get("username") or "").strip()
         password = request.POST.get("password") or ""
+        login_otp = (request.POST.get("login_otp") or "").strip()
 
-        if not username or not password:
-            messages.error(request, "Username/email and password are required.")
+        form_data = {
+            "username": username,
+            "login_otp": login_otp,
+            "otp_mode": "1" if action in {"send_login_otp", "login_with_otp"} else "0",
+        }
+
+        user_model = get_user_model()
+
+        def _login_admin(user):
+            login(request, user)
             _record_login_history(
                 request,
-                "unknown",
-                username_or_email=username,
-                is_success=False,
-                note="missing credentials",
+                "admin",
+                username_or_email=user.email or user.username,
+                account_id=user.id,
+                is_success=True,
+                note="login success",
             )
-            return render(request, "dashboard/login.html")
+            _clear_session_otp(request, LOGIN_OTP_SESSION_KEY)
+            response = redirect("dashboard:welcome")
+            response.set_cookie("welcome_type", "admin", max_age=5, samesite="Lax")
+            response.set_cookie("welcome_next", "dashboard:dashboard", max_age=5, samesite="Lax")
+            return response
+
+        def _send_login_otp_for(account_type, account):
+            phone = _resolve_account_phone(account_type, account)
+            if not phone:
+                messages.error(request, "Mobile number not available for this account. Please update profile first.")
+                return False
+            if not re.match(r"^\+?\d{10,15}$", phone):
+                messages.error(request, "Registered mobile number format is invalid. Please update your profile.")
+                return False
+
+            _, otp_error = _issue_session_otp(
+                request,
+                LOGIN_OTP_SESSION_KEY,
+                phone,
+                {
+                    "account_type": (account_type or "").strip().lower(),
+                    "account_id": str(account.id),
+                },
+            )
+            if otp_error:
+                messages.error(request, otp_error)
+                return False
+            messages.success(
+                request,
+                f"Login OTP sent to mobile ending {_mask_phone_number(phone)}.",
+            )
+            return True
+
+        def _validate_login_otp_for(account_type, account, entered_otp):
+            phone = _resolve_account_phone(account_type, account)
+            if not phone:
+                return False, "Mobile number not available for this account. Please update profile first."
+            payload = request.session.get(LOGIN_OTP_SESSION_KEY) or {}
+            if (
+                (payload.get("account_type") or "").strip().lower() != (account_type or "").strip().lower()
+                or str(payload.get("account_id") or "") != str(account.id)
+            ):
+                return False, "Please request OTP first."
+            if not entered_otp:
+                return False, "Please enter OTP."
+            if not _validate_session_otp(request, LOGIN_OTP_SESSION_KEY, phone, entered_otp):
+                return False, "Invalid or expired OTP. Please request a new OTP."
+            return True, ""
+
+        def _resolve_login_identifier(identifier):
+            value = (identifier or "").strip()
+            if not value:
+                return (None, None)
+
+            admin_user = user_model.objects.filter(
+                Q(username__iexact=value) | Q(email__iexact=value),
+            ).filter(Q(is_staff=True) | Q(is_superuser=True)).first()
+            if admin_user:
+                return ("admin", admin_user)
+
+            company = Company.objects.filter(Q(name__iexact=value) | Q(email__iexact=value)).first()
+            if company:
+                return ("company", company)
+
+            consultancy = Consultancy.objects.filter(Q(name__iexact=value) | Q(email__iexact=value)).first()
+            if consultancy:
+                return ("consultancy", consultancy)
+
+            candidate = Candidate.objects.filter(Q(name__iexact=value) | Q(email__iexact=value)).first()
+            if candidate:
+                return ("candidate", candidate)
+
+            return (None, None)
+
+        def _check_account_access(account_type, account):
+            if not account:
+                return (False, "Invalid username/email.", "invalid identifier")
+            if account_type == "company" and not account.email_verified:
+                return (False, "Please verify your email before login.", "email not verified")
+            if account_type == "consultancy" and account.kyc_status != "Verified":
+                if account.kyc_status == "Rejected":
+                    return (False, "Your account has been rejected. Please contact support.", "kyc rejected")
+                return (False, "Your account is under review. Please wait for admin approval.", "kyc not verified")
+            if account_type == "candidate" and not account.email_verified:
+                return (False, "Please verify your email before login.", "email not verified")
+            return (True, "", "")
+
+        def _login_from_otp(account_type, account):
+            if account_type == "admin":
+                return _login_admin(account)
+            if account_type == "company":
+                return _login_company(account)
+            if account_type == "consultancy":
+                return _login_consultancy(account)
+            if account_type == "candidate":
+                return _login_candidate(account)
+            messages.error(request, "Unsupported account type for OTP login.")
+            return _render_login()
 
         def _login_company(company):
-            if company.password and not _is_hashed_password(company.password):
+            if password and company.password and not _is_hashed_password(company.password):
                 company.password = make_password(password)
                 company.save(update_fields=["password"])
             company.last_login = timezone.now()
@@ -764,13 +938,14 @@ def login_view(request):
                 is_success=True,
                 note="login success",
             )
+            _clear_session_otp(request, LOGIN_OTP_SESSION_KEY)
             response = redirect("dashboard:welcome")
             response.set_cookie("welcome_type", "company", max_age=5, samesite="Lax")
             response.set_cookie("welcome_next", "dashboard:company_dashboard", max_age=5, samesite="Lax")
             return response
 
         def _login_consultancy(consultancy):
-            if consultancy.password and not _is_hashed_password(consultancy.password):
+            if password and consultancy.password and not _is_hashed_password(consultancy.password):
                 consultancy.password = make_password(password)
                 consultancy.save(update_fields=["password"])
             consultancy.last_login = timezone.now()
@@ -785,13 +960,14 @@ def login_view(request):
                 is_success=True,
                 note="login success",
             )
+            _clear_session_otp(request, LOGIN_OTP_SESSION_KEY)
             response = redirect("dashboard:welcome")
             response.set_cookie("welcome_type", "consultancy", max_age=5, samesite="Lax")
             response.set_cookie("welcome_next", "dashboard:consultancy_dashboard", max_age=5, samesite="Lax")
             return response
 
         def _login_candidate(candidate):
-            if candidate.password and not _is_hashed_password(candidate.password):
+            if password and candidate.password and not _is_hashed_password(candidate.password):
                 candidate.password = make_password(password)
                 candidate.save(update_fields=["password"])
             completion = candidate.profile_completion or _calculate_candidate_completion(candidate)
@@ -811,27 +987,63 @@ def login_view(request):
                 is_success=True,
                 note="login success",
             )
+            _clear_session_otp(request, LOGIN_OTP_SESSION_KEY)
             response = redirect("dashboard:welcome")
             response.set_cookie("welcome_type", "candidate", max_age=5, samesite="Lax")
             response.set_cookie("welcome_next", "dashboard:candidate_job_search", max_age=5, samesite="Lax")
             return response
 
+        if action in {"send_login_otp", "login_with_otp"}:
+            if not username:
+                messages.error(request, "Username/email is required for OTP login.")
+                return _render_login()
+            account_type, account = _resolve_login_identifier(username)
+            allowed, error_message, audit_note = _check_account_access(account_type, account)
+            if not allowed:
+                messages.error(request, error_message)
+                _record_login_history(
+                    request,
+                    account_type or "unknown",
+                    username_or_email=username,
+                    account_id=getattr(account, "id", None),
+                    is_success=False,
+                    note=audit_note or "otp login blocked",
+                )
+                return _render_login()
+
+            if action == "send_login_otp":
+                _send_login_otp_for(account_type, account)
+                return _render_login()
+
+            is_valid_otp, otp_error = _validate_login_otp_for(account_type, account, login_otp)
+            if not is_valid_otp:
+                messages.error(request, otp_error)
+                _record_login_history(
+                    request,
+                    account_type or "unknown",
+                    username_or_email=username,
+                    account_id=getattr(account, "id", None),
+                    is_success=False,
+                    note="otp login failed",
+                )
+                return _render_login()
+            return _login_from_otp(account_type, account)
+
+        if not username or not password:
+            messages.error(request, "Username/email and password are required.")
+            _record_login_history(
+                request,
+                "unknown",
+                username_or_email=username,
+                is_success=False,
+                note="missing credentials",
+            )
+            return _render_login()
+
         # Admin login by Django auth credentials
         user = authenticate(request, username=username, password=password)
         if user and (user.is_staff or user.is_superuser):
-            login(request, user)
-            _record_login_history(
-                request,
-                "admin",
-                username_or_email=user.email or user.username,
-                account_id=user.id,
-                is_success=True,
-                note="login success",
-            )
-            response = redirect("dashboard:welcome")
-            response.set_cookie("welcome_type", "admin", max_age=5, samesite="Lax")
-            response.set_cookie("welcome_next", "dashboard:dashboard", max_age=5, samesite="Lax")
-            return response
+            return _login_admin(user)
 
         # Company login by username or email
         company = Company.objects.filter(Q(name__iexact=username) | Q(email__iexact=username)).first()
@@ -846,7 +1058,7 @@ def login_view(request):
                     is_success=False,
                     note="email not verified",
                 )
-                return render(request, "dashboard/login.html")
+                return _render_login()
             return _login_company(company)
 
         # Demo company credentials
@@ -899,7 +1111,7 @@ def login_view(request):
                     is_success=False,
                     note="kyc not verified",
                 )
-                return render(request, "dashboard/login.html")
+                return _render_login()
             return _login_consultancy(consultancy)
 
         # Demo consultancy credentials
@@ -920,7 +1132,11 @@ def login_view(request):
                     payment_status="Paid",
                     plan_start=today,
                     plan_expiry=today + timezone.timedelta(days=30),
+                    phone="+910000000010",
                 )
+            elif not consultancy.phone:
+                consultancy.phone = "+910000000010"
+                consultancy.save(update_fields=["phone"])
             return _login_consultancy(consultancy)
 
         # Candidate login by username or email
@@ -936,7 +1152,7 @@ def login_view(request):
                     is_success=False,
                     note="email not verified",
                 )
-                return render(request, "dashboard/login.html")
+                return _render_login()
             return _login_candidate(candidate)
 
         # Demo candidate credentials
@@ -954,11 +1170,19 @@ def login_view(request):
                     registration_date=today,
                     email_verified=True,
                     phone_verified=True,
+                    phone="+910000000001",
                 )
             elif not candidate.email_verified:
                 candidate.email_verified = True
                 candidate.phone_verified = True
-                candidate.save(update_fields=["email_verified", "phone_verified"])
+                if not candidate.phone:
+                    candidate.phone = "+910000000001"
+                    candidate.save(update_fields=["email_verified", "phone_verified", "phone"])
+                else:
+                    candidate.save(update_fields=["email_verified", "phone_verified"])
+            elif not candidate.phone:
+                candidate.phone = "+910000000001"
+                candidate.save(update_fields=["phone"])
             return _login_candidate(candidate)
 
         messages.error(request, "Invalid username/email or password.")
@@ -969,19 +1193,88 @@ def login_view(request):
             is_success=False,
             note="invalid credentials",
         )
+        return _render_login()
 
-    return render(request, "dashboard/login.html")
+    return _render_login()
 
 
 def forgot_password_view(request):
+    form_data = {"identifier": "", "mobile_otp": ""}
+
     if request.method == "POST":
+        action = (request.POST.get("action") or "send_reset_link").strip().lower()
         identifier = (request.POST.get("identifier") or "").strip()
+        mobile_otp = (request.POST.get("mobile_otp") or "").strip()
+        form_data = {
+            "identifier": identifier,
+            "mobile_otp": mobile_otp,
+        }
         if not identifier:
             messages.error(request, "Please enter your email address or mobile number.")
-            return render(request, "dashboard/forgot_password.html")
+            return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
 
         account_type, account, email = _find_password_reset_account(identifier)
+        phone = _resolve_account_phone(account_type, account)
+
+        if action == "send_otp":
+            if not account:
+                messages.success(
+                    request,
+                    "If account exists, OTP has been sent to the registered mobile number.",
+                )
+                return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+            if not phone:
+                messages.error(request, "No mobile number found for this account. Please contact support.")
+                return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+            if not re.match(r"^\+?\d{10,15}$", phone):
+                messages.error(request, "Registered mobile number format is invalid.")
+                return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+
+            _, otp_error = _issue_session_otp(
+                request,
+                PASSWORD_RESET_OTP_SESSION_KEY,
+                phone,
+                {
+                    "account_type": (account_type or "").strip().lower(),
+                    "account_id": str(account.id),
+                    "email": (email or "").strip().lower(),
+                },
+            )
+            if otp_error:
+                messages.error(request, otp_error)
+            else:
+                messages.success(
+                    request,
+                    f"OTP sent to mobile ending {_mask_phone_number(phone)}.",
+                )
+            return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+
         if account and email:
+            requires_otp = getattr(settings, "FORGOT_PASSWORD_OTP_REQUIRED", True)
+            if requires_otp:
+                if not phone:
+                    messages.error(request, "No mobile number found for this account. Please contact support.")
+                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+                payload = request.session.get(PASSWORD_RESET_OTP_SESSION_KEY) or {}
+                if (
+                    (payload.get("account_type") or "").strip().lower() != (account_type or "").strip().lower()
+                    or str(payload.get("account_id") or "") != str(account.id)
+                    or (payload.get("email") or "").strip().lower() != (email or "").strip().lower()
+                ):
+                    messages.error(request, "Please request OTP first.")
+                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+                if not mobile_otp:
+                    messages.error(request, "Please enter OTP to continue.")
+                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+                if not _validate_session_otp(
+                    request,
+                    PASSWORD_RESET_OTP_SESSION_KEY,
+                    phone,
+                    mobile_otp,
+                ):
+                    messages.error(request, "Invalid or expired OTP. Please request a new OTP.")
+                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+            _clear_session_otp(request, PASSWORD_RESET_OTP_SESSION_KEY)
             _send_password_reset_link(request, account_type, account, email)
         messages.success(
             request,
@@ -989,7 +1282,7 @@ def forgot_password_view(request):
         )
         return redirect("dashboard:forgot_password")
 
-    return render(request, "dashboard/forgot_password.html")
+    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
 
 
 def password_reset_confirm_view(request, token):
@@ -1091,8 +1384,11 @@ def company_register_view(request):
             elif not re.match(r"^\+?\d{10,15}$", phone):
                 messages.error(request, "Enter a valid mobile number (10 to 15 digits).")
             else:
-                otp_value = _issue_registration_otp(request, flow_key, phone)
-                messages.success(request, f"OTP sent successfully. Demo OTP: {otp_value}")
+                _, otp_error = _issue_registration_otp(request, flow_key, phone)
+                if otp_error:
+                    messages.error(request, otp_error)
+                else:
+                    messages.success(request, "OTP sent successfully to your mobile number.")
             captcha_question = _set_registration_captcha(request, flow_key)
             return render(
                 request,
@@ -1315,8 +1611,11 @@ def candidate_register_view(request):
             elif not re.match(r"^\+?\d{10,15}$", phone):
                 messages.error(request, "Enter a valid mobile number (10 to 15 digits).")
             else:
-                otp_value = _issue_registration_otp(request, flow_key, phone)
-                messages.success(request, f"OTP sent successfully. Demo OTP: {otp_value}")
+                _, otp_error = _issue_registration_otp(request, flow_key, phone)
+                if otp_error:
+                    messages.error(request, otp_error)
+                else:
+                    messages.success(request, "OTP sent successfully to your mobile number.")
             captcha_question = _set_registration_captcha(request, flow_key)
             return render(
                 request,
@@ -5164,13 +5463,50 @@ def company_profile_view(request):
         elif action == "update_kyc":
             company.gst_number = (request.POST.get("gst_number") or "").strip()
             company.cin_number = (request.POST.get("cin_number") or "").strip()
-            if request.FILES.get("registration_document"):
-                company.registration_document = request.FILES["registration_document"]
+            primary_doc = request.FILES.get("registration_document")
+            extra_docs = [doc for doc in request.FILES.getlist("kyc_documents") if doc]
+            uploaded_docs = []
+
+            if primary_doc:
+                company.registration_document = primary_doc
+                uploaded_docs.append(primary_doc)
+            uploaded_docs.extend(extra_docs)
+
             company.save(update_fields=["gst_number", "cin_number", "registration_document"])
-            messages.success(request, "KYC details updated.")
+
+            doc_titles = [(item or "").strip() for item in request.POST.getlist("kyc_document_title")]
+            doc_types = [(item or "").strip() for item in request.POST.getlist("kyc_document_type")]
+            allowed_types = {choice[0] for choice in CompanyKycDocument.DOCUMENT_TYPE_CHOICES}
+            uploaded_count = 0
+
+            for index, upload in enumerate(uploaded_docs):
+                title = doc_titles[index] if index < len(doc_titles) else ""
+                doc_type = doc_types[index] if index < len(doc_types) else "other"
+                if doc_type not in allowed_types:
+                    doc_type = "other"
+                CompanyKycDocument.objects.create(
+                    company=company,
+                    title=title or os.path.basename(upload.name or ""),
+                    document_type=doc_type,
+                    file=upload,
+                )
+                uploaded_count += 1
+
+            if uploaded_count:
+                messages.success(request, f"KYC details updated. {uploaded_count} document(s) uploaded.")
+            else:
+                messages.success(request, "KYC details updated.")
         return redirect("dashboard:company_profile")
-    
-    return render(request, "dashboard/company/company_profile.html", {"company": company})
+
+    kyc_documents = company.kyc_documents.order_by("-uploaded_at")
+    return render(
+        request,
+        "dashboard/company/company_profile.html",
+        {
+            "company": company,
+            "kyc_documents": kyc_documents,
+        },
+    )
 
 
 @company_login_required
@@ -5344,12 +5680,28 @@ def company_applications_view(request):
 
         if action == "update_status":
             application_id = request.POST.get("application_id")
-            new_status = request.POST.get("status")
+            new_status = (request.POST.get("status") or "").strip()
+            rejection_remark = (request.POST.get("rejection_remark") or "").strip()
             if application_id and new_status:
-                Application.objects.filter(
+                if new_status == "Rejected" and not rejection_remark:
+                    messages.error(request, "Please add rejection remark before marking candidate as Rejected.")
+                    return redirect(next_url)
+
+                update_fields = {
+                    "status": new_status,
+                    "updated_at": timezone.now(),
+                }
+                if new_status == "Rejected":
+                    update_fields["notes"] = rejection_remark
+
+                updated = Application.objects.filter(
                     company__iexact=company_name,
                     application_id=application_id,
-                ).update(status=new_status, updated_at=timezone.now())
+                ).update(**update_fields)
+                if updated:
+                    messages.success(request, "Application status updated.")
+                else:
+                    messages.error(request, "Unable to update application status.")
 
         elif action == "schedule_interview":
             application_id = request.POST.get("application_id")
@@ -5433,6 +5785,11 @@ def company_applications_view(request):
         elif action == "bulk":
             selected_ids = request.POST.getlist("selected_ids")
             bulk_action = (request.POST.get("bulk_action") or "").strip()
+            bulk_rejection_remark = (request.POST.get("bulk_rejection_remark") or "").strip()
+            if not selected_ids:
+                messages.error(request, "Please select at least one application.")
+                return redirect(next_url)
+
             scoped_qs = Application.objects.filter(
                 company__iexact=company_name,
                 application_id__in=selected_ids,
@@ -5440,10 +5797,20 @@ def company_applications_view(request):
 
             if bulk_action == "shortlist":
                 scoped_qs.update(status="Shortlisted", updated_at=timezone.now())
+                messages.success(request, "Selected applications moved to Shortlisted.")
             elif bulk_action == "reject":
-                scoped_qs.update(status="Rejected", updated_at=timezone.now())
+                if not bulk_rejection_remark:
+                    messages.error(request, "Please add rejection remark for bulk reject action.")
+                    return redirect(next_url)
+                scoped_qs.update(
+                    status="Rejected",
+                    notes=bulk_rejection_remark,
+                    updated_at=timezone.now(),
+                )
+                messages.success(request, "Selected applications rejected with remark.")
             elif bulk_action == "archive":
                 scoped_qs.update(status="Archived", updated_at=timezone.now())
+                messages.success(request, "Selected applications archived.")
             elif bulk_action == "email":
                 response = HttpResponse(content_type="text/csv")
                 response["Content-Disposition"] = 'attachment; filename="bulk_emails.csv"'
@@ -5535,6 +5902,7 @@ def company_applications_view(request):
             app.display_status = "Selected"
         else:
             app.display_status = app.status
+        app.rejection_remark = app.notes if app.status == "Rejected" else ""
         app.skill_tags = split_skills(app.skills)[:3]
         app.all_skill_tags = split_skills(app.skills)
         app.skill_match = None

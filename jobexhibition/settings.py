@@ -10,10 +10,48 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _env_bool(key, default=False):
+    value = os.getenv(key)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(key, default):
+    value = os.getenv(key)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_list(key, default=None):
+    value = os.getenv(key)
+    if value is None:
+        return default or []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _env_str(key, default=""):
+    value = os.getenv(key)
+    if value is None:
+        return default
+    value = value.strip()
+    if len(value) >= 2 and (
+        (value[0] == '"' and value[-1] == '"')
+        or (value[0] == "'" and value[-1] == "'")
+    ):
+        value = value[1:-1].strip()
+    return value
 
 
 # Quick-start development settings - unsuitable for production
@@ -23,9 +61,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-*=&sde3n-m0o*h6(jntu+-k%8lmc@@2x&!voya)_8t+1!$3!!j'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = _env_bool("DJANGO_DEBUG", default=True)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS", ["localhost", "127.0.0.1"])
 
 
 # Application definition
@@ -42,6 +80,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -118,11 +157,15 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+if not DEBUG:
+    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+SERVE_MEDIA_FILES = _env_bool("SERVE_MEDIA_FILES", default=True)
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 DEFAULT_FROM_EMAIL = 'no-reply@jobexhibition.local'
@@ -130,6 +173,32 @@ DEFAULT_FROM_EMAIL = 'no-reply@jobexhibition.local'
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/admin-dashboard/'
 LOGOUT_REDIRECT_URL = '/login/'
+
+# OTP / SMS settings
+OTP_SMS_API_KEY = _env_str(
+    'OTP_SMS_API_KEY',
+    'XW8UdfD7hV5soeyuQG9ONj0kpmFBlJS2w6nLirME1zaCKZ3TvHyYXTkDj31MEqIiUfwQm4V8pKCcH6av',
+)
+_otp_default_provider = 'fast2sms'
+OTP_SMS_PROVIDER = _env_str('OTP_SMS_PROVIDER', _otp_default_provider).lower()
+OTP_SMS_API_URL = _env_str('OTP_SMS_API_URL', 'https://www.fast2sms.com/dev/bulkV2')
+OTP_SMS_MESSAGE_TEMPLATE = _env_str(
+    'OTP_SMS_MESSAGE_TEMPLATE',
+    'Your OTP for JobExhibition is {otp}. It is valid for {ttl_minutes} minutes.',
+)
+OTP_SMS_TIMEOUT_SECONDS = _env_int('OTP_SMS_TIMEOUT_SECONDS', 10)
+OTP_FAST2SMS_ROUTE = _env_str('OTP_FAST2SMS_ROUTE', 'dlt')
+OTP_FAST2SMS_LANGUAGE = _env_str('OTP_FAST2SMS_LANGUAGE', 'english')
+OTP_FAST2SMS_FLASH = _env_int('OTP_FAST2SMS_FLASH', 0)
+OTP_FAST2SMS_SENDER_ID = _env_str('OTP_FAST2SMS_SENDER_ID', 'GBMSF')
+OTP_FAST2SMS_ENTITY_ID = _env_str('OTP_FAST2SMS_ENTITY_ID', '')
+OTP_FAST2SMS_TEMPLATE_ID = _env_str('OTP_FAST2SMS_TEMPLATE_ID', '')
+OTP_FAST2SMS_MESSAGE_ID = _env_str('OTP_FAST2SMS_MESSAGE_ID', '202469')
+OTP_FAST2SMS_VARIABLES_VALUES = _env_str('OTP_FAST2SMS_VARIABLES_VALUES', '{otp}')
+OTP_FAST2SMS_SCHEDULE_TIME = _env_str('OTP_FAST2SMS_SCHEDULE_TIME', '')
+OTP_DEBUG_SHOW_IN_MESSAGES = _env_bool('OTP_DEBUG_SHOW_IN_MESSAGES', default=False)
+LOGIN_OTP_REQUIRED = _env_bool('LOGIN_OTP_REQUIRED', default=False)
+FORGOT_PASSWORD_OTP_REQUIRED = _env_bool('FORGOT_PASSWORD_OTP_REQUIRED', default=True)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

@@ -7,6 +7,7 @@ import random
 import re
 import secrets
 import zipfile
+from datetime import date, timedelta
 from itertools import zip_longest
 from pathlib import Path
 from functools import wraps
@@ -20,7 +21,7 @@ from django.contrib.auth.hashers import check_password, identify_hasher, make_pa
 from django.core.files.base import ContentFile
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
-from django.db import IntegrityError
+from django.db import IntegrityError, OperationalError, close_old_connections
 from django.db.models import Q, Count, Sum, F
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render

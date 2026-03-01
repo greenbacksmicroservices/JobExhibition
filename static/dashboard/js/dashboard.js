@@ -9,6 +9,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const messageLinks = document.querySelectorAll('a.icon-btn[aria-label="Messages"]');
 
   const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
+  const storage = {
+    get: (key) => {
+      try {
+        return window.localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    set: (key, value) => {
+      try {
+        window.localStorage.setItem(key, String(value));
+      } catch {
+        // Ignore storage errors and keep UI responsive.
+      }
+    },
+  };
 
   const iconPaths = {
     menu: 'M4 6h16M4 12h16M4 18h16',
@@ -23,6 +39,25 @@ document.addEventListener('DOMContentLoaded', () => {
     chart: 'M4 20h16M7 16V9m5 7V5m5 11v-4',
     calendar: 'M7 3v3m10-3v3M4 8h16M5 6h14a1 1 0 0 1 1 1v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a1 1 0 0 1 1-1z',
     file: 'M6 3h8l4 4v14H6zM14 3v4h4',
+    image: 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm3 10 3-3 3 4 4-5 2 4',
+    key: 'M15 7a4 4 0 1 1-3.9 4.8H3v2h2v2h2v2h2v-2h2.1A4 4 0 0 1 15 7z',
+    home: 'M3 11.5 9.5 6 12 4l2.5 2 6.5 5.5M5 10.5V20h14v-9.5',
+    card: 'M3 7h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7zm0 4h18',
+    flag: 'M5 3v18M5 4h10l-1.5 3L15 10H5',
+    shield: 'M12 3l7 3v6c0 4.4-2.8 8.4-7 9.9C7.8 20.4 5 16.4 5 12V6l7-3z',
+    download: 'M12 4v10m0 0 4-4m-4 4-4-4M4 20h16',
+    inbox: 'M4 5h16v10H15l-3 3-3-3H4V5z',
+    plus: 'M12 5v14M5 12h14',
+    filter: 'M4 5h16l-6 7v6l-4 2v-8L4 5z',
+    trash: 'M6 7h12M9 7V5h6v2m-8 3v8m4-8v8m4-8v8M7 20h10a1 1 0 0 0 1-1V7H6v12a1 1 0 0 0 1 1z',
+    clock: 'M12 7v5l3 3M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
+    eye: 'M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+    gift: 'M20 12v8H4v-8m16 0H4m0 0V8h16v4M12 8v12M8 8a2 2 0 1 1 0-4c2 0 4 4 4 4s-2 0-4 0zm8 0a2 2 0 1 0 0-4c-2 0-4 4-4 4s2 0 4 0z',
+    pen: 'M4 20h4l10-10-4-4L4 16v4zm9-13 4 4',
+    location: 'M12 21s6-5.4 6-10a6 6 0 1 0-12 0c0 4.6 6 10 6 10zm0-7a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+    bolt: 'M13 2 5 13h6l-1 9 8-11h-6l1-9z',
+    wallet: 'M3 7h18v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7zm14 6h3',
+    coins: 'M7 7c0 1.7 2.2 3 5 3s5-1.3 5-3-2.2-3-5-3-5 1.3-5 3zm0 5c0 1.7 2.2 3 5 3s5-1.3 5-3m-10 5c0 1.7 2.2 3 5 3s5-1.3 5-3',
     settings: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm8 3-2 .6a6 6 0 0 1-.6 1.4l1.2 1.7-1.4 1.4-1.7-1.2c-.4.2-.9.4-1.4.6L13 20h-2l-.6-2a6 6 0 0 1-1.4-.6l-1.7 1.2-1.4-1.4 1.2-1.7a6 6 0 0 1-.6-1.4L4 12l2-.6c.1-.5.3-1 .6-1.4L5.4 8.3 6.8 6.9l1.7 1.2c.4-.2.9-.4 1.4-.6L11 4h2l.6 2c.5.1 1 .3 1.4.6l1.7-1.2 1.4 1.4-1.2 1.7c.2.4.4.9.6 1.4L20 12z',
     support: 'M12 3a7 7 0 0 1 7 7v2a5 5 0 0 1-5 5h-1v3h-2v-3H9a5 5 0 0 1-5-5v-2a7 7 0 0 1 7-7z',
     logout: 'M15 4h4v16h-4M10 8l4 4-4 4M14 12H4',
@@ -47,17 +82,53 @@ document.addEventListener('DOMContentLoaded', () => {
     'fa-moon': iconPaths.moon,
     'fa-sun': iconPaths.sun,
     'fa-envelope': iconPaths.message,
+    'fa-comments': iconPaths.message,
     'fa-magnifying-glass': iconPaths.search,
     'fa-bell': iconPaths.bell,
     'fa-user': iconPaths.user,
     'fa-user-check': iconPaths.user,
+    'fa-user-group': iconPaths.user,
     'fa-users': iconPaths.user,
+    'fa-house': iconPaths.home,
+    'fa-id-badge': iconPaths.user,
     'fa-briefcase': iconPaths.briefcase,
     'fa-chart-line': iconPaths.chart,
+    'fa-chart-bar': iconPaths.chart,
     'fa-chart-pie': iconPaths.chart,
     'fa-calendar-check': iconPaths.calendar,
     'fa-file': iconPaths.file,
     'fa-file-lines': iconPaths.file,
+    'fa-file-signature': iconPaths.file,
+    'fa-file-export': iconPaths.file,
+    'fa-image': iconPaths.image,
+    'fa-key': iconPaths.key,
+    'fa-credit-card': iconPaths.card,
+    'fa-flag': iconPaths.flag,
+    'fa-shield-halved': iconPaths.shield,
+    'fa-download': iconPaths.download,
+    'fa-inbox': iconPaths.inbox,
+    'fa-plus': iconPaths.plus,
+    'fa-filter': iconPaths.filter,
+    'fa-trash': iconPaths.trash,
+    'fa-clock': iconPaths.clock,
+    'fa-eye': iconPaths.eye,
+    'fa-gift': iconPaths.gift,
+    'fa-pen': iconPaths.pen,
+    'fa-location-dot': iconPaths.location,
+    'fa-bolt': iconPaths.bolt,
+    'fa-wallet': iconPaths.wallet,
+    'fa-coins': iconPaths.coins,
+    'fa-list-check': iconPaths.check,
+    'fa-circle-check': iconPaths.check,
+    'fa-check-circle': iconPaths.check,
+    'fa-check': iconPaths.check,
+    'fa-ban': iconPaths.close,
+    'fa-times-circle': iconPaths.close,
+    'fa-triangle-exclamation': iconPaths.bell,
+    'fa-up-right-and-down-left-from-center': iconPaths.fullscreen,
+    'fa-bookmark': iconPaths.file,
+    'fa-trophy': iconPaths.crown,
+    'fa-handshake': iconPaths.support,
     'fa-gear': iconPaths.settings,
     'fa-headset': iconPaths.support,
     'fa-right-from-bracket': iconPaths.logout,
@@ -87,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const resolveInlinePathForFaIcon = (iconEl) => {
-    if (!iconEl) return iconPaths.check;
+    if (!iconEl) return iconPaths.file;
     const classNames = Array.from(iconEl.classList || []);
     for (let idx = 0; idx < classNames.length; idx += 1) {
       const key = classNames[idx];
@@ -95,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return faPathMap[key];
       }
     }
-    return iconPaths.check;
+    return iconPaths.file;
   };
 
   const replaceAnyFaIcon = (iconEl) => {
@@ -165,7 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       document.body.classList.remove('sidebar-collapsed');
     }
-    localStorage.setItem('sidebar-collapsed', collapsed ? 'true' : 'false');
+    storage.set('sidebar-collapsed', collapsed ? 'true' : 'false');
   };
 
   const toggleSidebar = () => {
@@ -177,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const collapsed = document.body.classList.toggle('sidebar-collapsed');
-    localStorage.setItem('sidebar-collapsed', collapsed ? 'true' : 'false');
+    storage.set('sidebar-collapsed', collapsed ? 'true' : 'false');
   };
 
   // Menu toggle
@@ -190,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const stored = localStorage.getItem('sidebar-collapsed');
+  const stored = storage.get('sidebar-collapsed');
   if (stored === 'true' && !isMobile()) {
     applySidebarState(true);
   }
@@ -200,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.classList.remove('sidebar-collapsed');
     } else {
       document.body.classList.remove('sidebar-open');
-      const saved = localStorage.getItem('sidebar-collapsed');
+      const saved = storage.get('sidebar-collapsed');
       applySidebarState(saved === 'true');
     }
   });
@@ -238,8 +309,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const storedTheme = localStorage.getItem(darkStorageKey);
-  const legacyTheme = localStorage.getItem('dark-mode');
+  const storedTheme = storage.get(darkStorageKey);
+  const legacyTheme = storage.get('dark-mode');
   const shouldEnableDark =
     storedTheme === 'true' || (storedTheme === null && themeScope === 'admin' && legacyTheme === 'true');
   document.body.classList.toggle('dark-mode', shouldEnableDark);
@@ -249,7 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (darkToggle) {
     darkToggle.addEventListener('click', () => {
       document.body.classList.toggle('dark-mode');
-      localStorage.setItem(darkStorageKey, document.body.classList.contains('dark-mode'));
+      storage.set(darkStorageKey, document.body.classList.contains('dark-mode'));
       updateDarkIcon();
     });
   }

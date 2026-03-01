@@ -89,6 +89,16 @@ body.sidebar-collapsed .brand {
     justify-content: center;
 }
 
+body.sidebar-collapsed .sidebar .brand-text,
+body.sidebar-collapsed .sidebar .brand-subtitle,
+body.sidebar-collapsed .sidebar .brand .style-1 {
+    display: none;
+}
+
+body.sidebar-collapsed .sidebar .brand-mark {
+    margin: 0 auto;
+}
+
 body.sidebar-collapsed .brand h1,
 body.sidebar-collapsed .brand-subtitle {
     display: none;
@@ -415,6 +425,17 @@ body.sidebar-collapsed .nav-sub {
     align-items: center;
     justify-content: center;
     font-size: 16px;
+}
+
+.sidebar-nav .nav-item .nav-icon > i,
+.sidebar-nav .nav-item .nav-icon > svg,
+.sidebar-nav .nav-item .nav-icon > .ui-icon {
+    width: 18px;
+    height: 18px;
+    font-size: 15px;
+    line-height: 1;
+    flex-shrink: 0;
+    display: block;
 }
 
 .sidebar-nav .nav-label span,
@@ -1148,11 +1169,17 @@ details[open] .chevron {
     font-weight: 600;
 }
 
-.menu-item i {
+.menu-item i,
+.menu-item svg,
+.menu-item .ui-icon {
     width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
     text-align: center;
     font-size: 12px;
     opacity: 0.85;
+    line-height: 1;
+    display: block;
 }
 
 .last-login-info {

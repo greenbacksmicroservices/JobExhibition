@@ -12,50 +12,6 @@
   </div>
 </section>
 
-<section class="card section-block">
-  <div class="card-header">
-    <div>
-      <h3>Admin Advertisement</h3>
-      <p class="muted">Latest ad posted for your subscription audience.</p>
-    </div>
-  </div>
-  {% with current_ad=advertisement|default:candidate_sidebar_ad %}
-  {% if current_ad %}
-    <div class="activity-item ad-item">
-      {% if current_ad.media_file %}
-        <div class="ad-media">
-          {% if current_ad.media_kind == "video" %}
-            <video class="ad-video" autoplay muted loop playsinline preload="metadata">
-              <source src="{{ current_ad.media_file.url }}" />
-            </video>
-            <button class="ad-sound-toggle" type="button" data-ad-sound-toggle aria-pressed="false">
-              <i class="fa-solid fa-volume-xmark"></i>
-              <span>Sound</span>
-            </button>
-          {% elif current_ad.media_kind == "image" %}
-            <img src="{{ current_ad.media_file.url }}" alt="Advertisement media" class="ad-image" loading="lazy" />
-          {% endif %}
-        </div>
-      {% endif %}
-      <div class="ad-item-content">
-        <strong>{{ current_ad.title|default:"Admin Update" }}</strong>
-        <span class="muted">{{ current_ad.message }}</span>
-        <span class="muted">Audience: {{ current_ad.segment|default:"General"|cut:"_"|title }}</span>
-      </div>
-      <span class="activity-time">{{ current_ad.created_at|date:"d M Y" }}</span>
-    </div>
-  {% else %}
-    <div class="activity-item">
-      <div>
-        <strong>No advertisement yet</strong>
-        <span class="muted">Latest admin ad will show here.</span>
-      </div>
-      <span class="activity-time">--</span>
-    </div>
-  {% endif %}
-  {% endwith %}
-</section>
-
 <section class="card">
   <div class="card-header">
     <div>
@@ -68,10 +24,17 @@
       {% for note in notifications %}
       <div class="activity-item">
         <div>
+          {% if note.url %}
+          <strong><a href="{{ note.url }}" class="action-link">{{ note.title }}</a></strong>
+          {% else %}
           <strong>{{ note.title }}</strong>
+          {% endif %}
+          {% if note.unread %}
+          <span class="badge warning" style="margin-left: 8px;">Unread</span>
+          {% endif %}
           <span class="muted">{{ note.message }}</span>
         </div>
-        <span class="activity-time">{{ note.date }}</span>
+        <span class="activity-time">{{ note.created_label }}</span>
       </div>
       {% endfor %}
     {% else %}

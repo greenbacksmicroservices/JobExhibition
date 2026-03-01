@@ -59,8 +59,9 @@
           <label><input type="checkbox" /> Shortlisted</label>
           <label><input type="checkbox" /> Interview Scheduled</label>
           <label><input type="checkbox" /> Selected</label>
-          <label><input type="checkbox" /> Custom Selected</label>
+          <label><input type="checkbox" data-custom-toggle="company-email-custom" /> Custom Selected</label>
         </div>
+        {% include "dashboard/includes/custom_candidate_picker.html" with group_id="company-email-custom" %}
       </div>
     </div>
     <div class="form-actions">
@@ -150,8 +151,9 @@
           <label><input type="checkbox" /> Shortlisted</label>
           <label><input type="checkbox" /> Interview Scheduled</label>
           <label><input type="checkbox" /> Selected</label>
-          <label><input type="checkbox" /> Custom Selected</label>
+          <label><input type="checkbox" data-custom-toggle="company-sms-custom" /> Custom Selected</label>
         </div>
+        {% include "dashboard/includes/custom_candidate_picker.html" with group_id="company-sms-custom" %}
       </div>
       <div class="form-group">
         <label>SMS Credits</label>
@@ -248,8 +250,9 @@
           <label><input type="checkbox" /> Shortlisted</label>
           <label><input type="checkbox" /> Interview Scheduled</label>
           <label><input type="checkbox" /> Selected</label>
-          <label><input type="checkbox" /> Custom Selected</label>
+          <label><input type="checkbox" data-custom-toggle="company-whatsapp-custom" /> Custom Selected</label>
         </div>
+        {% include "dashboard/includes/custom_candidate_picker.html" with group_id="company-whatsapp-custom" %}
       </div>
       <div class="form-group">
         <label>Bulk Sending</label>
@@ -324,13 +327,14 @@
       </div>
       <div class="form-group">
         <label>Target Segment</label>
-        <select>
-          <option>All Applicants</option>
-          <option>Shortlisted</option>
-          <option>Interview Scheduled</option>
-          <option>Selected</option>
-          <option>Custom Selection</option>
+        <select data-custom-select="company-notify-custom">
+          <option value="all">All Applicants</option>
+          <option value="shortlisted">Shortlisted</option>
+          <option value="interview">Interview Scheduled</option>
+          <option value="selected">Selected</option>
+          <option value="custom">Custom Selection</option>
         </select>
+        {% include "dashboard/includes/custom_candidate_picker.html" with group_id="company-notify-custom" %}
       </div>
       <div class="form-group" style="grid-column: 1 / -1;">
         <label>Message</label>
@@ -403,6 +407,10 @@
       <h3>Message Templates</h3>
       <p class="muted">Reusable templates with dynamic variables.</p>
     </div>
+  </div>
+  <div class="notice-card info">
+    <strong>How this works:</strong>
+    <p class="muted">Create once, reuse in Bulk Email, SMS, WhatsApp, and Notifications. Variables like <code>{name}</code> and <code>{job_title}</code> auto-fill while sending.</p>
   </div>
   <div class="template-grid">
     <article class="template-card">

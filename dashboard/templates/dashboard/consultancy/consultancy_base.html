@@ -60,10 +60,12 @@
               <span class="caret">v</span>
             </button>
             <div class="nav-accordion-body" id="consultancyJobManagement">
-              <a class="nav-sub{% if request.resolver_match.url_name == 'consultancy_jobs' and not request.GET.status or request.resolver_match.url_name == 'consultancy_job_detail' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}">All Assigned Jobs</a>
+              <a class="nav-sub{% if request.resolver_match.url_name == 'consultancy_jobs' and not request.GET.status and request.GET.action != 'new' or request.resolver_match.url_name == 'consultancy_job_detail' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}">All Posted Jobs</a>
+              <a class="nav-sub{% if request.GET.action == 'new' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?action=new#post-new-job">Post New Job</a>
+              <a class="nav-sub{% if request.GET.status == 'draft' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=draft">Draft Jobs</a>
               <a class="nav-sub{% if request.GET.status == 'active' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=active">Active Jobs</a>
+              <a class="nav-sub{% if request.GET.status == 'paused' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=paused">Paused Jobs</a>
               <a class="nav-sub{% if request.GET.status == 'closed' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=closed">Closed Jobs</a>
-              <a class="nav-sub{% if request.GET.status == 'urgent' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=urgent">Urgent Jobs</a>
             </div>
           </div>
           <a class="nav-item {% if request.resolver_match.url_name == 'consultancy_assigned_jobs' %}active{% endif %}" href="{% url 'dashboard:consultancy_assigned_jobs' %}">
@@ -160,16 +162,26 @@
               <details class="notification-dropdown">
                 <summary class="icon-btn" aria-label="Notifications">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
-                  {% if messages %}<span class="notif-dot"></span>{% endif %}
+                  {% if panel_notification_unread_count > 0 %}<span class="notif-dot"></span>{% endif %}
                 </summary>
                 <div class="notification-menu">
                   <h4>Notifications</h4>
-                  {% if messages %}
+                  {% if panel_notifications %}
                   <ul class="notification-list">
-                    {% for message in messages %}
-                    <li>{{ message }}</li>
+                    {% for note in panel_notifications %}
+                    <li>
+                      {% if note.url %}
+                        <a href="{{ note.url }}" class="action-link">{{ note.title }}</a>
+                      {% else %}
+                        <strong>{{ note.title }}</strong>
+                      {% endif %}
+                      <div class="muted">{{ note.message }}</div>
+                    </li>
                     {% endfor %}
                   </ul>
+                  <div style="margin-top: 10px;">
+                    <a href="{% url 'dashboard:consultancy_communication' %}" class="action-link">Open communication center</a>
+                  </div>
                   {% else %}
                   <p class="muted">No notifications yet.</p>
                   {% endif %}

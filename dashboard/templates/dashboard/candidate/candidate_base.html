@@ -80,10 +80,6 @@
             <span class="nav-icon"><i class="fa-solid fa-file"></i></span>
             <span>Resume Manager</span>
           </a>
-          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_subscription' %}active{% endif %}" href="{% url 'dashboard:candidate_subscription' %}">
-            <span class="nav-icon"><i class="fa-solid fa-crown"></i></span>
-            <span>Subscription</span>
-          </a>
           <a class="nav-item {% if request.resolver_match.url_name == 'candidate_settings' %}active{% endif %}" href="{% url 'dashboard:candidate_settings' %}">
             <span class="nav-icon"><i class="fa-solid fa-gear"></i></span>
             <span>Settings</span>
@@ -97,56 +93,6 @@
             <span>Logout</span>
           </a>
         </nav>
-
-        {% if candidate_subscription_info %}
-        <section class="candidate-subscription-widget">
-          <h4>Subscription</h4>
-          {% if candidate_subscription_info.is_premium %}
-            <p class="plan-title">Premium Candidate</p>
-            <p class="plan-price">Active plan</p>
-            <ul>
-              <li>Resume boost</li>
-              <li>Profile highlighted</li>
-              <li>Priority applications</li>
-            </ul>
-          {% else %}
-            <p class="plan-title">Free Candidate</p>
-            <p class="plan-price">Upgrade: Rs. 199 / month</p>
-            <ul>
-              <li>Apply to jobs</li>
-              <li>Create profile</li>
-              <li>Upload resume</li>
-            </ul>
-          {% endif %}
-          <a class="plan-link" href="{% url 'dashboard:candidate_subscription' %}">
-            {% if candidate_subscription_info.is_premium %}Manage Plan{% else %}Upgrade Plan{% endif %}
-          </a>
-        </section>
-        {% endif %}
-
-        {% if candidate_sidebar_ad %}
-        <section class="candidate-sidebar-ad">
-          <h4>Admin Advertisement</h4>
-          {% if candidate_sidebar_ad.media_file %}
-            <div class="ad-media">
-              {% if candidate_sidebar_ad.media_kind == "video" %}
-                <video class="ad-video" autoplay muted loop playsinline preload="metadata">
-                  <source src="{{ candidate_sidebar_ad.media_file.url }}" />
-                </video>
-                <button class="ad-sound-toggle" type="button" data-ad-sound-toggle aria-pressed="false">
-                  <i class="fa-solid fa-volume-xmark"></i>
-                  <span>Sound</span>
-                </button>
-              {% elif candidate_sidebar_ad.media_kind == "image" %}
-                <img src="{{ candidate_sidebar_ad.media_file.url }}" alt="Advertisement media" class="ad-image" loading="lazy" />
-              {% endif %}
-            </div>
-          {% endif %}
-          <strong>{{ candidate_sidebar_ad.title|default:"Admin Update" }}</strong>
-          <p>{{ candidate_sidebar_ad.message|truncatewords:20 }}</p>
-          <span class="ad-date">{{ candidate_sidebar_ad.created_at|date:"d M Y" }}</span>
-        </section>
-        {% endif %}
 
       </aside>
 
@@ -172,16 +118,26 @@
               <details class="notification-dropdown">
                 <summary class="icon-btn" aria-label="Notifications">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
-                  {% if messages %}<span class="notif-dot"></span>{% endif %}
+                  {% if panel_notification_unread_count > 0 %}<span class="notif-dot"></span>{% endif %}
                 </summary>
                 <div class="notification-menu">
                   <h4>Notifications</h4>
-                  {% if messages %}
+                  {% if panel_notifications %}
                   <ul class="notification-list">
-                    {% for message in messages %}
-                    <li>{{ message }}</li>
+                    {% for note in panel_notifications %}
+                    <li>
+                      {% if note.url %}
+                        <a href="{{ note.url }}" class="action-link">{{ note.title }}</a>
+                      {% else %}
+                        <strong>{{ note.title }}</strong>
+                      {% endif %}
+                      <div class="muted">{{ note.message }}</div>
+                    </li>
                     {% endfor %}
                   </ul>
+                  <div style="margin-top: 10px;">
+                    <a href="{% url 'dashboard:candidate_notifications' %}" class="action-link">View all notifications</a>
+                  </div>
                   {% else %}
                   <p class="muted">No notifications yet.</p>
                   {% endif %}

@@ -71,6 +71,9 @@ button {
     transition: all 0.3s ease;
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,0.4) transparent;
+    will-change: transform, opacity;
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 body.sidebar-collapsed .sidebar {
@@ -123,6 +126,10 @@ body.sidebar-collapsed .nav-accordion-body {
 }
 
 body.sidebar-collapsed .nav-section:hover .nav-accordion-body {
+    display: block;
+}
+
+body.sidebar-collapsed .nav-section.open .nav-accordion-body {
     display: block;
 }
 
@@ -182,6 +189,24 @@ body.sidebar-collapsed .nav-sub {
     transition: all 0.3s ease;
     overflow: hidden;
     border: none;
+    position: relative;
+}
+
+.brand-mark::after {
+    content: "JE";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.7px;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    transition: opacity 0.2s ease;
+    z-index: 0;
 }
 
 .brand-mark img {
@@ -190,6 +215,16 @@ body.sidebar-collapsed .nav-sub {
     object-fit: cover;
     display: block;
     filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+    position: relative;
+    z-index: 1;
+}
+
+.brand-mark.logo-loaded::after {
+    opacity: 0;
+}
+
+.brand-mark.logo-fallback::after {
+    opacity: 1;
 }
 
 .brand-mark.logo-fallback {
@@ -670,6 +705,8 @@ body.sidebar-collapsed .nav-sub {
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
     transition: margin-left 0.3s ease;
+    will-change: margin-left;
+    transform: translateZ(0);
 }
 
 /* =========================
@@ -2395,19 +2432,11 @@ details[open] .chevron {
    COMPANY DASHBOARD
 ========================= */
 
-.company-sidebar {
-    background: linear-gradient(180deg, #1e40af 0%, #1e3a8a 50%, #164e63 100%) !important;
-    box-shadow: 12px 0 40px rgba(30, 64, 175, 0.5) !important;
-}
-
-.consultancy-sidebar {
-    background: linear-gradient(180deg, #0f766e 0%, #0f172a 55%, #1e293b 100%) !important;
-    box-shadow: 12px 0 40px rgba(15, 118, 110, 0.35) !important;
-}
-
+.company-sidebar,
+.consultancy-sidebar,
 .candidate-sidebar {
-    background: linear-gradient(180deg, #4338ca 0%, #1e1b4b 55%, #111827 100%) !important;
-    box-shadow: 12px 0 40px rgba(67, 56, 202, 0.35) !important;
+    background: linear-gradient(180deg, #1e40af 0%, #1e3a8a 52%, #1d4ed8 100%) !important;
+    box-shadow: 12px 0 40px rgba(30, 64, 175, 0.45) !important;
 }
 
 .candidate-subscription-widget,
@@ -4895,6 +4924,12 @@ body.sidebar-collapsed .profile-progress-text {
     color: #92400e;
 }
 
+.notice-card.info {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+    color: #1e3a8a;
+}
+
 .notice-card.success {
     border-color: #bbf7d0;
     background: #f0fdf4;
@@ -5614,6 +5649,12 @@ body.dark-mode .notice-card.warning {
     color: #fde68a;
 }
 
+body.dark-mode .notice-card.info {
+    background: rgba(30, 58, 138, 0.24);
+    border-color: rgba(96, 165, 250, 0.45);
+    color: #bfdbfe;
+}
+
 body.dark-mode .notice-card.success {
     background: rgba(22, 101, 52, 0.2);
     border-color: rgba(22, 101, 52, 0.4);
@@ -5662,4 +5703,69 @@ body.dark-mode .job-search-bar input {
 body.dark-mode .job-card-tags span {
     background: rgba(99, 102, 241, 0.2);
     color: #c7d2fe;
+}
+
+.custom-recipient-picker {
+    margin-top: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    padding: 12px;
+    background: #f9fafb;
+}
+
+.custom-picker-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.custom-picker-search {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+}
+
+.custom-recipient-list {
+    max-height: 220px;
+    overflow: auto;
+    display: grid;
+    gap: 8px;
+}
+
+.custom-recipient-item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    align-items: start;
+    padding: 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.custom-recipient-item strong {
+    display: block;
+    font-size: 14px;
+}
+
+.custom-recipient-empty {
+    margin-top: 8px;
+}
+
+body.dark-mode .custom-recipient-picker {
+    border-color: #475569;
+    background: rgba(30, 41, 59, 0.85);
+}
+
+body.dark-mode .custom-picker-search {
+    background: rgba(15, 23, 42, 0.9);
+    border-color: #475569;
+    color: #e2e8f0;
+}
+
+body.dark-mode .custom-recipient-item {
+    border-color: #334155;
+    background: rgba(15, 23, 42, 0.92);
 }

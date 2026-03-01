@@ -1,0 +1,25 @@
+<div class="custom-recipient-picker" data-custom-recipient-group="{{ group_id }}" hidden>
+  <label class="custom-picker-label">Custom Candidate Selection</label>
+  <input
+    type="search"
+    class="custom-picker-search"
+    placeholder="Search candidate name, email, phone"
+    data-custom-search
+  />
+  <div class="custom-recipient-list" data-custom-list>
+    {% if communication_candidates %}
+      {% for candidate_item in communication_candidates %}
+      <label class="custom-recipient-item" data-search-text="{{ candidate_item.search_text }}">
+        <input type="checkbox" name="custom_candidate_ids" value="{{ candidate_item.id }}" />
+        <span>
+          <strong>{{ candidate_item.name }}</strong>
+          <small class="muted">{{ candidate_item.email|default:"No email" }}{% if candidate_item.phone %} | {{ candidate_item.phone }}{% endif %}</small>
+        </span>
+      </label>
+      {% endfor %}
+    {% else %}
+      <p class="muted custom-recipient-empty-static">No candidates available.</p>
+    {% endif %}
+  </div>
+  <p class="muted custom-recipient-empty" data-custom-empty hidden>No candidate matched your search.</p>
+</div>

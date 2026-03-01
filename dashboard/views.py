@@ -30,10 +30,12 @@ from django.utils.dateparse import parse_date, parse_time
 from django.utils.html import escape
 from django.views.decorators.http import require_http_methods
 
+from .notifications import build_panel_notifications, mark_panel_notifications_seen
 from .models import (
     AD_IMAGE_EXTENSIONS,
     AD_VIDEO_EXTENSIONS,
     APPLICATION_STATUS_CHOICES,
+    CONSULTANCY_JOB_LIFECYCLE_CHOICES,
     PLACEMENT_STATUS_CHOICES,
     Advertisement,
     AdminProfile,
@@ -93,6 +95,21 @@ PASSWORD_RESET_OTP_SESSION_KEY = "password_reset_otp_payload"
 OTP_TTL_SECONDS = 10 * 60
 MIN_PROFILE_COMPLETION_TO_APPLY = 60
 PASSWORD_RESET_TTL_MINUTES = 30
+CONSULTANCY_JOB_LIFECYCLE_VALUES = {choice[0] for choice in CONSULTANCY_JOB_LIFECYCLE_CHOICES}
+CONSULTANCY_JOB_LIFECYCLE_TO_STATUS = {
+    "Draft": "Pending",
+    "Active": "Approved",
+    "Paused": "Pending",
+    "Closed": "Rejected",
+    "Expired": "Rejected",
+    "Archived": "Reported",
+}
+STATUS_TO_CONSULTANCY_JOB_LIFECYCLE = {
+    "Approved": "Active",
+    "Pending": "Draft",
+    "Rejected": "Closed",
+    "Reported": "Archived",
+}
 COMMON_SKILL_KEYWORDS = [
     "python",
     "java",
@@ -226,14 +243,53 @@ def _active_advertisement_for(audience, segment=""):
     return generic or ads.first()
 
 
-def _consultancy_job_status(status):
-    status_map = {
-        "Approved": "Active",
-        "Pending": "Paused",
-        "Rejected": "Closed",
-        "Reported": "Archived",
-    }
-    return status_map.get(status, status or "Active")
+def _normalize_consultancy_job_lifecycle(status):
+    candidate = (status or "").strip().title()
+    if candidate in CONSULTANCY_JOB_LIFECYCLE_VALUES:
+        return candidate
+    return "Draft"
+
+
+def _legacy_status_for_lifecycle(lifecycle_status):
+    lifecycle = _normalize_consultancy_job_lifecycle(lifecycle_status)
+    return CONSULTANCY_JOB_LIFECYCLE_TO_STATUS.get(lifecycle, "Pending")
+
+
+def _consultancy_job_status(job):
+    if not job:
+        return "Draft"
+    lifecycle = (getattr(job, "lifecycle_status", "") or "").strip()
+    if lifecycle in CONSULTANCY_JOB_LIFECYCLE_VALUES:
+        return lifecycle
+    return STATUS_TO_CONSULTANCY_JOB_LIFECYCLE.get((job.status or "").strip(), "Draft")
+
+
+def _consultancy_posted_jobs_queryset(consultancy):
+    if not consultancy:
+        return Job.objects.none()
+    return Job.objects.filter(
+        Q(recruiter_email__iexact=consultancy.email) | Q(recruiter_name__iexact=consultancy.name),
+    )
+
+
+def _communication_candidate_options(limit=500):
+    options = []
+    qs = Candidate.objects.order_by("name", "id").values("id", "name", "email", "phone")[:limit]
+    for row in qs:
+        name = (row.get("name") or "").strip() or "Candidate"
+        email = (row.get("email") or "").strip()
+        phone = (row.get("phone") or "").strip()
+        search_text = " ".join([name, email, phone]).strip().lower()
+        options.append(
+            {
+                "id": row.get("id"),
+                "name": name,
+                "email": email,
+                "phone": phone,
+                "search_text": search_text,
+            }
+        )
+    return options
 
 
 def _consultancy_application_status(status):
@@ -282,6 +338,45 @@ def _calculate_commission(assignment, application):
         if fixed_amount:
             return fixed_amount
     return None
+
+
+def _consultancy_commission_defaults(consultancy):
+    fixed_fee = getattr(consultancy, "commission_fixed_fee", 25000) or 25000
+    percentage = getattr(consultancy, "commission_percentage", 10) or 10
+    milestone_notes = (
+        getattr(consultancy, "commission_milestone_notes", "") or "Stage-wise commission release"
+    ).strip()
+    return {
+        "fixed_fee": fixed_fee,
+        "percentage": percentage,
+        "milestone_notes": milestone_notes,
+    }
+
+
+def _build_consultancy_commission_block(consultancy):
+    defaults = _consultancy_commission_defaults(consultancy)
+    return "\n".join(
+        [
+            "Commission Models (Consultancy):",
+            f"- Fixed Fee: INR {defaults['fixed_fee']:,} per hire",
+            f"- Percentage Model: {defaults['percentage']}% of annual CTC",
+            f"- Milestone Based: {defaults['milestone_notes']}",
+        ]
+    )
+
+
+def _inject_consultancy_commission_in_description(description, consultancy):
+    cleaned = (description or "").strip()
+    cleaned = re.sub(
+        r"\n*Commission Models \(Consultancy\):[\s\S]*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    commission_block = _build_consultancy_commission_block(consultancy)
+    if cleaned:
+        return f"{cleaned}\n\n{commission_block}"
+    return commission_block
 
 
 def _get_company_for_job(job):
@@ -1940,7 +2035,7 @@ def consultancy_dashboard_view(request):
         application__consultancy=consultancy,
     )
     placements_qs = applications_qs.filter(status__in=SELECTED_STATUSES)
-    commission_rate = 20000
+    commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
 
     metrics = {
         "assigned_jobs": assigned_qs.count(),
@@ -2047,7 +2142,7 @@ def api_consultancy_metrics(request):
         application__consultancy=consultancy,
     )
     placements_qs = applications_qs.filter(status__in=SELECTED_STATUSES)
-    commission_rate = 20000
+    commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
     placements_count = placements_qs.count()
 
     metrics = {
@@ -2079,47 +2174,137 @@ def consultancy_jobs_view(request):
         return redirect("dashboard:login")
 
     filter_status = (request.GET.get("status") or "").strip().lower()
-    base_qs = AssignedJob.objects.filter(consultancy=consultancy).select_related("job")
-    assigned_qs = base_qs.order_by("-assigned_date", "-created_at")
-    status_map = {
+    action = (request.GET.get("action") or "").strip().lower()
+    lifecycle_filters = {
+        "draft": "Draft",
         "active": "Active",
-        "closed": "Closed",
-        "urgent": "Urgent",
         "paused": "Paused",
+        "closed": "Closed",
+        "expired": "Expired",
+        "archived": "Archived",
     }
-    if filter_status in status_map:
-        assigned_qs = assigned_qs.filter(status=status_map[filter_status])
+    base_qs = _consultancy_posted_jobs_queryset(consultancy).annotate(apply_count=Count("applications"))
+    jobs_qs = base_qs
+    if filter_status in lifecycle_filters:
+        jobs_qs = jobs_qs.filter(lifecycle_status=lifecycle_filters[filter_status])
+    jobs_qs = jobs_qs.order_by("-created_at", "-id")
+
+    edit_job = None
+    if request.method == "POST":
+        post_action = (request.POST.get("action") or "").strip().lower()
+        job_id = (request.POST.get("job_id") or "").strip()
+        job_qs = _consultancy_posted_jobs_queryset(consultancy)
+
+        if post_action == "delete":
+            if not job_id:
+                messages.error(request, "Unable to delete job: missing job id.")
+            else:
+                job = get_object_or_404(job_qs, job_id=job_id)
+                title = job.title
+                job.delete()
+                messages.success(request, f"Job deleted: {title}.")
+            return redirect("dashboard:consultancy_jobs")
+
+        if job_id:
+            edit_job = get_object_or_404(job_qs, job_id=job_id)
+            job = edit_job
+        else:
+            job = Job()
+
+        previous_applicants = job.applicants if job.pk else 0
+        _apply_job_fields(job, request.POST)
+        job.applicants = previous_applicants
+        job.description = _inject_consultancy_commission_in_description(job.description, consultancy)
+        job.recruiter_name = consultancy.name
+        job.recruiter_email = consultancy.email
+        job.recruiter_phone = consultancy.phone or consultancy.alt_phone or ""
+        if not job.company:
+            job.company = consultancy.name
+        if not job.posted_date:
+            job.posted_date = timezone.localdate()
+
+        lifecycle_status = _normalize_consultancy_job_lifecycle(request.POST.get("lifecycle_status"))
+        if post_action == "draft":
+            lifecycle_status = "Draft"
+        elif post_action == "publish":
+            lifecycle_status = "Active"
+        job.lifecycle_status = lifecycle_status
+        job.status = _legacy_status_for_lifecycle(lifecycle_status)
+        job.save()
+
+        if not job.job_id:
+            job.job_id = _generate_prefixed_id("JOB", 1001, Job, "job_id")
+            job.save(update_fields=["job_id"])
+
+        if post_action == "draft":
+            messages.success(request, "Job saved in draft.")
+        elif post_action == "publish":
+            messages.success(request, "Job published and visible to candidates.")
+        elif post_action == "update":
+            messages.success(request, "Job updated successfully.")
+        else:
+            messages.success(request, "Job saved successfully.")
+        return redirect("dashboard:consultancy_jobs")
+
+    if action in {"edit", "view"}:
+        selected_job_id = (request.GET.get("job_id") or "").strip()
+        if selected_job_id:
+            edit_job = base_qs.filter(job_id=selected_job_id).first()
+        section_title = "Edit Job" if action == "edit" else "View Job"
+    elif action == "new":
+        section_title = "Post New Job"
+    elif filter_status in lifecycle_filters:
+        section_title = f"{filter_status.title()} Jobs"
+    else:
+        section_title = "All Posted Jobs"
 
     status_counts = {
         "all": base_qs.count(),
-        "active": base_qs.filter(status="Active").count(),
-        "closed": base_qs.filter(status="Closed").count(),
-        "urgent": base_qs.filter(status="Urgent").count(),
+        "draft": base_qs.filter(lifecycle_status="Draft").count(),
+        "active": base_qs.filter(lifecycle_status="Active").count(),
+        "paused": base_qs.filter(lifecycle_status="Paused").count(),
+        "closed": base_qs.filter(lifecycle_status="Closed").count(),
+        "expired": base_qs.filter(lifecycle_status="Expired").count(),
+        "archived": base_qs.filter(lifecycle_status="Archived").count(),
     }
-    assigned_jobs = []
-    for assignment in assigned_qs:
-        job = assignment.job
-        submissions = Application.objects.filter(consultancy=consultancy, job=job).count()
-        assigned_jobs.append(
+    posted_jobs = []
+    for job in jobs_qs:
+        lifecycle_status = _consultancy_job_status(job)
+        posted_jobs.append(
             {
                 "job_id": job.job_id,
                 "title": job.title,
                 "company": job.company,
-                "positions": assignment.positions,
-                "deadline": assignment.deadline,
-                "submissions": submissions,
-                "status": assignment.status,
+                "category": job.category,
+                "applicants": getattr(job, "apply_count", 0),
+                "posted_date": job.posted_date,
+                "status": lifecycle_status,
             }
         )
+    total_applications = Application.objects.filter(job__in=base_qs).count()
 
     return render(
         request,
         "dashboard/consultancy/consultancy_jobs.html",
         {
             "consultancy": consultancy,
-            "assigned_jobs": assigned_jobs,
+            "posted_jobs": posted_jobs,
             "status_counts": status_counts,
             "filter_status": filter_status,
+            "section_title": section_title,
+            "action": action,
+            "edit_job": edit_job,
+            "form_mode": (
+                "view"
+                if action == "view"
+                else "edit"
+                if action == "edit"
+                else "new"
+                if action == "new"
+                else "list"
+            ),
+            "assigned_jobs_count": AssignedJob.objects.filter(consultancy=consultancy).count(),
+            "total_applications": total_applications,
         },
     )
 
@@ -2611,9 +2796,45 @@ def consultancy_placements_view(request):
                 messages.success(request, "Placement status updated.")
             else:
                 messages.error(request, "Select a valid placement status.")
+        elif action == "update_commission_models":
+            fixed_fee_raw = (request.POST.get("commission_fixed_fee") or "").strip()
+            percentage_raw = (request.POST.get("commission_percentage") or "").strip()
+            milestone_notes = (
+                request.POST.get("commission_milestone_notes") or "Stage-wise commission release"
+            ).strip()
+
+            try:
+                fixed_fee = max(0, int(fixed_fee_raw or "25000"))
+            except ValueError:
+                fixed_fee = 25000
+            try:
+                percentage = max(0, int(percentage_raw or "10"))
+            except ValueError:
+                percentage = 10
+
+            consultancy.commission_fixed_fee = fixed_fee
+            consultancy.commission_percentage = percentage
+            consultancy.commission_milestone_notes = milestone_notes or "Stage-wise commission release"
+            consultancy.save(
+                update_fields=[
+                    "commission_fixed_fee",
+                    "commission_percentage",
+                    "commission_milestone_notes",
+                ]
+            )
+
+            # Keep posted job descriptions aligned with the latest commission model settings.
+            posted_jobs = _consultancy_posted_jobs_queryset(consultancy)
+            for job in posted_jobs:
+                updated_description = _inject_consultancy_commission_in_description(job.description, consultancy)
+                if job.description != updated_description:
+                    job.description = updated_description
+                    job.save(update_fields=["description", "updated_at"])
+
+            messages.success(request, "Commission model values updated.")
         return redirect(f"{request.path}?status={filter_status}")
 
-    commission_rate = 20000
+    commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
     placements = []
     assignment_map = {
         assignment.job_id: assignment
@@ -2672,6 +2893,7 @@ def consultancy_placements_view(request):
             "placements": placements,
             "filter_status": filter_status,
             "placement_status_choices": [choice[0] for choice in PLACEMENT_STATUS_CHOICES],
+            "commission_defaults": _consultancy_commission_defaults(consultancy),
         },
     )
 
@@ -2683,7 +2905,7 @@ def consultancy_earnings_view(request):
     if not consultancy:
         return redirect("dashboard:login")
 
-    commission_rate = 20000
+    commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
     today = timezone.localdate()
     first_of_month = today.replace(day=1)
     placements = Application.objects.filter(consultancy=consultancy, status__in=SELECTED_STATUSES)
@@ -2849,7 +3071,7 @@ def consultancy_reports_view(request):
     interview_count = applications.filter(status__in=INTERVIEW_STATUSES).count()
     placements_qs = applications.filter(status__in=SELECTED_STATUSES)
     placements_count = placements_qs.count()
-    commission_rate = 20000
+    commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
 
     conversion_rate = f"{(placements_count / total_apps * 100):.0f}%" if total_apps else "0%"
     interview_to_selection = (
@@ -5253,7 +5475,9 @@ def candidate_notifications_view(request):
     )
     advertisement = _active_advertisement_for("candidate", ad_segment)
 
-    notifications = []
+    payload = build_panel_notifications(request, limit=40)
+    notifications = payload.get("items", [])
+    mark_panel_notifications_seen(request, role="candidate")
     return render(
         request,
         "dashboard/candidate/candidate_notifications.html",
@@ -5601,11 +5825,26 @@ def company_jobs_view(request):
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip().lower()
         job_id = (request.POST.get("job_id") or "").strip()
+        if action == "delete":
+            if not job_id:
+                messages.error(request, "Job delete failed: missing job id.")
+                return redirect("dashboard:company_jobs")
+            job = Job.objects.filter(job_id=job_id, company__iexact=company_name).first()
+            if not job:
+                messages.error(request, "Job not found for delete action.")
+                return redirect("dashboard:company_jobs")
+            job_title = job.title
+            job.delete()
+            messages.success(request, f"Job deleted successfully: {job_title}.")
+            return redirect("dashboard:company_jobs")
+
         if job_id:
             edit_job = get_object_or_404(Job, job_id=job_id, company__iexact=company_name)
             job = edit_job
+            is_new_job = False
         else:
             job = Job(company=company_name)
+            is_new_job = True
 
         _apply_job_fields(job, request.POST)
         job.company = company_name
@@ -5621,11 +5860,20 @@ def company_jobs_view(request):
             job.save(update_fields=["job_id"])
 
         if action == "draft":
-            messages.success(request, "Job saved as draft and sent for review.")
+            messages.success(
+                request,
+                "Job draft created successfully." if is_new_job else "Job draft updated successfully.",
+            )
         elif action == "publish":
-            messages.success(request, "Job submitted for approval.")
+            messages.success(
+                request,
+                "New job submitted for approval." if is_new_job else "Job updated and submitted for approval.",
+            )
         else:
-            messages.success(request, "Job updated successfully.")
+            messages.success(
+                request,
+                "Job created successfully." if is_new_job else "Job updated successfully.",
+            )
         return redirect("dashboard:company_jobs")
 
     status_map = {
@@ -5841,13 +6089,18 @@ def company_applications_view(request):
                         if not interview.interview_id:
                             interview.interview_id = _generate_prefixed_id("INT", 2001, Interview, "interview_id")
                             interview.save(update_fields=["interview_id"])
+                    messages.success(request, f"Interview schedule saved for {app.candidate_name}.")
+                else:
+                    messages.error(request, "Unable to schedule interview: application not found.")
+            else:
+                messages.error(request, "Unable to schedule interview: missing application id.")
 
         elif action == "save_notes":
             application_id = request.POST.get("application_id")
             internal_notes = (request.POST.get("internal_notes") or "").strip()
             interview_feedback = (request.POST.get("interview_feedback") or "").strip()
             if application_id:
-                Application.objects.filter(
+                updated = Application.objects.filter(
                     company__iexact=company_name,
                     application_id=application_id,
                 ).update(
@@ -5855,6 +6108,12 @@ def company_applications_view(request):
                     interview_feedback=interview_feedback,
                     updated_at=timezone.now(),
                 )
+                if updated:
+                    messages.success(request, "Application notes saved successfully.")
+                else:
+                    messages.error(request, "Unable to save notes: application not found.")
+            else:
+                messages.error(request, "Unable to save notes: missing application id.")
 
         elif action == "bulk":
             selected_ids = request.POST.getlist("selected_ids")
@@ -6067,6 +6326,7 @@ def company_messages_view(request):
                 )
                 thread.last_message_at = timezone.now()
                 thread.save(update_fields=["last_message_at"])
+                messages.success(request, "Message sent successfully.")
                 return redirect(f"{request.path}?thread={thread.id}")
 
     thread_messages = []
@@ -6127,6 +6387,7 @@ def company_communication_view(request, section="bulk-email"):
             "comm_section": section,
             "page_title": page_title,
             "page_subtitle": page_subtitle,
+            "communication_candidates": _communication_candidate_options(),
         },
     )
 
@@ -6246,12 +6507,16 @@ def company_interviews_view(request, section="schedule"):
                     "meeting_link",
                     "updated_at",
                 ])
+            messages.success(
+                request,
+                f"Interview scheduled for {interview.candidate_name or 'candidate'}.",
+            )
 
         elif action == "reschedule":
             interview_id = request.POST.get("interview_id")
             new_date = parse_date(request.POST.get("interview_date") or "")
             new_time = parse_time(request.POST.get("interview_time") or "")
-            Interview.objects.filter(
+            updated = Interview.objects.filter(
                 company__iexact=company_name,
                 id=interview_id,
             ).update(
@@ -6260,39 +6525,59 @@ def company_interviews_view(request, section="schedule"):
                 status="rescheduled",
                 updated_at=timezone.now(),
             )
+            if updated:
+                messages.success(request, "Interview rescheduled successfully.")
+            else:
+                messages.error(request, "Unable to reschedule interview.")
 
         elif action == "cancel":
             interview_id = request.POST.get("interview_id")
-            Interview.objects.filter(
+            updated = Interview.objects.filter(
                 company__iexact=company_name,
                 id=interview_id,
             ).update(status="cancelled", updated_at=timezone.now())
+            if updated:
+                messages.success(request, "Interview cancelled successfully.")
+            else:
+                messages.error(request, "Unable to cancel interview.")
 
         elif action == "no_show":
             interview_id = request.POST.get("interview_id")
-            Interview.objects.filter(
+            updated = Interview.objects.filter(
                 company__iexact=company_name,
                 id=interview_id,
             ).update(status="no_show", updated_at=timezone.now())
+            if updated:
+                messages.success(request, "Candidate marked as no show.")
+            else:
+                messages.error(request, "Unable to update no-show status.")
 
         elif action == "mark_completed":
             interview_id = request.POST.get("interview_id")
-            Interview.objects.filter(
+            updated = Interview.objects.filter(
                 company__iexact=company_name,
                 id=interview_id,
             ).update(status="completed", updated_at=timezone.now())
+            if updated:
+                messages.success(request, "Interview marked as completed.")
+            else:
+                messages.error(request, "Unable to mark interview as completed.")
 
         elif action == "send_reminder":
             interview_id = request.POST.get("interview_id")
-            Interview.objects.filter(
+            updated = Interview.objects.filter(
                 company__iexact=company_name,
                 id=interview_id,
             ).update(updated_at=timezone.now())
+            if updated:
+                messages.success(request, "Interview reminder sent successfully.")
+            else:
+                messages.error(request, "Unable to send interview reminder.")
 
         elif action == "feedback":
             interview_id = request.POST.get("interview_id")
             feedback_rating = request.POST.get("feedback_rating")
-            Interview.objects.filter(
+            updated = Interview.objects.filter(
                 company__iexact=company_name,
                 id=interview_id,
             ).update(
@@ -6307,6 +6592,10 @@ def company_interviews_view(request, section="schedule"):
                 feedback_submitted_at=timezone.now(),
                 updated_at=timezone.now(),
             )
+            if updated:
+                messages.success(request, "Interview feedback submitted successfully.")
+            else:
+                messages.error(request, "Unable to submit interview feedback.")
 
         return redirect(next_url)
 
@@ -6732,6 +7021,7 @@ def communication_center_view(request):
             "comm_section": "bulk-email",
             "page_title": "Bulk Email",
             "page_subtitle": "Send email campaigns with subject, rich text editor, and attachments.",
+            "communication_candidates": _communication_candidate_options(),
         },
     )
 
@@ -6778,6 +7068,7 @@ def message_monitor_view(request):
             "active_thread": active_thread,
             "thread_messages": thread_messages,
             "current_role": "admin",
+            "communication_candidates": _communication_candidate_options(),
         },
     )
 
@@ -6791,6 +7082,7 @@ def communication_bulk_email_view(request):
             "comm_section": "bulk-email",
             "page_title": "Bulk Email",
             "page_subtitle": "Send email campaigns with subject, rich text editor, and attachments.",
+            "communication_candidates": _communication_candidate_options(),
         },
     )
 
@@ -6804,6 +7096,7 @@ def communication_bulk_sms_view(request):
             "comm_section": "bulk-sms",
             "page_title": "Bulk SMS",
             "page_subtitle": "Send SMS messages with character limits and delivery reports.",
+            "communication_candidates": _communication_candidate_options(),
         },
     )
 
@@ -6817,6 +7110,7 @@ def communication_notifications_view(request):
             "comm_section": "notifications",
             "page_title": "Notifications",
             "page_subtitle": "In-app alerts with read/unread tracking.",
+            "communication_candidates": _communication_candidate_options(),
         },
     )
 
@@ -6830,6 +7124,7 @@ def communication_whatsapp_view(request):
             "comm_section": "whatsapp",
             "page_title": "WhatsApp Alerts",
             "page_subtitle": "Send approved WhatsApp templates with delivery status.",
+            "communication_candidates": _communication_candidate_options(),
         },
     )
 
@@ -6843,6 +7138,7 @@ def communication_templates_view(request):
             "comm_section": "templates",
             "page_title": "Message Templates",
             "page_subtitle": "Reusable templates with dynamic variables for faster outreach.",
+            "communication_candidates": _communication_candidate_options(),
         },
     )
 
@@ -6856,6 +7152,7 @@ def communication_sent_history_view(request):
             "comm_section": "sent-history",
             "page_title": "Sent History",
             "page_subtitle": "Track email, SMS, WhatsApp, and notification delivery status.",
+            "communication_candidates": _communication_candidate_options(),
         },
     )
 
@@ -6869,6 +7166,7 @@ def communication_scheduled_view(request):
             "comm_section": "scheduled",
             "page_title": "Scheduled Messages",
             "page_subtitle": "Plan future sends with automatic delivery and cancellation options.",
+            "communication_candidates": _communication_candidate_options(),
         },
     )
 
@@ -7676,6 +7974,7 @@ def _serialize_job(job):
         "skills": job.skills,
         "posted_date": job.posted_date.strftime("%Y-%m-%d") if job.posted_date else "",
         "status": job.status,
+        "lifecycle_status": _consultancy_job_status(job),
         "applicants": job.applicants,
         "verification": job.verification,
         "featured": job.featured,
@@ -7698,7 +7997,10 @@ def _apply_job_fields(job, data):
     job.skills = data.get("skills", "").strip()
     job.posted_date = parse_date(data.get("posted_date")) if data.get("posted_date") else None
     job.status = data.get("status", "Pending").strip()
-    job.applicants = int(data.get("applicants") or 0)
+    if "applicants" in data:
+        job.applicants = int(data.get("applicants") or 0)
+    elif not job.pk:
+        job.applicants = 0
     job.verification = data.get("verification", "Pending").strip()
     job.featured = data.get("featured") in ["on", "true", "1"]
     job.recruiter_name = data.get("recruiter_name", "").strip()
@@ -7706,6 +8008,11 @@ def _apply_job_fields(job, data):
     job.recruiter_phone = data.get("recruiter_phone", "").strip()
     job.description = data.get("description", "").strip()
     job.requirements = data.get("requirements", "").strip()
+    lifecycle_status = data.get("lifecycle_status")
+    if lifecycle_status:
+        job.lifecycle_status = _normalize_consultancy_job_lifecycle(lifecycle_status)
+    elif not getattr(job, "lifecycle_status", ""):
+        job.lifecycle_status = STATUS_TO_CONSULTANCY_JOB_LIFECYCLE.get(job.status, "Draft")
 
 
 @login_required

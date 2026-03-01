@@ -208,6 +208,12 @@
             <div class="table-actions">
               <a class="action-btn" href="{% url 'dashboard:company_jobs' %}?action=view&job_id={{ job.job_id }}#post-new-job">View</a>
               <a class="action-btn" href="{% url 'dashboard:company_jobs' %}?action=edit&job_id={{ job.job_id }}#post-new-job">Edit</a>
+              <form method="post" class="inline-form" onsubmit="return confirm('Delete this job?');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete" />
+                <input type="hidden" name="job_id" value="{{ job.job_id }}" />
+                <button class="action-btn danger" type="submit">Delete</button>
+              </form>
             </div>
           </td>
         </tr>

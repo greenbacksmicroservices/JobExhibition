@@ -3,6 +3,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import Advertisement, AdminProfile, Candidate, Subscription
+from .notifications import build_panel_notifications
 
 
 def admin_profile_context(request):
@@ -89,4 +90,13 @@ def candidate_panel_context(request):
 def static_assets_context(request):
     return {
         "static_asset_version": getattr(settings, "STATIC_ASSET_VERSION", "1"),
+    }
+
+
+def panel_notifications_context(request):
+    payload = build_panel_notifications(request, limit=8)
+    return {
+        "panel_notifications": payload.get("items", []),
+        "panel_notification_unread_count": payload.get("unread_count", 0),
+        "panel_notification_role": payload.get("role"),
     }

@@ -25,21 +25,43 @@
   <div class="card-header">
     <div>
       <h3>Commission Models</h3>
-      <p class="muted">Fixed fee, percentage, or milestone-based.</p>
+      <p class="muted">Fixed fee, percentage, and milestone values are editable here.</p>
     </div>
   </div>
+  <form method="post" class="company-form-grid">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="update_commission_models" />
+    <div class="company-form-group">
+      <label>Fixed Fee</label>
+      <input type="number" name="commission_fixed_fee" min="0" step="1" value="{{ commission_defaults.fixed_fee }}" />
+      <span class="muted">INR per hire</span>
+    </div>
+    <div class="company-form-group">
+      <label>Percentage Model</label>
+      <input type="number" name="commission_percentage" min="0" step="1" value="{{ commission_defaults.percentage }}" />
+      <span class="muted">% of annual CTC</span>
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Milestone Based</label>
+      <input type="text" name="commission_milestone_notes" value="{{ commission_defaults.milestone_notes }}" />
+      <span class="muted">Stage-wise commission release text</span>
+    </div>
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Update Commission Models</button>
+    </div>
+  </form>
   <div class="card-grid">
     <article class="card">
       <h4>Fixed Fee</h4>
-      <p class="muted">INR 25,000 per hire</p>
+      <p class="muted">INR {{ commission_defaults.fixed_fee }} per hire</p>
     </article>
     <article class="card">
       <h4>Percentage Model</h4>
-      <p class="muted">10% of annual CTC</p>
+      <p class="muted">{{ commission_defaults.percentage }}% of annual CTC</p>
     </article>
     <article class="card">
       <h4>Milestone Based</h4>
-      <p class="muted">Stage-wise commission release</p>
+      <p class="muted">{{ commission_defaults.milestone_notes }}</p>
     </article>
   </div>
 </section>

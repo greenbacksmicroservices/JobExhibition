@@ -4,15 +4,25 @@
 {% block title %}Job Management{% endblock %}
 
 {% block content %}
-<section class="page-hero">
+<section class="page-hero company-hero">
   <div>
-    <p class="eyebrow">Job Management</p>
-    <h2>Assigned Jobs Control Center</h2>
-    <p class="muted">View assigned jobs, submit candidates, and track submissions.</p>
-    <p class="muted">Note: Consultancies cannot create jobs unless a marketplace model is enabled.</p>
+    <p class="eyebrow">Consultancy Panel</p>
+    <h2>Post & Manage Jobs</h2>
+    <p class="muted">Create job posts, track applications, and control visibility status.</p>
   </div>
-  <div class="page-actions">
-    <a class="btn ghost" href="{% url 'dashboard:consultancy_assigned_jobs' %}">My Job Assignments</a>
+  <div class="hero-badges">
+    <div class="hero-badge">
+      <span>Total Posted</span>
+      <strong>{{ status_counts.all }}</strong>
+    </div>
+    <div class="hero-badge">
+      <span>Active</span>
+      <strong>{{ status_counts.active }}</strong>
+    </div>
+    <div class="hero-badge">
+      <span>Total Applied</span>
+      <strong>{{ total_applications }}</strong>
+    </div>
   </div>
 </section>
 
@@ -20,24 +30,132 @@
   <div class="card-header">
     <div>
       <h3>Quick Filters</h3>
-      <p class="muted">Filter assigned jobs by status.</p>
+      <p class="muted">Filter your posted jobs by lifecycle status.</p>
+    </div>
+    <div class="table-actions">
+      <a class="action-btn" href="{% url 'dashboard:consultancy_assigned_jobs' %}">Assigned Jobs ({{ assigned_jobs_count }})</a>
+      <a class="action-btn" href="{% url 'dashboard:consultancy_jobs' %}?action=new#post-new-job">Post New Job</a>
     </div>
   </div>
   <div class="summary-tags">
-    <a class="badge {% if not filter_status %}info{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}">All Assigned ({{ status_counts.all }})</a>
+    <a class="badge {% if not filter_status %}info{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}">All ({{ status_counts.all }})</a>
+    <a class="badge {% if filter_status == 'draft' %}neutral{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=draft">Draft ({{ status_counts.draft }})</a>
     <a class="badge {% if filter_status == 'active' %}success{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=active">Active ({{ status_counts.active }})</a>
-    <a class="badge {% if filter_status == 'closed' %}danger{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=closed">Closed ({{ status_counts.closed }})</a>
-    <a class="badge {% if filter_status == 'urgent' %}warning{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=urgent">Urgent ({{ status_counts.urgent }})</a>
+    <a class="badge {% if filter_status == 'paused' %}warning{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=paused">Paused ({{ status_counts.paused }})</a>
+    <a class="badge {% if filter_status == 'closed' %}info{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=closed">Closed ({{ status_counts.closed }})</a>
+    <a class="badge {% if filter_status == 'expired' %}danger{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=expired">Expired ({{ status_counts.expired }})</a>
+    <a class="badge {% if filter_status == 'archived' %}neutral{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=archived">Archived ({{ status_counts.archived }})</a>
   </div>
 </section>
+
+{% if form_mode != "list" %}
+<section class="card section-block" id="post-new-job">
+  <div class="card-header">
+    <div>
+      <h3>{{ section_title }}</h3>
+      <p class="muted">{% if form_mode == "view" %}Review job details.{% elif form_mode == "edit" %}Update and save the job post.{% else %}Fill full details to post a new job.{% endif %}</p>
+    </div>
+  </div>
+  <form class="company-form-grid" method="post">
+    {% csrf_token %}
+    {% if edit_job %}
+      <input type="hidden" name="job_id" value="{{ edit_job.job_id }}" />
+    {% endif %}
+    <input type="hidden" name="status" id="jobStatusValue" value="{{ edit_job.status|default:'Pending' }}" />
+
+    <div class="company-form-group">
+      <label>Job Title</label>
+      <input type="text" name="title" value="{{ edit_job.title|default:'' }}" placeholder="e.g. Senior Python Developer" {% if form_mode == "view" %}readonly{% endif %} required />
+    </div>
+    <div class="company-form-group">
+      <label>Company Name</label>
+      <input type="text" name="company" value="{{ edit_job.company|default:'' }}" placeholder="Company hiring for this role" {% if form_mode == "view" %}readonly{% endif %} required />
+    </div>
+    <div class="company-form-group">
+      <label>Category</label>
+      <input type="text" name="category" value="{{ edit_job.category|default:'' }}" placeholder="e.g. IT, Sales, Finance" {% if form_mode == "view" %}readonly{% endif %} required />
+    </div>
+    <div class="company-form-group">
+      <label>Job Type</label>
+      <select name="job_type" {% if form_mode == "view" %}disabled{% endif %}>
+        <option value="Full-time" {% if edit_job.job_type == "Full-time" or not edit_job %}selected{% endif %}>Full-time</option>
+        <option value="Part-time" {% if edit_job.job_type == "Part-time" %}selected{% endif %}>Part-time</option>
+        <option value="Contract" {% if edit_job.job_type == "Contract" %}selected{% endif %}>Contract</option>
+        <option value="Remote" {% if edit_job.job_type == "Remote" %}selected{% endif %}>Remote</option>
+      </select>
+    </div>
+    <div class="company-form-group">
+      <label>Location</label>
+      <input type="text" name="location" value="{{ edit_job.location|default:'' }}" placeholder="e.g. Mumbai / Remote" {% if form_mode == "view" %}readonly{% endif %} required />
+    </div>
+    <div class="company-form-group">
+      <label>Salary Range</label>
+      <input type="text" name="salary" value="{{ edit_job.salary|default:'' }}" placeholder="e.g. 6 - 12 LPA" {% if form_mode == "view" %}readonly{% endif %} />
+    </div>
+    <div class="company-form-group">
+      <label>Experience</label>
+      <input type="text" name="experience" value="{{ edit_job.experience|default:'' }}" placeholder="e.g. 2-4 years" {% if form_mode == "view" %}readonly{% endif %} />
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Skills</label>
+      <input type="text" name="skills" value="{{ edit_job.skills|default:'' }}" placeholder="Python, Django, REST API" {% if form_mode == "view" %}readonly{% endif %} />
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Job Description</label>
+      <textarea rows="4" name="description" placeholder="Enter complete job description..." {% if form_mode == "view" %}readonly{% endif %}>{{ edit_job.description|default:'' }}</textarea>
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Requirements</label>
+      <textarea rows="3" name="requirements" placeholder="Mention candidate requirements..." {% if form_mode == "view" %}readonly{% endif %}>{{ edit_job.requirements|default:'' }}</textarea>
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Job Status</label>
+      <select name="lifecycle_status" id="jobStatusSelect" {% if form_mode == "view" %}disabled{% endif %}>
+        {% with edit_job.lifecycle_status|default:"Draft" as current_lifecycle %}
+          <option value="Draft" {% if current_lifecycle == "Draft" %}selected{% endif %}>Draft</option>
+          <option value="Active" {% if current_lifecycle == "Active" %}selected{% endif %}>Active</option>
+          <option value="Paused" {% if current_lifecycle == "Paused" %}selected{% endif %}>Paused</option>
+          <option value="Closed" {% if current_lifecycle == "Closed" %}selected{% endif %}>Closed</option>
+          <option value="Expired" {% if current_lifecycle == "Expired" %}selected{% endif %}>Expired</option>
+          <option value="Archived" {% if current_lifecycle == "Archived" %}selected{% endif %}>Archived</option>
+        {% endwith %}
+      </select>
+      <span class="muted">Draft: saved only, Active: live for candidates, Archived: hidden but saved.</span>
+    </div>
+    {% if form_mode != "view" %}
+    <div class="company-form-actions">
+      {% if form_mode == "edit" %}
+        <button class="btn primary" type="submit" name="action" value="update">Update Job</button>
+      {% else %}
+        <button class="btn ghost" type="submit" name="action" value="draft">Save as Draft</button>
+        <button class="btn primary" type="submit" name="action" value="publish">Publish as Active</button>
+      {% endif %}
+    </div>
+    {% if form_mode == "edit" %}
+    <div class="job-status-quick" data-job-status-controls>
+      <span class="label">Quick Status:</span>
+      <button class="status-chip" type="button" data-job-status="Draft">Draft</button>
+      <button class="status-chip" type="button" data-job-status="Active">Active</button>
+      <button class="status-chip" type="button" data-job-status="Paused">Paused</button>
+      <button class="status-chip" type="button" data-job-status="Closed">Closed</button>
+      <button class="status-chip" type="button" data-job-status="Expired">Expired</button>
+      <button class="status-chip" type="button" data-job-status="Archived">Archived</button>
+    </div>
+    {% endif %}
+    {% endif %}
+  </form>
+</section>
+{% endif %}
 
 <section class="card">
   <div class="card-header">
     <div>
-      <h3>{% if filter_status %}{{ filter_status|title }} Jobs{% else %}All Assigned Jobs{% endif %}</h3>
-      <p class="muted">Consultancy can only view jobs assigned by admin or company.</p>
+      <h3>{{ section_title }}</h3>
+      <p class="muted">Each row shows full posted job details and applied count.</p>
     </div>
-    <span class="badge info">Assigned Only</span>
+    {% if form_mode == "list" %}
+    <a class="btn primary" href="{% url 'dashboard:consultancy_jobs' %}?action=new#post-new-job">Post New Job</a>
+    {% endif %}
   </div>
   <div class="table-wrap">
     <table class="table">
@@ -45,47 +163,101 @@
         <tr>
           <th>Job Title</th>
           <th>Company</th>
-          <th>Positions</th>
-          <th>Deadline</th>
-          <th>Submissions</th>
+          <th>Category</th>
+          <th>Applied</th>
+          <th>Posted Date</th>
           <th>Status</th>
-          <th>Action</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-        {% if assigned_jobs %}
-          {% for job in assigned_jobs %}
+        {% if posted_jobs %}
+          {% for job in posted_jobs %}
           <tr>
             <td>
               <strong>{{ job.title }}</strong>
               <div class="muted">{{ job.job_id }}</div>
             </td>
             <td>{{ job.company }}</td>
-            <td>{{ job.positions }}</td>
-            <td>{{ job.deadline|date:"d M Y"|default:"--" }}</td>
-            <td>{{ job.submissions }}</td>
+            <td>{{ job.category|default:"--" }}</td>
+            <td>{{ job.applicants }}</td>
+            <td>{{ job.posted_date|date:"d M Y"|default:"--" }}</td>
             <td>
-              <span class="badge {% if job.status == 'Active' %}success{% elif job.status == 'Urgent' %}warning{% elif job.status == 'Closed' %}danger{% else %}neutral{% endif %}">
+              <span class="badge {% if job.status == 'Active' %}success{% elif job.status == 'Paused' %}warning{% elif job.status == 'Closed' %}info{% elif job.status == 'Expired' %}danger{% else %}neutral{% endif %}">
                 {{ job.status }}
               </span>
             </td>
             <td>
               <div class="table-actions">
-                <a class="action-btn" href="{% url 'dashboard:consultancy_job_detail' job.job_id %}">View Details</a>
-                <a class="action-btn" href="{% url 'dashboard:consultancy_candidate_pool' %}?job_id={{ job.job_id }}#submit-candidate">Submit Candidate</a>
-                <a class="action-btn" href="{% url 'dashboard:consultancy_applications' %}?job_id={{ job.job_id }}">View Submissions</a>
-                <a class="action-btn" href="{% url 'dashboard:consultancy_assigned_jobs' %}#job-tracking">Track Status</a>
+                <a class="action-btn" href="{% url 'dashboard:consultancy_jobs' %}?action=view&job_id={{ job.job_id }}#post-new-job">View</a>
+                <a class="action-btn" href="{% url 'dashboard:consultancy_jobs' %}?action=edit&job_id={{ job.job_id }}#post-new-job">Edit</a>
+                <a class="action-btn" href="{% url 'dashboard:consultancy_applications' %}?job_id={{ job.job_id }}">Applications</a>
+                <form method="post" onsubmit="return confirm('Delete this job permanently?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete" />
+                  <input type="hidden" name="job_id" value="{{ job.job_id }}" />
+                  <button class="action-btn danger" type="submit">Delete</button>
+                </form>
               </div>
             </td>
           </tr>
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="7" class="muted" style="text-align:center; padding: 16px;">No assigned jobs yet. Wait for admin or company assignment.</td>
+            <td colspan="7" class="muted" style="text-align:center; padding: 16px;">No jobs posted yet. Click "Post New Job" to start.</td>
           </tr>
         {% endif %}
       </tbody>
     </table>
   </div>
 </section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Job Status System</h3>
+      <p class="muted">Status meaning as per consultancy workflow.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Meaning</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge neutral">Draft</span></td>
+          <td>Saved but not published</td>
+        </tr>
+        <tr>
+          <td><span class="badge success">Active</span></td>
+          <td>Live and visible</td>
+        </tr>
+        <tr>
+          <td><span class="badge warning">Paused</span></td>
+          <td>Temporarily stopped</td>
+        </tr>
+        <tr>
+          <td><span class="badge info">Closed</span></td>
+          <td>Hiring completed</td>
+        </tr>
+        <tr>
+          <td><span class="badge danger">Expired</span></td>
+          <td>Last date over</td>
+        </tr>
+        <tr>
+          <td><span class="badge neutral">Archived</span></td>
+          <td>Hidden but saved</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/consultancy-jobs.js' %}"></script>
 {% endblock %}

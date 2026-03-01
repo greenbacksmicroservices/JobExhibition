@@ -56,7 +56,7 @@
             <span>Company Profile</span>
           </a>
           <div class="nav-section {% if request.resolver_match.url_name == 'company_jobs' %}open{% endif %}">
-            <button class="nav-item nav-toggle" type="button" data-target="companyJobManagement" aria-expanded="{% if request.resolver_match.url_name == 'company_jobs' %}true{% else %}false{% endif %}" aria-controls="companyJobManagement">
+            <button class="nav-item nav-toggle" type="button" data-target="companyJobManagement" data-nav-url="{% url 'dashboard:company_jobs' %}" aria-expanded="{% if request.resolver_match.url_name == 'company_jobs' %}true{% else %}false{% endif %}" aria-controls="companyJobManagement">
               <div class="nav-label">
                 <span class="nav-icon"><i class="fa-solid fa-briefcase"></i></span>
                 <span>Job Management</span>
@@ -82,7 +82,7 @@
             <span>Messages</span>
           </a>
           <div class="nav-section {% if request.resolver_match.url_name == 'company_communication' or request.resolver_match.url_name == 'company_communication_bulk_email' or request.resolver_match.url_name == 'company_communication_bulk_sms' or request.resolver_match.url_name == 'company_communication_whatsapp' or request.resolver_match.url_name == 'company_communication_notifications' or request.resolver_match.url_name == 'company_communication_templates' or request.resolver_match.url_name == 'company_communication_sent_history' or request.resolver_match.url_name == 'company_communication_scheduled' %}open{% endif %}">
-            <button class="nav-item nav-toggle" type="button" data-target="companyCommunication" aria-expanded="{% if request.resolver_match.url_name == 'company_communication' or request.resolver_match.url_name == 'company_communication_bulk_email' or request.resolver_match.url_name == 'company_communication_bulk_sms' or request.resolver_match.url_name == 'company_communication_whatsapp' or request.resolver_match.url_name == 'company_communication_notifications' or request.resolver_match.url_name == 'company_communication_templates' or request.resolver_match.url_name == 'company_communication_sent_history' or request.resolver_match.url_name == 'company_communication_scheduled' %}true{% else %}false{% endif %}" aria-controls="companyCommunication">
+            <button class="nav-item nav-toggle" type="button" data-target="companyCommunication" data-nav-url="{% url 'dashboard:company_communication_bulk_email' %}" aria-expanded="{% if request.resolver_match.url_name == 'company_communication' or request.resolver_match.url_name == 'company_communication_bulk_email' or request.resolver_match.url_name == 'company_communication_bulk_sms' or request.resolver_match.url_name == 'company_communication_whatsapp' or request.resolver_match.url_name == 'company_communication_notifications' or request.resolver_match.url_name == 'company_communication_templates' or request.resolver_match.url_name == 'company_communication_sent_history' or request.resolver_match.url_name == 'company_communication_scheduled' %}true{% else %}false{% endif %}" aria-controls="companyCommunication">
               <div class="nav-label">
                 <span class="nav-icon"><i class="fa-solid fa-comments"></i></span>
                 <span>Communication Center</span>
@@ -100,7 +100,7 @@
             </div>
           </div>
           <div class="nav-section {% if request.resolver_match.url_name == 'company_interviews' or request.resolver_match.url_name == 'company_interviews_schedule' or request.resolver_match.url_name == 'company_interviews_upcoming' or request.resolver_match.url_name == 'company_interviews_completed' or request.resolver_match.url_name == 'company_interviews_cancelled' or request.resolver_match.url_name == 'company_interviews_feedback' %}open{% endif %}">
-            <button class="nav-item nav-toggle" type="button" data-target="companyInterviews" aria-expanded="{% if request.resolver_match.url_name == 'company_interviews' or request.resolver_match.url_name == 'company_interviews_schedule' or request.resolver_match.url_name == 'company_interviews_upcoming' or request.resolver_match.url_name == 'company_interviews_completed' or request.resolver_match.url_name == 'company_interviews_cancelled' or request.resolver_match.url_name == 'company_interviews_feedback' %}true{% else %}false{% endif %}" aria-controls="companyInterviews">
+            <button class="nav-item nav-toggle" type="button" data-target="companyInterviews" data-nav-url="{% url 'dashboard:company_interviews_schedule' %}" aria-expanded="{% if request.resolver_match.url_name == 'company_interviews' or request.resolver_match.url_name == 'company_interviews_schedule' or request.resolver_match.url_name == 'company_interviews_upcoming' or request.resolver_match.url_name == 'company_interviews_completed' or request.resolver_match.url_name == 'company_interviews_cancelled' or request.resolver_match.url_name == 'company_interviews_feedback' %}true{% else %}false{% endif %}" aria-controls="companyInterviews">
               <div class="nav-label">
                 <span class="nav-icon"><i class="fa-solid fa-calendar-check"></i></span>
                 <span>Interviews</span>
@@ -136,7 +136,7 @@
             <span>Security</span>
           </a>
           <div class="nav-section {% if request.resolver_match.url_name == 'company_support' or request.resolver_match.url_name == 'company_support_create' or request.resolver_match.url_name == 'company_support_tickets' or request.resolver_match.url_name == 'company_support_open' or request.resolver_match.url_name == 'company_support_closed' or request.resolver_match.url_name == 'company_support_knowledge' or request.resolver_match.url_name == 'company_support_chat' or request.resolver_match.url_name == 'company_support_detail' %}open{% endif %}">
-            <button class="nav-item nav-toggle" type="button" data-target="companySupport" aria-expanded="{% if request.resolver_match.url_name == 'company_support' or request.resolver_match.url_name == 'company_support_create' or request.resolver_match.url_name == 'company_support_tickets' or request.resolver_match.url_name == 'company_support_open' or request.resolver_match.url_name == 'company_support_closed' or request.resolver_match.url_name == 'company_support_knowledge' or request.resolver_match.url_name == 'company_support_chat' or request.resolver_match.url_name == 'company_support_detail' %}true{% else %}false{% endif %}" aria-controls="companySupport">
+            <button class="nav-item nav-toggle" type="button" data-target="companySupport" data-nav-url="{% url 'dashboard:company_support_create' %}" aria-expanded="{% if request.resolver_match.url_name == 'company_support' or request.resolver_match.url_name == 'company_support_create' or request.resolver_match.url_name == 'company_support_tickets' or request.resolver_match.url_name == 'company_support_open' or request.resolver_match.url_name == 'company_support_closed' or request.resolver_match.url_name == 'company_support_knowledge' or request.resolver_match.url_name == 'company_support_chat' or request.resolver_match.url_name == 'company_support_detail' %}true{% else %}false{% endif %}" aria-controls="companySupport">
               <div class="nav-label">
                 <span class="nav-icon"><i class="fa-solid fa-headset"></i></span>
                 <span>Customer Support</span>
@@ -181,16 +181,26 @@
               <details class="notification-dropdown">
                 <summary class="icon-btn" aria-label="Notifications">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
-                  {% if messages %}<span class="notif-dot"></span>{% endif %}
+                  {% if panel_notification_unread_count > 0 %}<span class="notif-dot"></span>{% endif %}
                 </summary>
                 <div class="notification-menu">
                   <h4>Notifications</h4>
-                  {% if messages %}
+                  {% if panel_notifications %}
                   <ul class="notification-list">
-                    {% for message in messages %}
-                    <li>{{ message }}</li>
+                    {% for note in panel_notifications %}
+                    <li>
+                      {% if note.url %}
+                        <a href="{{ note.url }}" class="action-link">{{ note.title }}</a>
+                      {% else %}
+                        <strong>{{ note.title }}</strong>
+                      {% endif %}
+                      <div class="muted">{{ note.message }}</div>
+                    </li>
                     {% endfor %}
                   </ul>
+                  <div style="margin-top: 10px;">
+                    <a href="{% url 'dashboard:company_communication_notifications' %}" class="action-link">Open in-app notifications</a>
+                  </div>
                   {% else %}
                   <p class="muted">No notifications yet.</p>
                   {% endif %}

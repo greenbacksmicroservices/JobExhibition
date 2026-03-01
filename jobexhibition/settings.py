@@ -161,6 +161,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'dashboard.context_processors.admin_profile_context',
                 'dashboard.context_processors.candidate_panel_context',
+                'dashboard.context_processors.panel_notifications_context',
                 'dashboard.context_processors.static_assets_context',
             ],
         },

@@ -35,6 +35,15 @@ JOB_STATUS_CHOICES = [
     ("Reported", "Reported"),
 ]
 
+CONSULTANCY_JOB_LIFECYCLE_CHOICES = [
+    ("Draft", "Draft"),
+    ("Active", "Active"),
+    ("Paused", "Paused"),
+    ("Closed", "Closed"),
+    ("Expired", "Expired"),
+    ("Archived", "Archived"),
+]
+
 JOB_TYPE_CHOICES = [
     ("Full-time", "Full-time"),
     ("Part-time", "Part-time"),
@@ -250,6 +259,13 @@ class Consultancy(UserBase):
     plan_expiry = models.DateField(null=True, blank=True)
     payment_status = models.CharField(max_length=20, choices=PAYMENT_CHOICES, blank=True)
     auto_renew = models.BooleanField(default=False)
+    commission_fixed_fee = models.PositiveIntegerField(default=25000)
+    commission_percentage = models.PositiveIntegerField(default=10)
+    commission_milestone_notes = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Stage-wise commission release",
+    )
 
 
 class ConsultancyKycDocument(models.Model):
@@ -411,6 +427,11 @@ class Job(models.Model):
     skills = models.CharField(max_length=255, blank=True)
     posted_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=JOB_STATUS_CHOICES, default="Pending")
+    lifecycle_status = models.CharField(
+        max_length=20,
+        choices=CONSULTANCY_JOB_LIFECYCLE_CHOICES,
+        default="Active",
+    )
     applicants = models.PositiveIntegerField(default=0)
     verification = models.CharField(max_length=20, choices=JOB_VERIFICATION_CHOICES, default="Pending")
     featured = models.BooleanField(default=False)

@@ -18,8 +18,10 @@
             align-items: center;
             justify-content: center;
             background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
             position: relative;
+            padding: 14px;
         }
 
         .skills-bg {
@@ -27,6 +29,7 @@
             inset: 0;
             z-index: 0;
             overflow: hidden;
+            pointer-events: none;
         }
 
         .brand-watermark {
@@ -44,8 +47,7 @@
         .skill-item {
             position: absolute;
             bottom: -120px;
-            background: rgba(255, 255, 255, 0.5);
-            backdrop-filter: blur(8px);
+            background: rgba(255, 255, 255, 0.78);
             padding: 12px 24px;
             border-radius: 50px;
             display: flex;
@@ -86,21 +88,18 @@
             z-index: 10;
             width: 440px;
             max-width: calc(100% - 24px);
-            background: rgba(255, 255, 255, 0.75);
-            backdrop-filter: blur(25px);
+            background: rgba(255, 255, 255, 0.96);
             border: 1px solid rgba(255, 255, 255, 0.6);
-            border-radius: 40px;
-            padding: 50px 40px;
-            box-shadow: 0 30px 60px rgba(0, 119, 182, 0.15);
+            border-radius: 28px;
+            padding: 40px 32px;
+            box-shadow: 0 16px 36px rgba(0, 119, 182, 0.13);
             text-align: center;
-            animation: entranceShake 1.2s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+            animation: fadeSlideIn 0.45s ease-out both;
         }
 
-        @keyframes entranceShake {
-            0% { transform: scale(0.5) translateY(200px); opacity: 0; }
-            60% { transform: scale(1.05) translateY(-10px); opacity: 1; }
-            80% { transform: scale(0.98) translateY(5px); }
-            100% { transform: scale(1) translateY(0); }
+        @keyframes fadeSlideIn {
+            0% { transform: translateY(12px); opacity: 0; }
+            100% { transform: translateY(0); opacity: 1; }
         }
 
         h2 { color: #0077b6; font-size: 2.2rem; font-weight: 800; margin-bottom: 6px; }
@@ -258,7 +257,19 @@
             font-size: 0.9rem;
             color: #5b7c99;
             display: grid;
-            gap: 10px;
+            gap: 8px;
+        }
+
+        .register-here-link {
+            color: #0077b6;
+            text-decoration: none;
+            font-weight: 700;
+            justify-self: center;
+            font-size: 0.9rem;
+        }
+
+        .register-here-link:hover {
+            text-decoration: underline;
         }
 
         .register-links {
@@ -315,6 +326,13 @@
             cursor: pointer;
             padding: 0;
             text-align: left;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation: none !important;
+                transition: none !important;
+            }
         }
     </style>
 </head>
@@ -384,7 +402,7 @@
         </form>
 
         <div class="new-user-section">
-            <span>New user? Register here</span>
+            <a class="register-here-link" href="{% url 'dashboard:register_options' %}">New user? Register here</a>
             <div class="register-links">
                 <a href="{% url 'dashboard:company_register' %}">Company</a>
                 <a href="{% url 'dashboard:consultancy_register' %}">Consultancy</a>
@@ -426,7 +444,7 @@
         };
 
         function createFloatingSkill(index) {
-            if (!floatContainer) return;
+            if (!floatContainer) return null;
             const skill = floatingSkills[index % floatingSkills.length];
             const item = document.createElement('div');
             item.className = 'skill-item';
@@ -441,15 +459,21 @@
                 </span>
                 <span>${skill.label}</span>
             `;
-            floatContainer.appendChild(item);
+            return item;
         }
 
         if (floatContainer) {
             const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-            const total = reduceMotion ? 6 : 14;
+            const compactViewport = window.matchMedia('(max-width: 768px)').matches;
+            const total = reduceMotion ? 0 : compactViewport ? 4 : 8;
+            const fragment = document.createDocumentFragment();
             for (let i = 0; i < total; i += 1) {
-                createFloatingSkill(i);
+                const item = createFloatingSkill(i);
+                if (item) {
+                    fragment.appendChild(item);
+                }
             }
+            floatContainer.appendChild(fragment);
         }
 
         function togglePassword(inputId) {

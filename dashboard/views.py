@@ -21,7 +21,7 @@ from django.contrib.auth.hashers import check_password, identify_hasher, make_pa
 from django.core.files.base import ContentFile
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
-from django.db import IntegrityError, OperationalError, close_old_connections
+from django.db import DatabaseError, IntegrityError, OperationalError, close_old_connections
 from django.db.models import Q, Count, Sum, F
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -96,6 +96,8 @@ PASSWORD_RESET_OTP_SESSION_KEY = "password_reset_otp_payload"
 OTP_TTL_SECONDS = 10 * 60
 MIN_PROFILE_COMPLETION_TO_APPLY = 60
 PASSWORD_RESET_TTL_MINUTES = 30
+SUBADMIN_USERNAME = "subadmin"
+SUBADMIN_DEFAULT_PASSWORD = "123456789"
 CONSULTANCY_JOB_LIFECYCLE_VALUES = {choice[0] for choice in CONSULTANCY_JOB_LIFECYCLE_CHOICES}
 CONSULTANCY_JOB_LIFECYCLE_TO_STATUS = {
     "Draft": "Pending",
@@ -133,70 +135,6 @@ COMMON_SKILL_KEYWORDS = [
     "kubernetes",
     "salesforce",
 ]
-
-REGISTER_ROLE_GROUPS = [
-    {
-        "title": "IT Jobs",
-        "roles": [
-            "Software Engineer",
-            "Web Developer",
-            "Mobile App Developer",
-            "Python Developer",
-            "Java Developer",
-            "PHP Developer",
-            "React / Angular Developer",
-            "Data Analyst",
-            "Data Scientist",
-            "Cybersecurity Analyst",
-            "Cloud Engineer",
-            "DevOps Engineer",
-            "Network Engineer",
-            "UI / UX Designer",
-            "QA Engineer",
-            "IT Support Engineer",
-            "System Administrator",
-            "Project Manager",
-            "Product Manager",
-        ],
-    },
-    {
-        "title": "Non-IT Jobs",
-        "roles": [
-            "Accountant",
-            "Relationship Manager",
-            "Production Supervisor",
-            "Nurse",
-            "Lab Technician",
-            "Sales Executive",
-            "Digital Marketing Executive",
-            "Store Manager",
-            "Warehouse Executive",
-            "Supply Chain Manager",
-            "Civil Engineer",
-            "Site Supervisor",
-            "Teacher",
-            "Receptionist",
-            "Chef",
-            "Automobile Engineer",
-            "Government Jobs",
-            "Driver",
-            "Security Guard",
-            "Housekeeping",
-        ],
-    },
-    {
-        "title": "Work Type",
-        "roles": [
-            "Full Time",
-            "Part Time",
-            "Work From Home",
-            "Freelance",
-            "Internship",
-            "Contract",
-        ],
-    },
-]
-
 
 def _resolve_subscription_segment(plan_type, payment_status, plan_expiry):
     plan_type = (plan_type or "").strip()
@@ -529,6 +467,8 @@ def welcome_view(request):
             next_url = "dashboard:company_dashboard"
         elif user_type == "consultancy":
             next_url = "dashboard:consultancy_dashboard"
+        elif user_type == "subadmin":
+            next_url = "dashboard:subadmin_dashboard"
         elif user_type == "admin":
             next_url = "dashboard:dashboard"
         else:  # candidate
@@ -556,6 +496,7 @@ def welcome_view(request):
             "consultancy": "Consultancy",
             "candidate": "Candidate",
             "admin": "Admin",
+            "subadmin": "Subadmin",
         }
         display_name = role_fallback.get(user_type, "User")
 
@@ -726,6 +667,46 @@ def _record_login_history(request, account_type, username_or_email="", account_i
         is_success=bool(is_success),
         note=(note or "")[:255],
     )
+
+
+def _is_subadmin_user(user):
+    username = (getattr(user, "username", "") or "").strip().lower()
+    return bool(
+        user
+        and getattr(user, "is_authenticated", False)
+        and username == SUBADMIN_USERNAME
+        and getattr(user, "is_staff", False)
+        and not getattr(user, "is_superuser", False)
+    )
+
+
+def _ensure_subadmin_account(user_model, reset_password=False):
+    subadmin = user_model.objects.filter(username__iexact=SUBADMIN_USERNAME).first()
+    if not subadmin:
+        return user_model.objects.create_user(
+            username=SUBADMIN_USERNAME,
+            email="subadmin@jobexhibition.local",
+            password=SUBADMIN_DEFAULT_PASSWORD,
+            is_staff=True,
+            is_superuser=False,
+        )
+
+    update_fields = []
+    if not subadmin.is_staff:
+        subadmin.is_staff = True
+        update_fields.append("is_staff")
+    if subadmin.is_superuser:
+        subadmin.is_superuser = False
+        update_fields.append("is_superuser")
+    if not subadmin.email:
+        subadmin.email = "subadmin@jobexhibition.local"
+        update_fields.append("email")
+    if reset_password or not subadmin.has_usable_password():
+        subadmin.set_password(SUBADMIN_DEFAULT_PASSWORD)
+        update_fields.append("password")
+    if update_fields:
+        subadmin.save(update_fields=update_fields)
+    return subadmin
 
 
 def _create_email_verification_token(account_type, account_id, email):
@@ -937,18 +918,14 @@ def _extract_skills_from_resume(file_obj):
 
 
 def register_options_view(request):
-    return render(
-        request,
-        "dashboard/register_options.html",
-        {
-            "role_groups": REGISTER_ROLE_GROUPS,
-        },
-    )
+    return render(request, "dashboard/register_options.html")
 
 
 def login_view(request):
     # If already authenticated as admin, redirect to dashboard
     if request.user.is_authenticated:
+        if _is_subadmin_user(request.user):
+            return redirect("dashboard:subadmin_dashboard")
         return redirect("dashboard:dashboard")
 
     # If company already logged in, redirect to company dashboard
@@ -984,18 +961,22 @@ def login_view(request):
 
         def _login_admin(user):
             login(request, user)
+            is_subadmin_login = _is_subadmin_user(user)
+            welcome_type = "subadmin" if is_subadmin_login else "admin"
+            welcome_next = "dashboard:subadmin_dashboard" if is_subadmin_login else "dashboard:dashboard"
+            login_note = "subadmin login success" if is_subadmin_login else "login success"
             _record_login_history(
                 request,
                 "admin",
                 username_or_email=user.email or user.username,
                 account_id=user.id,
                 is_success=True,
-                note="login success",
+                note=login_note,
             )
             _clear_session_otp(request, LOGIN_OTP_SESSION_KEY)
             response = redirect("dashboard:welcome")
-            response.set_cookie("welcome_type", "admin", max_age=5, samesite="Lax")
-            response.set_cookie("welcome_next", "dashboard:dashboard", max_age=5, samesite="Lax")
+            response.set_cookie("welcome_type", welcome_type, max_age=5, samesite="Lax")
+            response.set_cookie("welcome_next", welcome_next, max_age=5, samesite="Lax")
             return response
 
         def _send_login_otp_for(account_type, account):
@@ -1213,6 +1194,10 @@ def login_view(request):
         user = authenticate(request, username=username, password=password)
         if user and (user.is_staff or user.is_superuser):
             return _login_admin(user)
+
+        if username.strip().lower() == SUBADMIN_USERNAME and password == SUBADMIN_DEFAULT_PASSWORD:
+            subadmin_user = _ensure_subadmin_account(user_model, reset_password=True)
+            return _login_admin(subadmin_user)
 
         # Company login by username or email
         company = Company.objects.filter(Q(name__iexact=username) | Q(email__iexact=username)).first()
@@ -1964,10 +1949,19 @@ def verify_email_view(request, token):
     return redirect("dashboard:login")
 
 
+def _safe_session_get(request, key, default=None):
+    for _ in range(2):
+        try:
+            return request.session.get(key, default)
+        except DatabaseError:
+            close_old_connections()
+    return default
+
+
 def company_login_required(view_func):
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
-        if not request.session.get("company_id"):
+        if not _safe_session_get(request, "company_id"):
             return redirect("dashboard:login")
         return view_func(request, *args, **kwargs)
 
@@ -1980,6 +1974,17 @@ def company_login_view(request):
 
 
 def company_logout_view(request):
+    company_id = _safe_session_get(request, "company_id")
+    company = Company.objects.filter(id=company_id).first() if company_id else None
+    if company:
+        _record_login_history(
+            request,
+            "company",
+            username_or_email=company.email or company.name,
+            account_id=company.id,
+            is_success=True,
+            note="logout",
+        )
     request.session.pop("company_id", None)
     request.session.pop("company_name", None)
     return redirect("dashboard:login")
@@ -1988,7 +1993,7 @@ def company_logout_view(request):
 def consultancy_login_required(view_func):
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
-        if not request.session.get("consultancy_id"):
+        if not _safe_session_get(request, "consultancy_id"):
             return redirect("dashboard:login")
         return view_func(request, *args, **kwargs)
 
@@ -1996,6 +2001,17 @@ def consultancy_login_required(view_func):
 
 
 def consultancy_logout_view(request):
+    consultancy_id = _safe_session_get(request, "consultancy_id")
+    consultancy = Consultancy.objects.filter(id=consultancy_id).first() if consultancy_id else None
+    if consultancy:
+        _record_login_history(
+            request,
+            "consultancy",
+            username_or_email=consultancy.email or consultancy.name,
+            account_id=consultancy.id,
+            is_success=True,
+            note="logout",
+        )
     request.session.pop("consultancy_id", None)
     request.session.pop("consultancy_name", None)
     return redirect("dashboard:login")
@@ -2004,7 +2020,7 @@ def consultancy_logout_view(request):
 def candidate_login_required(view_func):
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
-        if not request.session.get("candidate_id"):
+        if not _safe_session_get(request, "candidate_id"):
             return redirect("dashboard:login")
         return view_func(request, *args, **kwargs)
 
@@ -2012,6 +2028,17 @@ def candidate_login_required(view_func):
 
 
 def candidate_logout_view(request):
+    candidate_id = _safe_session_get(request, "candidate_id")
+    candidate = Candidate.objects.filter(id=candidate_id).first() if candidate_id else None
+    if candidate:
+        _record_login_history(
+            request,
+            "candidate",
+            username_or_email=candidate.email or candidate.name,
+            account_id=candidate.id,
+            is_success=True,
+            note="logout",
+        )
     request.session.pop("candidate_id", None)
     request.session.pop("candidate_name", None)
     return redirect("dashboard:login")
@@ -5630,7 +5657,7 @@ def candidate_support_view(request):
 
 @candidate_login_required
 def api_candidate_metrics(request):
-    candidate_id = request.session.get("candidate_id")
+    candidate_id = _safe_session_get(request, "candidate_id")
     candidate = Candidate.objects.filter(id=candidate_id).first()
     if not candidate:
         return JsonResponse({"error": "unauthorized"}, status=401)
@@ -6793,6 +6820,13 @@ def dashboard_view(request):
 
 
 @login_required
+def subadmin_dashboard_view(request):
+    if not _is_subadmin_user(request.user):
+        return redirect("dashboard:dashboard")
+    return render(request, "dashboard/dashboard.html")
+
+
+@login_required
 def companies_view(request):
     return render(request, "dashboard/companies.html")
 
@@ -7336,6 +7370,58 @@ def security_login_history_view(request):
 
 
 @login_required
+@require_http_methods(["GET"])
+def api_security_login_history(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"success": False, "error": "Unauthorized"}, status=403)
+
+    try:
+        limit = int(request.GET.get("limit", 100))
+    except (TypeError, ValueError):
+        limit = 100
+    limit = max(10, min(limit, 250))
+
+    login_qs = LoginHistory.objects.order_by("-created_at")
+    total_logins = login_qs.count()
+    success_count = login_qs.filter(is_success=True).count()
+    failed_count = total_logins - success_count
+
+    entries = []
+    for entry in login_qs[:limit]:
+        created_at = entry.created_at
+        if created_at and timezone.is_aware(created_at):
+            created_at = timezone.localtime(created_at)
+        entries.append(
+            {
+                "id": entry.id,
+                "account_type": entry.account_type,
+                "account_type_label": entry.get_account_type_display(),
+                "username_or_email": entry.username_or_email or "--",
+                "created_at": created_at.strftime("%Y-%m-%d %H:%M") if created_at else "--",
+                "ip_address": entry.ip_address or "--",
+                "user_agent": entry.user_agent or "--",
+                "note": entry.note or "--",
+                "is_success": bool(entry.is_success),
+            }
+        )
+
+    now = timezone.localtime(timezone.now())
+    return JsonResponse(
+        {
+            "success": True,
+            "stats": {
+                "total_logins": total_logins,
+                "success_count": success_count,
+                "failed_count": failed_count,
+                "recent_rows": len(entries),
+            },
+            "entries": entries,
+            "generated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+    )
+
+
+@login_required
 def security_ip_logs_view(request):
     return render(
         request,
@@ -7445,6 +7531,18 @@ def _get_model(user_type: str):
         "consultancies": Consultancy,
         "candidates": Candidate,
     }.get(user_type)
+
+
+def _deny_subadmin_delete_action(request):
+    if _is_subadmin_user(request.user):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Delete/Remove actions are disabled for subadmin.",
+            },
+            status=403,
+        )
+    return None
 
 
 def _serialize_user(obj, user_type: str):
@@ -7773,6 +7871,10 @@ def api_user_update(request, user_type, pk):
 @login_required
 @require_http_methods(["POST"])
 def api_user_delete(request, user_type, pk):
+    blocked = _deny_subadmin_delete_action(request)
+    if blocked:
+        return blocked
+
     model = _get_model(user_type)
     if not model:
         return JsonResponse({"success": False, "error": "Invalid user type"}, status=400)
@@ -7784,6 +7886,10 @@ def api_user_delete(request, user_type, pk):
 @login_required
 @require_http_methods(["POST"])
 def api_user_bulk_delete(request, user_type):
+    blocked = _deny_subadmin_delete_action(request)
+    if blocked:
+        return blocked
+
     model = _get_model(user_type)
     if not model:
         return JsonResponse({"success": False, "error": "Invalid user type"}, status=400)
@@ -8089,6 +8195,10 @@ def api_jobs_update(request, job_id):
 @login_required
 @require_http_methods(["POST"])
 def api_jobs_delete(request, job_id):
+    blocked = _deny_subadmin_delete_action(request)
+    if blocked:
+        return blocked
+
     job = get_object_or_404(Job, job_id=job_id)
     job.delete()
     return JsonResponse({"success": True})
@@ -8283,6 +8393,10 @@ def api_applications_update(request, application_id):
 @login_required
 @require_http_methods(["POST"])
 def api_applications_delete(request, application_id):
+    blocked = _deny_subadmin_delete_action(request)
+    if blocked:
+        return blocked
+
     app = get_object_or_404(Application, application_id=application_id)
     app.delete()
     return JsonResponse({"success": True})
@@ -8439,6 +8553,10 @@ def api_plans_update(request, plan_id):
 @login_required
 @require_http_methods(["POST"])
 def api_plans_delete(request, plan_id):
+    blocked = _deny_subadmin_delete_action(request)
+    if blocked:
+        return blocked
+
     plan = get_object_or_404(SubscriptionPlan, pk=plan_id)
     plan.delete()
     return JsonResponse({"success": True})
@@ -8528,6 +8646,10 @@ def api_subscriptions_extend(request, subscription_id):
 @login_required
 @require_http_methods(["POST"])
 def api_subscriptions_delete(request, subscription_id):
+    blocked = _deny_subadmin_delete_action(request)
+    if blocked:
+        return blocked
+
     sub = get_object_or_404(Subscription, subscription_id=subscription_id)
     sub.delete()
     return JsonResponse({"success": True})
@@ -8743,5 +8865,14 @@ def api_dashboard_metrics(request):
 
 
 def logout_view(request):
+    if request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser):
+        _record_login_history(
+            request,
+            "admin",
+            username_or_email=request.user.email or request.user.username,
+            account_id=request.user.id,
+            is_success=True,
+            note="subadmin logout" if _is_subadmin_user(request.user) else "logout",
+        )
     logout(request)
     return redirect("dashboard:login")

@@ -1,4 +1,14 @@
 (() => {
+  const body = document.body;
+  const profileName = (
+    document.querySelector('.profile-meta strong')?.textContent ||
+    document.querySelector('.company-user-meta strong')?.textContent ||
+    ''
+  )
+    .trim()
+    .toLowerCase();
+  const isSubadmin = profileName === 'subadmin' || body.dataset.panelRole === 'subadmin';
+  const canDelete = body.dataset.canDelete === 'true' || (body.dataset.canDelete !== 'false' && !isSubadmin);
   const exportBtn = document.getElementById('exportBtn');
   const planFilter = document.getElementById('planFilter');
   const expiryFilter = document.getElementById('expiryFilter');
@@ -7,6 +17,7 @@
   const expiryTable = document.getElementById('expiryTable');
   const revenueTable = document.getElementById('revenueTable');
   const revenueBars = document.getElementById('revenueBars');
+  const downloadReportBtn = document.getElementById('downloadReportBtn');
   const subscriptionTableBody = document.getElementById('subscriptionTableBody');
   const paidRatio = document.getElementById('paidRatio');
   const assignAccount = document.getElementById('assignAccount');
@@ -38,12 +49,14 @@
   const addonPriceInput = document.getElementById('addonPriceInput');
   const confirmAddonDelete = document.getElementById('confirmAddonDelete');
 
-  const subscriptionFormModal = subscriptionFormModalEl ? new bootstrap.Modal(subscriptionFormModalEl) : null;
-  const subscriptionViewModal = subscriptionViewModalEl ? new bootstrap.Modal(subscriptionViewModalEl) : null;
-  const subscriptionDeleteModal = subscriptionDeleteModalEl ? new bootstrap.Modal(subscriptionDeleteModalEl) : null;
-  const addonViewModal = addonViewModalEl ? new bootstrap.Modal(addonViewModalEl) : null;
-  const addonEditModal = addonEditModalEl ? new bootstrap.Modal(addonEditModalEl) : null;
-  const addonDeleteModal = addonDeleteModalEl ? new bootstrap.Modal(addonDeleteModalEl) : null;
+  const BootstrapModal = window.bootstrap && window.bootstrap.Modal ? window.bootstrap.Modal : null;
+  const modalOptions = { backdrop: false, keyboard: true };
+  const subscriptionFormModal = BootstrapModal && subscriptionFormModalEl ? new BootstrapModal(subscriptionFormModalEl, modalOptions) : null;
+  const subscriptionViewModal = BootstrapModal && subscriptionViewModalEl ? new BootstrapModal(subscriptionViewModalEl, modalOptions) : null;
+  const subscriptionDeleteModal = BootstrapModal && subscriptionDeleteModalEl ? new BootstrapModal(subscriptionDeleteModalEl, modalOptions) : null;
+  const addonViewModal = BootstrapModal && addonViewModalEl ? new BootstrapModal(addonViewModalEl, modalOptions) : null;
+  const addonEditModal = BootstrapModal && addonEditModalEl ? new BootstrapModal(addonEditModalEl, modalOptions) : null;
+  const addonDeleteModal = BootstrapModal && addonDeleteModalEl ? new BootstrapModal(addonDeleteModalEl, modalOptions) : null;
 
   const totalAccountsEl = document.getElementById('totalAccounts');
   const paidAccountsEl = document.getElementById('paidAccounts');
@@ -59,6 +72,21 @@
   let activeAddonRow = null;
 
   const revenueSeries = [];
+
+  if (!canDelete) {
+    if (confirmSubscriptionDelete) {
+      confirmSubscriptionDelete.style.display = 'none';
+      confirmSubscriptionDelete.disabled = true;
+    }
+    if (confirmAddonDelete) {
+      confirmAddonDelete.style.display = 'none';
+      confirmAddonDelete.disabled = true;
+    }
+    document.querySelectorAll('[data-addon-action="delete"]').forEach((button) => {
+      button.style.display = 'none';
+      button.disabled = true;
+    });
+  }
 
   const setLoading = (show) => {
     if (!loadingOverlay) return;
@@ -100,16 +128,33 @@
     }
   };
 
+  const escapeHtml = (value) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const safeText = (value, fallback = '-') => {
+    const normalized = String(value ?? '').trim();
+    return normalized ? escapeHtml(normalized) : fallback;
+  };
+
+  const toSortText = (value) => String(value ?? '').toLowerCase();
+
   const daysUntil = (dateStr) => {
-    if (!dateStr) return 0;
+    if (!dateStr) return null;
     const today = new Date();
     const target = new Date(dateStr);
+    if (Number.isNaN(target.getTime())) return null;
     const diff = target.getTime() - today.getTime();
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
 
   const statusBadge = (sub) => {
     const days = daysUntil(sub.expiry_date);
+    if (days === null) return 'neutral';
     if (days < 0) return 'danger';
     if (days <= 30) return 'warning';
     return 'success';
@@ -124,7 +169,10 @@
     const total = subscriptions.length;
     const paid = subscriptions.filter((item) => item.plan !== 'Free').length;
     const free = subscriptions.filter((item) => item.plan === 'Free').length;
-    const expiring = subscriptions.filter((item) => daysUntil(item.expiry_date) <= 30).length;
+    const expiring = subscriptions.filter((item) => {
+      const days = daysUntil(item.expiry_date);
+      return days !== null && days >= 0 && days <= 30;
+    }).length;
     return { total, paid, free, expiring };
   };
 
@@ -146,7 +194,7 @@
     if (planFilter && planFilter.value !== 'all') {
       filtered = filtered.filter((item) => item.plan === planFilter.value);
     }
-    filtered.sort((a, b) => a.name.localeCompare(b.name));
+    filtered.sort((a, b) => toSortText(a.name).localeCompare(toSortText(b.name)));
     return filtered;
   };
 
@@ -160,7 +208,7 @@
           (item.plan_code || '').toLowerCase().includes(keyword),
       );
     }
-    filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    filtered.sort((a, b) => toSortText(a.name).localeCompare(toSortText(b.name)));
     return filtered;
   };
 
@@ -174,15 +222,17 @@
     freePaidTable.innerHTML = rows
       .map((sub) => {
         const badge = statusBadge(sub);
+        const expiryText = safeText(sub.expiry_date);
+        const badgeLabel = badge === 'danger' ? 'Expired' : badge === 'warning' ? 'Expiring' : badge === 'neutral' ? 'No Expiry' : 'Active';
         return `
 <tr>
-  <td>${sub.name}</td>
-  <td>${sub.account_type}</td>
-  <td><span class="badge ${sub.plan === 'Free' ? 'neutral' : 'info'}">${sub.plan}</span></td>
-  <td>${sub.payment_status}</td>
-  <td>${sub.start_date}</td>
-  <td>${sub.expiry_date}</td>
-  <td><span class="badge ${badge}">${badge === 'danger' ? 'Expired' : badge === 'warning' ? 'Expiring' : 'Active'}</span></td>
+  <td>${safeText(sub.name)}</td>
+  <td>${safeText(sub.account_type)}</td>
+  <td><span class="badge ${sub.plan === 'Free' ? 'neutral' : 'info'}">${safeText(sub.plan)}</span></td>
+  <td>${safeText(sub.payment_status)}</td>
+  <td>${safeText(sub.start_date)}</td>
+  <td>${expiryText}</td>
+  <td><span class="badge ${badge}">${badgeLabel}</span></td>
 </tr>`;
       })
       .join('');
@@ -196,33 +246,37 @@
         '<tr><td colspan="20" class="text-center text-muted py-4">No plans found.</td></tr>';
       return;
     }
+    const deleteButton = (planId) =>
+      canDelete
+        ? `<button class="action-btn danger" data-sub-action="delete" data-id="${safeText(planId, '')}"><i class="fa-solid fa-trash"></i> Delete</button>`
+        : '';
     subscriptionTableBody.innerHTML = rows
       .map((plan) => `
 <tr>
-  <td>${plan.name}</td>
-  <td>${plan.plan_code}</td>
+  <td>${safeText(plan.name)}</td>
+  <td>${safeText(plan.plan_code)}</td>
   <td>INR ${formatNumber(plan.price_monthly)}</td>
   <td>INR ${formatNumber(plan.price_quarterly)}</td>
-  <td>${plan.job_posts || '-'}</td>
-  <td>${plan.job_validity || '-'}</td>
-  <td>${plan.resume_view || '-'}</td>
-  <td>${plan.resume_download || '-'}</td>
-  <td>${plan.candidate_chat || '-'}</td>
-  <td>${plan.interview_scheduler || '-'}</td>
-  <td>${plan.auto_match || '-'}</td>
-  <td>${plan.shortlisting || '-'}</td>
-  <td>${plan.candidate_ranking || '-'}</td>
-  <td>${plan.candidate_pool_manager || '-'}</td>
-  <td>${plan.featured_jobs || '-'}</td>
-  <td>${plan.company_branding || '-'}</td>
-  <td>${plan.analytics_dashboard || '-'}</td>
-  <td>${plan.support || '-'}</td>
-  <td>${plan.dedicated_account_manager || '-'}</td>
+  <td>${safeText(plan.job_posts)}</td>
+  <td>${safeText(plan.job_validity)}</td>
+  <td>${safeText(plan.resume_view)}</td>
+  <td>${safeText(plan.resume_download)}</td>
+  <td>${safeText(plan.candidate_chat)}</td>
+  <td>${safeText(plan.interview_scheduler)}</td>
+  <td>${safeText(plan.auto_match)}</td>
+  <td>${safeText(plan.shortlisting)}</td>
+  <td>${safeText(plan.candidate_ranking)}</td>
+  <td>${safeText(plan.candidate_pool_manager)}</td>
+  <td>${safeText(plan.featured_jobs)}</td>
+  <td>${safeText(plan.company_branding)}</td>
+  <td>${safeText(plan.analytics_dashboard)}</td>
+  <td>${safeText(plan.support)}</td>
+  <td>${safeText(plan.dedicated_account_manager)}</td>
   <td>
     <div class="table-actions">
-      <button class="action-btn" data-sub-action="view" data-id="${plan.id}"><i class="fa-solid fa-eye"></i> View</button>
-      <button class="action-btn" data-sub-action="edit" data-id="${plan.id}"><i class="fa-solid fa-pen"></i> Edit</button>
-      <button class="action-btn danger" data-sub-action="delete" data-id="${plan.id}"><i class="fa-solid fa-trash"></i> Delete</button>
+      <button class="action-btn" data-sub-action="view" data-id="${safeText(plan.id, '')}"><i class="fa-solid fa-eye"></i> View</button>
+      <button class="action-btn" data-sub-action="edit" data-id="${safeText(plan.id, '')}"><i class="fa-solid fa-pen"></i> Edit</button>
+      ${deleteButton(plan.id)}
     </div>
   </td>
 </tr>`)
@@ -244,8 +298,16 @@
         openSubscriptionForm(id);
       }
       if (action === 'delete') {
+        if (!canDelete) {
+          showToast('Delete action is disabled for subadmin.', 'warning');
+          return;
+        }
         deleteSubscriptionId = id;
-        if (subscriptionDeleteModal) subscriptionDeleteModal.show();
+        if (subscriptionDeleteModal) {
+          subscriptionDeleteModal.show();
+        } else {
+          showToast('Delete modal unavailable. Refresh page and try again.', 'danger');
+        }
       }
     });
   };
@@ -255,7 +317,7 @@
     const limit = expiryFilter ? Number(expiryFilter.value) : 30;
     const rows = subscriptions
       .map((sub) => ({ ...sub, daysLeft: daysUntil(sub.expiry_date) }))
-      .filter((sub) => sub.daysLeft <= limit)
+      .filter((sub) => sub.daysLeft !== null && sub.daysLeft <= limit)
       .sort((a, b) => a.daysLeft - b.daysLeft);
 
     if (!rows.length) {
@@ -266,15 +328,15 @@
     expiryTable.innerHTML = rows
       .map((sub) => `
 <tr>
-  <td>${sub.name}</td>
-  <td>${sub.plan}</td>
-  <td>${sub.expiry_date}</td>
+  <td>${safeText(sub.name)}</td>
+  <td>${safeText(sub.plan)}</td>
+  <td>${safeText(sub.expiry_date)}</td>
   <td>${sub.daysLeft} days</td>
-  <td>${sub.contact}</td>
+  <td>${safeText(sub.contact)}</td>
   <td>
     <div class="table-actions">
-      <button class="action-btn" data-action="notify" data-id="${sub.id}">Notify</button>
-      <button class="action-btn" data-action="extend" data-id="${sub.id}">Extend</button>
+      <button class="action-btn" data-action="notify" data-id="${safeText(sub.id, '')}">Notify</button>
+      <button class="action-btn" data-action="extend" data-id="${safeText(sub.id, '')}">Extend</button>
     </div>
   </td>
 </tr>`)
@@ -293,7 +355,7 @@
             const width = maxValue ? Math.round((total / maxValue) * 100) : 0;
             return `
 <div class="bar-row">
-  <span>${row.month}</span>
+  <span>${safeText(row.month)}</span>
   <div class="bar-track"><span style="width: ${width}%"></span></div>
   <strong>INR ${total}</strong>
 </div>`;
@@ -311,7 +373,7 @@
             const total = row.free + row.basic + row.standard + row.gold;
             return `
 <tr>
-  <td>${row.month} 2026</td>
+  <td>${safeText(row.month)} 2026</td>
   <td>INR ${row.free}</td>
   <td>INR ${row.basic}</td>
   <td>INR ${row.standard}</td>
@@ -333,11 +395,11 @@
     assignmentLog.innerHTML = logs
       .map((log) => `
 <tr>
-  <td>${log.account}</td>
-  <td>${log.old_plan}</td>
-  <td>${log.new_plan}</td>
-  <td>${log.admin}</td>
-  <td>${log.date}</td>
+  <td>${safeText(log.account)}</td>
+  <td>${safeText(log.old_plan)}</td>
+  <td>${safeText(log.new_plan)}</td>
+  <td>${safeText(log.admin)}</td>
+  <td>${safeText(log.date)}</td>
 </tr>`)
       .join('');
   };
@@ -346,8 +408,8 @@
     if (!assignAccount) return;
     assignAccount.innerHTML = subscriptions
       .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((sub) => `<option value="${sub.id}">${sub.name} (${sub.account_type})</option>`)
+      .sort((a, b) => toSortText(a.name).localeCompare(toSortText(b.name)))
+      .map((sub) => `<option value="${safeText(sub.id, '')}">${safeText(sub.name)} (${safeText(sub.account_type)})</option>`)
       .join('');
   };
 
@@ -391,7 +453,11 @@
       });
     }
 
-    if (subscriptionFormModal) subscriptionFormModal.show();
+    if (subscriptionFormModal) {
+      subscriptionFormModal.show();
+      return;
+    }
+    showToast('Form modal unavailable. Refresh page and try again.', 'danger');
   };
 
   const openSubscriptionView = (id) => {
@@ -402,28 +468,32 @@
 <div class="details-card">
   <h6>Subscription Plan</h6>
   <div class="details-list">
-    <div><span>Plan:</span> ${plan.name}</div>
-    <div><span>Code:</span> ${plan.plan_code}</div>
+    <div><span>Plan:</span> ${safeText(plan.name)}</div>
+    <div><span>Code:</span> ${safeText(plan.plan_code)}</div>
     <div><span>Monthly Price:</span> INR ${formatNumber(plan.price_monthly)}</div>
     <div><span>Quarterly Price:</span> INR ${formatNumber(plan.price_quarterly)}</div>
-    <div><span>Job Posts:</span> ${plan.job_posts || '-'}</div>
-    <div><span>Job Validity:</span> ${plan.job_validity || '-'}</div>
-    <div><span>Resume View:</span> ${plan.resume_view || '-'}</div>
-    <div><span>Resume Download:</span> ${plan.resume_download || '-'}</div>
-    <div><span>Candidate Chat:</span> ${plan.candidate_chat || '-'}</div>
-    <div><span>Interview Scheduler:</span> ${plan.interview_scheduler || '-'}</div>
-    <div><span>Auto Match:</span> ${plan.auto_match || '-'}</div>
-    <div><span>Shortlisting:</span> ${plan.shortlisting || '-'}</div>
-    <div><span>Candidate Ranking:</span> ${plan.candidate_ranking || '-'}</div>
-    <div><span>Candidate Pool Manager:</span> ${plan.candidate_pool_manager || '-'}</div>
-    <div><span>Featured Jobs:</span> ${plan.featured_jobs || '-'}</div>
-    <div><span>Company Branding:</span> ${plan.company_branding || '-'}</div>
-    <div><span>Analytics Dashboard:</span> ${plan.analytics_dashboard || '-'}</div>
-    <div><span>Support:</span> ${plan.support || '-'}</div>
-    <div><span>Dedicated Account Manager:</span> ${plan.dedicated_account_manager || '-'}</div>
+    <div><span>Job Posts:</span> ${safeText(plan.job_posts)}</div>
+    <div><span>Job Validity:</span> ${safeText(plan.job_validity)}</div>
+    <div><span>Resume View:</span> ${safeText(plan.resume_view)}</div>
+    <div><span>Resume Download:</span> ${safeText(plan.resume_download)}</div>
+    <div><span>Candidate Chat:</span> ${safeText(plan.candidate_chat)}</div>
+    <div><span>Interview Scheduler:</span> ${safeText(plan.interview_scheduler)}</div>
+    <div><span>Auto Match:</span> ${safeText(plan.auto_match)}</div>
+    <div><span>Shortlisting:</span> ${safeText(plan.shortlisting)}</div>
+    <div><span>Candidate Ranking:</span> ${safeText(plan.candidate_ranking)}</div>
+    <div><span>Candidate Pool Manager:</span> ${safeText(plan.candidate_pool_manager)}</div>
+    <div><span>Featured Jobs:</span> ${safeText(plan.featured_jobs)}</div>
+    <div><span>Company Branding:</span> ${safeText(plan.company_branding)}</div>
+    <div><span>Analytics Dashboard:</span> ${safeText(plan.analytics_dashboard)}</div>
+    <div><span>Support:</span> ${safeText(plan.support)}</div>
+    <div><span>Dedicated Account Manager:</span> ${safeText(plan.dedicated_account_manager)}</div>
   </div>
 </div>`;
-    if (subscriptionViewModal) subscriptionViewModal.show();
+    if (subscriptionViewModal) {
+      subscriptionViewModal.show();
+      return;
+    }
+    showToast('View modal unavailable. Refresh page and try again.', 'danger');
   };
 
   const buildListParams = () => {
@@ -525,7 +595,7 @@
       btn.addEventListener('click', async () => {
         const action = btn.dataset.action;
         const id = btn.dataset.id;
-        const sub = subscriptions.find((item) => item.id === id);
+        const sub = subscriptions.find((item) => String(item.id) === String(id));
         if (!sub) return;
         if (action === 'notify') {
           showToast(`Reminder sent to ${sub.name}`, 'success');
@@ -545,30 +615,32 @@
 
   const refreshData = async (silent = false) => {
     if (!silent) setLoading(true);
-    const params = buildListParams();
-    const data = await fetchJson(`/api/subscriptions/list/?${params.toString()}`);
-    if (data.error) {
-      showToast(data.error, 'danger');
-      subscriptions = [];
-      logs = [];
-      updateStats({ total: 0, paid: 0, free: 0, expiring: 0 });
+    try {
+      const params = buildListParams();
+      const data = await fetchJson(`/api/subscriptions/list/?${params.toString()}`);
+      if (data.error) {
+        showToast(data.error, 'danger');
+        subscriptions = [];
+        logs = [];
+        updateStats({ total: 0, paid: 0, free: 0, expiring: 0 });
+        renderFreePaidTable();
+        renderExpiryTable();
+        renderLogs();
+        populateAssignSelect();
+        return false;
+      }
+      subscriptions = Array.isArray(data.results) ? data.results : [];
+      logs = Array.isArray(data.logs) ? data.logs : [];
+      updateStats(data.stats);
       renderFreePaidTable();
       renderExpiryTable();
       renderLogs();
       populateAssignSelect();
+      handleExpiryActions();
+      return true;
+    } finally {
       if (!silent) setLoading(false);
-      return false;
     }
-    subscriptions = Array.isArray(data.results) ? data.results : [];
-    logs = Array.isArray(data.logs) ? data.logs : [];
-    updateStats(data.stats);
-    renderFreePaidTable();
-    renderExpiryTable();
-    renderLogs();
-    populateAssignSelect();
-    handleExpiryActions();
-    if (!silent) setLoading(false);
-    return true;
   };
 
   const refreshPlans = async () => {
@@ -592,7 +664,7 @@
         return;
       }
       const selectedId = assignAccount.value;
-      const sub = subscriptions.find((item) => item.id === selectedId);
+      const sub = subscriptions.find((item) => String(item.id) === String(selectedId));
       if (!sub) {
         showToast('Account not found', 'danger');
         return;
@@ -668,16 +740,50 @@
     });
   }
 
+  if (downloadReportBtn) {
+    downloadReportBtn.addEventListener('click', () => {
+      if (!revenueSeries.length) {
+        showToast('No revenue data available to download.', 'warning');
+        return;
+      }
+      const header = ['Month', 'Free', 'Basic', 'Standard', 'Gold', 'Total'];
+      const rows = revenueSeries.map((row) => {
+        const total = row.free + row.basic + row.standard + row.gold;
+        return [row.month, row.free, row.basic, row.standard, row.gold, total];
+      });
+      const csv = [header.join(',')]
+        .concat(rows.map((row) => row.map((val) => `"${String(val).replace(/"/g, '""')}"`).join(',')))
+        .join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'subscription-revenue-report.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast('Revenue report downloaded', 'success');
+    });
+  }
+
   if (subscriptionForm) {
     subscriptionForm.addEventListener('submit', handleSubscriptionSubmit);
   }
 
   if (addSubscriptionBtn) {
-    addSubscriptionBtn.addEventListener('click', () => openSubscriptionForm());
+    addSubscriptionBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      openSubscriptionForm();
+    });
   }
 
   if (confirmSubscriptionDelete) {
     confirmSubscriptionDelete.addEventListener('click', async () => {
+      if (!canDelete) {
+        showToast('Delete action is disabled for subadmin.', 'warning');
+        return;
+      }
       if (!deleteSubscriptionId) return;
       const success = await deleteSubscription(deleteSubscriptionId);
       if (success && subscriptionDeleteModal) subscriptionDeleteModal.hide();
@@ -708,19 +814,35 @@
 <div class="details-card">
   <h6>Add-on</h6>
   <div class="details-list">
-    <div><span>Name:</span> ${data.name || '-'}</div>
-    <div><span>Price:</span> ${data.price || '-'}</div>
+    <div><span>Name:</span> ${safeText(data.name)}</div>
+    <div><span>Price:</span> ${safeText(data.price)}</div>
   </div>
 </div>`;
-        if (addonViewModal) addonViewModal.show();
+        if (addonViewModal) {
+          addonViewModal.show();
+          return;
+        }
+        showToast('Add-on view modal unavailable. Refresh page and try again.', 'danger');
       }
       if (action === 'edit') {
         if (addonNameInput) addonNameInput.value = data.name || '';
         if (addonPriceInput) addonPriceInput.value = data.price || '';
-        if (addonEditModal) addonEditModal.show();
+        if (addonEditModal) {
+          addonEditModal.show();
+          return;
+        }
+        showToast('Add-on edit modal unavailable. Refresh page and try again.', 'danger');
       }
       if (action === 'delete') {
-        if (addonDeleteModal) addonDeleteModal.show();
+        if (!canDelete) {
+          showToast('Delete action is disabled for subadmin.', 'warning');
+          return;
+        }
+        if (addonDeleteModal) {
+          addonDeleteModal.show();
+          return;
+        }
+        showToast('Add-on delete modal unavailable. Refresh page and try again.', 'danger');
       }
     });
   }
@@ -741,6 +863,10 @@
 
   if (confirmAddonDelete) {
     confirmAddonDelete.addEventListener('click', () => {
+      if (!canDelete) {
+        showToast('Delete action is disabled for subadmin.', 'warning');
+        return;
+      }
       if (activeAddonRow) {
         activeAddonRow.remove();
         showToast('Add-on deleted', 'success');
@@ -758,6 +884,7 @@
 
   setInterval(() => {
     if (document.hidden) return;
+    if (document.querySelector('.modal.show')) return;
     refreshData(true);
     refreshPlans();
   }, pollInterval);

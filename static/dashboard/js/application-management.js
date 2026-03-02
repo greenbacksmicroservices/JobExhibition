@@ -1,6 +1,15 @@
 (() => {
   const body = document.body;
   const statusScope = body.dataset.appStatus || 'all';
+  const profileName = (
+    document.querySelector('.profile-meta strong')?.textContent ||
+    document.querySelector('.company-user-meta strong')?.textContent ||
+    ''
+  )
+    .trim()
+    .toLowerCase();
+  const isSubadmin = profileName === 'subadmin' || body.dataset.panelRole === 'subadmin';
+  const canDelete = body.dataset.canDelete === 'true' || (body.dataset.canDelete !== 'false' && !isSubadmin);
   const tableBody = document.getElementById('tableBody');
   if (!tableBody) {
     return;
@@ -29,9 +38,10 @@
   const viewModalEl = document.getElementById('applicationViewModal');
   const deleteModalEl = document.getElementById('applicationDeleteModal');
 
-  const formModal = formModalEl ? new bootstrap.Modal(formModalEl) : null;
-  const viewModal = viewModalEl ? new bootstrap.Modal(viewModalEl) : null;
-  const deleteModal = deleteModalEl ? new bootstrap.Modal(deleteModalEl) : null;
+  const modalOptions = { backdrop: false, keyboard: true };
+  const formModal = formModalEl ? new bootstrap.Modal(formModalEl, modalOptions) : null;
+  const viewModal = viewModalEl ? new bootstrap.Modal(viewModalEl, modalOptions) : null;
+  const deleteModal = deleteModalEl ? new bootstrap.Modal(deleteModalEl, modalOptions) : null;
 
   const applicationForm = document.getElementById('applicationForm');
   const formTitle = document.getElementById('formTitle');
@@ -48,6 +58,13 @@
   let deleteTarget = null;
   let useApi = true;
   let apiWarned = false;
+
+  if (!canDelete) {
+    if (confirmDeleteBtn) {
+      confirmDeleteBtn.style.display = 'none';
+      confirmDeleteBtn.disabled = true;
+    }
+  }
 
   const defaultApplications = [
     {
@@ -400,6 +417,9 @@
     tableBody.innerHTML = rows
       .map((app) => {
         const badgeClass = statusClass(app.status);
+        const deleteButton = canDelete
+          ? `<button class="action-btn danger" data-action="delete" data-id="${app.id}"><i class="fa-solid fa-trash"></i> Delete</button>`
+          : '';
         return `
 <tr>
   <td>${app.id}</td>
@@ -416,7 +436,7 @@
     <div class="table-actions">
       <button class="action-btn" data-action="view" data-id="${app.id}"><i class="fa-solid fa-eye"></i> View</button>
       <button class="action-btn" data-action="edit" data-id="${app.id}"><i class="fa-solid fa-pen"></i> Edit</button>
-      <button class="action-btn danger" data-action="delete" data-id="${app.id}"><i class="fa-solid fa-trash"></i> Delete</button>
+      ${deleteButton}
     </div>
   </td>
 </tr>`;
@@ -706,6 +726,10 @@
         if (action === 'view') openViewModal(id);
         if (action === 'edit') openEditModal(id);
         if (action === 'delete') {
+          if (!canDelete) {
+            showToast('Delete action is disabled for subadmin.', 'warning');
+            return;
+          }
           deleteTarget = id;
           if (deleteModal) deleteModal.show();
         }
@@ -751,6 +775,10 @@
   };
 
   const handleDelete = async () => {
+    if (!canDelete) {
+      showToast('Delete action is disabled for subadmin.', 'warning');
+      return;
+    }
     if (!deleteTarget) return;
     await deleteApplication(deleteTarget);
     deleteTarget = null;
@@ -875,6 +903,7 @@
 
   setInterval(() => {
     if (document.hidden) return;
+    if (document.querySelector('.modal.show')) return;
     refreshData(true);
   }, pollInterval);
 })();

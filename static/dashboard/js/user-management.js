@@ -5,6 +5,15 @@
   const hasKyc =
     body.dataset.hasKyc === 'true' || (body.dataset.hasKyc === undefined && userType !== 'candidates');
   const hasResume = body.dataset.hasResume === 'true';
+  const profileName = (
+    document.querySelector('.profile-meta strong')?.textContent ||
+    document.querySelector('.company-user-meta strong')?.textContent ||
+    ''
+  )
+    .trim()
+    .toLowerCase();
+  const isSubadmin = profileName === 'subadmin' || body.dataset.panelRole === 'subadmin';
+  const canDelete = body.dataset.canDelete === 'true' || (body.dataset.canDelete !== 'false' && !isSubadmin);
   if (!userType) {
     return;
   }
@@ -30,9 +39,10 @@
   const viewModalEl = document.getElementById('viewModal');
   const deleteModalEl = document.getElementById('deleteModal');
 
-  const formModal = formModalEl ? new bootstrap.Modal(formModalEl) : null;
-  const viewModal = viewModalEl ? new bootstrap.Modal(viewModalEl) : null;
-  const deleteModal = deleteModalEl ? new bootstrap.Modal(deleteModalEl) : null;
+  const modalOptions = { backdrop: false, keyboard: true };
+  const formModal = formModalEl ? new bootstrap.Modal(formModalEl, modalOptions) : null;
+  const viewModal = viewModalEl ? new bootstrap.Modal(viewModalEl, modalOptions) : null;
+  const deleteModal = deleteModalEl ? new bootstrap.Modal(deleteModalEl, modalOptions) : null;
 
   const userForm = document.getElementById('userForm');
   const formTitle = document.getElementById('formTitle');
@@ -43,6 +53,21 @@
   let currentPage = 1;
   let totalPages = 1;
   let deleteIds = [];
+
+  if (!canDelete) {
+    if (bulkDeleteBtn) {
+      bulkDeleteBtn.style.display = 'none';
+      bulkDeleteBtn.disabled = true;
+    }
+    if (confirmDeleteBtn) {
+      confirmDeleteBtn.style.display = 'none';
+      confirmDeleteBtn.disabled = true;
+    }
+    if (selectAll) {
+      selectAll.checked = false;
+      selectAll.disabled = true;
+    }
+  }
 
   const statusClass = (value) => {
     if (!value) return 'neutral';
@@ -79,41 +104,48 @@
   };
 
   const fetchJson = async (url, options = {}) => {
-    const response = await fetch(url, options);
-    const text = await response.text();
-    let data = {};
     try {
-      data = text ? JSON.parse(text) : {};
+      const response = await fetch(url, options);
+      const text = await response.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (error) {
+        data = { success: false, error: 'Server error. Please check server logs.' };
+      }
+      if (!response.ok && !data.error) {
+        data.error = 'Server error. Please check server logs.';
+      }
+      return data;
     } catch (error) {
-      data = { success: false, error: 'Server error. Please check server logs.' };
+      return { success: false, error: 'Network error. Please check connection.' };
     }
-    if (!response.ok && !data.error) {
-      data.error = 'Server error. Please check server logs.';
-    }
-    return data;
   };
 
   const fetchList = async (page = 1) => {
-    showLoading(true);
-    const params = new URLSearchParams();
-    params.set('page', String(page));
-    params.set('page_size', '10');
-    params.set('search', searchInput ? searchInput.value.trim() : '');
-    params.set('kyc', filterKyc ? filterKyc.value : 'all');
-    params.set('status', filterStatus ? filterStatus.value : 'all');
-    if (hasSubscription && filterPlan) {
-      params.set('plan', filterPlan.value);
-    }
+    try {
+      showLoading(true);
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('page_size', '10');
+      params.set('search', searchInput ? searchInput.value.trim() : '');
+      params.set('kyc', filterKyc ? filterKyc.value : 'all');
+      params.set('status', filterStatus ? filterStatus.value : 'all');
+      if (hasSubscription && filterPlan) {
+        params.set('plan', filterPlan.value);
+      }
 
-    const data = await fetchJson(`/api/user-management/${userType}/list/?${params.toString()}`);
-    if (data.error) {
-      showToast(data.error, 'danger');
+      const data = await fetchJson(`/api/user-management/${userType}/list/?${params.toString()}`);
+      if (data.error) {
+        showToast(data.error, 'danger');
+      }
+      currentPage = data.page || 1;
+      totalPages = data.pages || 1;
+      renderTable(data.results || []);
+      renderPagination();
+    } finally {
+      showLoading(false);
     }
-    currentPage = data.page || 1;
-    totalPages = data.pages || 1;
-    renderTable(data.results || []);
-    renderPagination();
-    showLoading(false);
   };
 
   const renderTable = (rows) => {
@@ -138,9 +170,15 @@
         const verificationCell = hasResume
           ? `<td><span class="badge ${resumeBadge}">${resumeLabel}</span></td>`
           : `<td><span class="badge ${kycBadge}">${row.kyc_status || 'Pending'}</span></td>`;
+        const selectCell = canDelete
+          ? `<td><input type="checkbox" class="row-check" data-id="${row.id}" /></td>`
+          : '<td></td>';
+        const deleteButton = canDelete
+          ? `<button class="action-btn danger" data-action="delete" data-id="${row.id}"><i class="fa-solid fa-trash"></i> Delete</button>`
+          : '';
         return `
 <tr>
-  <td><input type="checkbox" class="row-check" data-id="${row.id}" /></td>
+  ${selectCell}
   <td>#${row.id}</td>
   <td>${row.name || '-'}</td>
   <td>${row.email || '-'}</td>
@@ -162,7 +200,7 @@
     <div class="table-actions">
       <button class="action-btn" data-action="view" data-id="${row.id}"><i class="fa-solid fa-eye"></i> View</button>
       <button class="action-btn" data-action="edit" data-id="${row.id}"><i class="fa-solid fa-pen"></i> Edit</button>
-      <button class="action-btn danger" data-action="delete" data-id="${row.id}"><i class="fa-solid fa-trash"></i> Delete</button>
+      ${deleteButton}
     </div>
   </td>
 </tr>`;
@@ -217,6 +255,9 @@
   <td>${row.email || '-'}</td>
   <td>${row.phone || '-'}</td>
   <td>${row.location || '-'}</td>`;
+        const deleteButton = canDelete
+          ? `<button class="action-btn danger" data-action="delete" data-id="${row.id}"><i class="fa-solid fa-trash"></i> Delete</button>`
+          : '';
         return `
 <tr>
   <td>#${row.id}</td>
@@ -228,7 +269,7 @@
     <div class="table-actions">
       <button class="action-btn" data-action="view" data-id="${row.id}"><i class="fa-solid fa-eye"></i> Details</button>
       <button class="action-btn" data-action="edit" data-id="${row.id}"><i class="fa-solid fa-pen"></i> Edit</button>
-      <button class="action-btn danger" data-action="delete" data-id="${row.id}"><i class="fa-solid fa-trash"></i> Delete</button>
+      ${deleteButton}
       <button class="action-btn" data-action="accept" data-id="${row.id}"><i class="fa-solid fa-check"></i> Accept</button>
       <button class="action-btn danger" data-action="reject" data-id="${row.id}"><i class="fa-solid fa-xmark"></i> Reject</button>
     </div>
@@ -279,6 +320,10 @@
           await openEditModal(id);
         }
         if (action === 'delete') {
+          if (!canDelete) {
+            showToast('Delete action is disabled for subadmin.', 'warning');
+            return;
+          }
           deleteIds = [id];
           if (deleteModal) deleteModal.show();
         }
@@ -648,6 +693,10 @@ ${jobsSection}
   };
 
   const confirmDelete = async () => {
+    if (!canDelete) {
+      showToast('Delete action is disabled for subadmin.', 'warning');
+      return;
+    }
     if (!deleteIds.length) return;
     showLoading(true);
     const data = await fetchJson(`/api/user-management/${userType}/bulk-delete/`, {
@@ -721,10 +770,12 @@ ${jobsSection}
   }
 
   if (addNewBtn && userForm) {
-    addNewBtn.addEventListener('click', () => {
+    addNewBtn.addEventListener('click', (event) => {
+      event.preventDefault();
       userForm.reset();
       if (userIdInput) userIdInput.value = '';
       if (formTitle) formTitle.textContent = `Add ${userSingular || ''}`;
+      if (formModal) formModal.show();
     });
   }
 
@@ -742,6 +793,7 @@ ${jobsSection}
 
   if (selectAll) {
     selectAll.addEventListener('change', () => {
+      if (!canDelete) return;
       const checks = document.querySelectorAll('.row-check');
       checks.forEach((check) => {
         check.checked = selectAll.checked;
@@ -754,6 +806,10 @@ ${jobsSection}
 
   if (bulkDeleteBtn) {
     bulkDeleteBtn.addEventListener('click', () => {
+      if (!canDelete) {
+        showToast('Delete action is disabled for subadmin.', 'warning');
+        return;
+      }
       const ids = Array.from(document.querySelectorAll('.row-check:checked')).map((el) => el.dataset.id);
       if (!ids.length) {
         showToast('Select at least one row', 'warning');

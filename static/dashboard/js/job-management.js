@@ -1,6 +1,15 @@
 (() => {
   const body = document.body;
   const statusScope = body.dataset.jobStatus || 'all';
+  const profileName = (
+    document.querySelector('.profile-meta strong')?.textContent ||
+    document.querySelector('.company-user-meta strong')?.textContent ||
+    ''
+  )
+    .trim()
+    .toLowerCase();
+  const isSubadmin = profileName === 'subadmin' || body.dataset.panelRole === 'subadmin';
+  const canDelete = body.dataset.canDelete === 'true' || (body.dataset.canDelete !== 'false' && !isSubadmin);
   const tableBody = document.getElementById('tableBody');
   if (!tableBody) {
     return;
@@ -18,9 +27,11 @@
   const viewModalEl = document.getElementById('jobViewModal');
   const deleteModalEl = document.getElementById('jobDeleteModal');
 
-  const formModal = formModalEl ? new bootstrap.Modal(formModalEl) : null;
-  const viewModal = viewModalEl ? new bootstrap.Modal(viewModalEl) : null;
-  const deleteModal = deleteModalEl ? new bootstrap.Modal(deleteModalEl) : null;
+  const BootstrapModal = window.bootstrap && window.bootstrap.Modal ? window.bootstrap.Modal : null;
+  const modalOptions = { backdrop: false, keyboard: true };
+  const formModal = BootstrapModal && formModalEl ? new BootstrapModal(formModalEl, modalOptions) : null;
+  const viewModal = BootstrapModal && viewModalEl ? new BootstrapModal(viewModalEl, modalOptions) : null;
+  const deleteModal = BootstrapModal && deleteModalEl ? new BootstrapModal(deleteModalEl, modalOptions) : null;
 
   const jobForm = document.getElementById('jobForm');
   const formTitle = document.getElementById('formTitle');
@@ -42,6 +53,13 @@
   let deleteTarget = null;
   let useApi = true;
   let apiWarned = false;
+
+  if (!canDelete) {
+    if (confirmDeleteBtn) {
+      confirmDeleteBtn.style.display = 'none';
+      confirmDeleteBtn.disabled = true;
+    }
+  }
 
   const defaultJobs = [
     {
@@ -284,6 +302,27 @@
     return Number.isNaN(number) ? '0' : number.toLocaleString();
   };
 
+  const escapeHtml = (value) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const toSearchText = (value) => String(value ?? '').toLowerCase();
+
+  const safeText = (value, fallback = '-') => {
+    const normalized = String(value ?? '').trim();
+    return normalized ? escapeHtml(normalized) : fallback;
+  };
+
+  const safeMultilineText = (value, fallback = '-') => {
+    const normalized = String(value ?? '').trim();
+    if (!normalized) return fallback;
+    return escapeHtml(normalized).replace(/\n/g, '<br>');
+  };
+
   const setLoading = (show) => {
     if (!loadingOverlay) return;
     loadingOverlay.classList.toggle('active', show);
@@ -400,10 +439,10 @@
     if (keyword) {
       filtered = filtered.filter((job) => {
         return (
-          job.title.toLowerCase().includes(keyword) ||
-          job.company.toLowerCase().includes(keyword) ||
-          job.category.toLowerCase().includes(keyword) ||
-          job.location.toLowerCase().includes(keyword)
+          toSearchText(job.title).includes(keyword) ||
+          toSearchText(job.company).includes(keyword) ||
+          toSearchText(job.category).includes(keyword) ||
+          toSearchText(job.location).includes(keyword)
         );
       });
     }
@@ -442,24 +481,35 @@
     tableBody.innerHTML = rows
       .map((job) => {
         const badgeClass = statusClass(job.status);
+        const jobId = safeText(job.id);
+        const title = safeText(job.title);
+        const category = safeText(job.category);
+        const location = safeText(job.location);
+        const company = safeText(job.company);
+        const status = safeText(job.status);
+        const postedDate = safeText(job.posted_date);
+        const applicants = safeText(job.applicants ?? 0, '0');
         const featured = job.featured ? '<span class="badge info" style="margin-left:6px;">Featured</span>' : '';
+        const deleteButton = canDelete
+          ? `<button class="action-btn danger" data-action="delete" data-id="${jobId}"><i class="fa-solid fa-trash"></i> Delete</button>`
+          : '';
         return `
 <tr>
-  <td>${job.id}</td>
+  <td>${jobId}</td>
   <td>
-    <strong>${job.title}</strong>
-    <div class="muted">${job.category} - ${job.location}</div>
+    <strong>${title}</strong>
+    <div class="muted">${category} - ${location}</div>
     ${featured}
   </td>
-  <td>${job.company}</td>
-  <td><span class="badge ${badgeClass}">${job.status}</span></td>
-  <td>${job.posted_date || '-'}</td>
-  <td>${job.applicants}</td>
+  <td>${company}</td>
+  <td><span class="badge ${badgeClass}">${status}</span></td>
+  <td>${postedDate}</td>
+  <td>${applicants}</td>
   <td>
     <div class="table-actions">
-      <button class="action-btn" data-action="view" data-id="${job.id}"><i class="fa-solid fa-eye"></i> Details</button>
-      <button class="action-btn" data-action="edit" data-id="${job.id}"><i class="fa-solid fa-pen"></i> Edit</button>
-      <button class="action-btn danger" data-action="delete" data-id="${job.id}"><i class="fa-solid fa-trash"></i> Delete</button>
+      <button class="action-btn" data-action="view" data-id="${jobId}"><i class="fa-solid fa-eye"></i> Details</button>
+      <button class="action-btn" data-action="edit" data-id="${jobId}"><i class="fa-solid fa-pen"></i> Edit</button>
+      ${deleteButton}
     </div>
   </td>
 </tr>`;
@@ -497,31 +547,40 @@
 
   const fetchJobsFromApi = async (page = 1, silent = false) => {
     if (!silent) setLoading(true);
-    const params = buildListParams(page);
-    const data = await fetchJson(`/api/jobs/list/?${params.toString()}`);
-    if (data.error) {
+    try {
+      const params = buildListParams(page);
+      const data = await fetchJson(`/api/jobs/list/?${params.toString()}`);
+      if (data.error) {
+        if (!apiWarned) {
+          showToast(data.error, 'danger');
+          apiWarned = true;
+        }
+        useApi = false;
+        return false;
+      }
+      useApi = true;
+      apiWarned = false;
+      currentPage = data.page || 1;
+      totalPages = data.pages || 1;
+      jobs = Array.isArray(data.results) ? data.results : [];
+      renderTableRows(jobs);
+      renderPagination(totalPages, (nextPage) => {
+        currentPage = nextPage;
+        fetchJobsFromApi(nextPage);
+      });
+      updateStats(data.stats);
+      mergeLocalJobs(jobs);
+      return true;
+    } catch (error) {
+      useApi = false;
       if (!apiWarned) {
-        showToast(data.error, 'danger');
+        showToast('Unable to load jobs from server. Showing local data.', 'danger');
         apiWarned = true;
       }
-      if (!silent) setLoading(false);
-      useApi = false;
       return false;
+    } finally {
+      if (!silent) setLoading(false);
     }
-    useApi = true;
-    apiWarned = false;
-    currentPage = data.page || 1;
-    totalPages = data.pages || 1;
-    jobs = Array.isArray(data.results) ? data.results : [];
-    renderTableRows(jobs);
-    renderPagination(totalPages, (nextPage) => {
-      currentPage = nextPage;
-      fetchJobsFromApi(nextPage);
-    });
-    updateStats(data.stats);
-    mergeLocalJobs(jobs);
-    if (!silent) setLoading(false);
-    return true;
   };
 
   const refreshData = async (silent = false) => {
@@ -571,34 +630,34 @@
   <div class="details-card">
     <h6>Job Overview</h6>
     <div class="details-list">
-      <div><span>Job ID</span> <strong>${job.id}</strong></div>
-      <div><span>Status</span> <strong>${job.status}</strong></div>
-      <div><span>Category</span> <strong>${job.category}</strong></div>
-      <div><span>Location</span> <strong>${job.location}</strong></div>
-      <div><span>Job Type</span> <strong>${job.job_type}</strong></div>
-      <div><span>Salary</span> <strong>${job.salary || '-'}</strong></div>
-      <div><span>Experience</span> <strong>${job.experience || '-'}</strong></div>
-      <div><span>Applicants</span> <strong>${job.applicants}</strong></div>
-      <div><span>Verification</span> <strong>${job.verification}</strong></div>
+      <div><span>Job ID</span> <strong>${safeText(job.id)}</strong></div>
+      <div><span>Status</span> <strong>${safeText(job.status)}</strong></div>
+      <div><span>Category</span> <strong>${safeText(job.category)}</strong></div>
+      <div><span>Location</span> <strong>${safeText(job.location)}</strong></div>
+      <div><span>Job Type</span> <strong>${safeText(job.job_type)}</strong></div>
+      <div><span>Salary</span> <strong>${safeText(job.salary)}</strong></div>
+      <div><span>Experience</span> <strong>${safeText(job.experience)}</strong></div>
+      <div><span>Applicants</span> <strong>${safeText(job.applicants ?? 0, '0')}</strong></div>
+      <div><span>Verification</span> <strong>${safeText(job.verification)}</strong></div>
     </div>
   </div>
   <div class="details-card">
     <h6>Recruiter Details</h6>
     <div class="details-list">
-      <div><span>Company</span> <strong>${job.company}</strong></div>
-      <div><span>Name</span> <strong>${job.recruiter_name || '-'}</strong></div>
-      <div><span>Email</span> <strong>${job.recruiter_email || '-'}</strong></div>
-      <div><span>Phone</span> <strong>${job.recruiter_phone || '-'}</strong></div>
-      <div><span>Posted Date</span> <strong>${job.posted_date || '-'}</strong></div>
+      <div><span>Company</span> <strong>${safeText(job.company)}</strong></div>
+      <div><span>Name</span> <strong>${safeText(job.recruiter_name)}</strong></div>
+      <div><span>Email</span> <strong>${safeText(job.recruiter_email)}</strong></div>
+      <div><span>Phone</span> <strong>${safeText(job.recruiter_phone)}</strong></div>
+      <div><span>Posted Date</span> <strong>${safeText(job.posted_date)}</strong></div>
       <div><span>Featured</span> <strong>${job.featured ? 'Yes' : 'No'}</strong></div>
     </div>
   </div>
   <div class="details-card" style="grid-column: 1 / -1;">
     <h6>Job Content</h6>
     <div class="details-list">
-      <div><span>Description</span> <strong>${job.description || '-'}</strong></div>
-      <div><span>Requirements</span> <strong>${job.requirements || '-'}</strong></div>
-      <div><span>Skills</span> <strong>${job.skills || '-'}</strong></div>
+      <div><span>Description</span> <strong>${safeMultilineText(job.description)}</strong></div>
+      <div><span>Requirements</span> <strong>${safeMultilineText(job.requirements)}</strong></div>
+      <div><span>Skills</span> <strong>${safeText(job.skills)}</strong></div>
     </div>
   </div>
 </div>
@@ -716,7 +775,11 @@
         }
       });
     });
-    if (viewModal) viewModal.show();
+    if (viewModal) {
+      viewModal.show();
+      return;
+    }
+    showToast('Details modal is unavailable. Refresh page and try again.', 'danger');
   };
 
   const openEditModal = (id) => {
@@ -725,7 +788,11 @@
     if (jobIdInput) jobIdInput.value = job.id;
     if (formTitle) formTitle.textContent = `Edit ${job.title}`;
     fillForm(job);
-    if (formModal) formModal.show();
+    if (formModal) {
+      formModal.show();
+      return;
+    }
+    showToast('Edit form modal is unavailable. Refresh page and try again.', 'danger');
   };
 
   const bindRowEvents = () => {
@@ -741,8 +808,16 @@
           openEditModal(id);
         }
         if (action === 'delete') {
+          if (!canDelete) {
+            showToast('Delete action is disabled for subadmin.', 'warning');
+            return;
+          }
           deleteTarget = id;
-          if (deleteModal) deleteModal.show();
+          if (deleteModal) {
+            deleteModal.show();
+            return;
+          }
+          showToast('Delete confirmation modal is unavailable. Refresh page and try again.', 'danger');
         }
       });
     });
@@ -788,6 +863,10 @@
   };
 
   const handleDelete = async () => {
+    if (!canDelete) {
+      showToast('Delete action is disabled for subadmin.', 'warning');
+      return;
+    }
     if (!deleteTarget) return;
     await deleteJob(deleteTarget);
     deleteTarget = null;
@@ -855,7 +934,11 @@
       jobForm.reset();
       if (jobIdInput) jobIdInput.value = '';
       if (formTitle) formTitle.textContent = 'Add Job';
-      if (formModal) formModal.show();
+      if (formModal) {
+        formModal.show();
+        return;
+      }
+      showToast('Job form modal is unavailable. Refresh page and try again.', 'danger');
     });
   }
 
@@ -897,6 +980,7 @@
 
   setInterval(() => {
     if (document.hidden) return;
+    if (document.querySelector('.modal.show')) return;
     refreshData(true);
   }, pollInterval);
 })();

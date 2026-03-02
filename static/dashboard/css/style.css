@@ -35,6 +35,14 @@ button {
     background: none;
 }
 
+.ui-icon {
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+    display: inline-block;
+    vertical-align: middle;
+}
+
 .sidebar-overlay {
     display: none;
 }
@@ -3138,9 +3146,14 @@ body.sidebar-collapsed .profile-progress-text {
     min-width: 180px;
 }
 
-.job-search-bar .search-field i {
+.job-search-bar .search-field i,
+.job-search-bar .search-field .ui-icon {
     color: #6366f1;
     font-size: 14px;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    display: block;
 }
 
 .job-search-bar input {

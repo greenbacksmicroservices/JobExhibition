@@ -137,6 +137,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'dashboard.middleware.MySQLConnectionRecoveryMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -189,6 +190,12 @@ else:
         'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
         'connect_timeout': _env_int("DB_CONNECT_TIMEOUT", 20),
     }
+    db_read_timeout = _env_int("DB_READ_TIMEOUT", 30)
+    if db_read_timeout > 0:
+        db_options['read_timeout'] = db_read_timeout
+    db_write_timeout = _env_int("DB_WRITE_TIMEOUT", 30)
+    if db_write_timeout > 0:
+        db_options['write_timeout'] = db_write_timeout
     db_ssl_ca = _env_str("DB_SSL_CA", "")
     if db_ssl_ca:
         db_options['ssl'] = {'ca': db_ssl_ca}
@@ -202,6 +209,7 @@ else:
             'HOST': _env_str("DB_HOST", "srv685.hstgr.io"),
             'PORT': _env_str("DB_PORT", "3306"),
             'CONN_MAX_AGE': _env_int("DB_CONN_MAX_AGE", 60),
+            'CONN_HEALTH_CHECKS': _env_bool("DB_CONN_HEALTH_CHECKS", default=True),
             'OPTIONS': db_options,
         }
     }

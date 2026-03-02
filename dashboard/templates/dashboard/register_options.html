@@ -87,39 +87,6 @@
     .account-card strong { font-size: 0.98rem; }
     .account-card span { color: var(--muted); font-size: 0.84rem; }
 
-    .groups {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 12px;
-    }
-
-    .group {
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.82);
-      padding: 14px;
-      display: grid;
-      gap: 10px;
-    }
-
-    .group h3 { font-size: 1rem; color: #075985; }
-
-    .role-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .role-list a {
-      text-decoration: none;
-      color: #0f172a;
-      border: 1px solid var(--border);
-      background: #f8fafc;
-      border-radius: 999px;
-      padding: 7px 11px;
-      font-size: 0.8rem;
-      font-weight: 600;
-    }
   </style>
 </head>
 <body>
@@ -129,7 +96,7 @@
         <img src="{% static 'dashboard/img/je-logo.svg' %}?v={{ static_asset_version }}" alt="Job Exhibition logo" />
         <div>
           <h1>Register Here</h1>
-          <p>Choose account type and job role</p>
+          <p>Choose your account type</p>
         </div>
       </div>
       <a class="back-link" href="{% url 'dashboard:login' %}">
@@ -159,22 +126,6 @@
       </div>
     </section>
 
-    <section class="panel">
-      <h2>Role Based Candidate Registration</h2>
-      <p>Pick your role and open candidate registration with role pre-selected in current job title.</p>
-      <div class="groups">
-        {% for group in role_groups %}
-          <article class="group">
-            <h3>{{ group.title }}</h3>
-            <div class="role-list">
-              {% for role in group.roles %}
-                <a href="{% url 'dashboard:candidate_register' %}?role={{ role|urlencode }}">{{ role }}</a>
-              {% endfor %}
-            </div>
-          </article>
-        {% endfor %}
-      </div>
-    </section>
   </div>
 </body>
 </html>

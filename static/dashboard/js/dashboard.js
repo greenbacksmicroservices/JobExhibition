@@ -7,6 +7,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const darkToggle = document.getElementById('darkModeToggle');
   const fullscreenToggles = document.querySelectorAll('[data-fullscreen-toggle]');
   const messageLinks = document.querySelectorAll('a.icon-btn[aria-label="Messages"]');
+  const panelUserName = (
+    document.querySelector('.profile-meta strong')?.textContent ||
+    document.querySelector('.company-user-meta strong')?.textContent ||
+    ''
+  )
+    .trim()
+    .toLowerCase();
+  const isSubadminPanel = panelUserName === 'subadmin' || document.body.dataset.panelRole === 'subadmin';
 
   const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
   const storage = {
@@ -69,14 +77,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const buildInlineIcon = (path, extraAttrs = '') =>
     `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" ${extraAttrs}><path d="${path}" /></svg>`;
 
-  const hasFontAwesome = (() => {
+  const hasFontAwesome = () => {
     const sample = document.querySelector('i.fa-solid, i.fa-regular');
     if (!sample) return false;
     const family = (window.getComputedStyle(sample).fontFamily || '').toLowerCase();
     return family.includes('font awesome');
-  })();
+  };
 
-  const useInlineFallbackIcons = !hasFontAwesome;
+  let useInlineFallbackIcons = false;
+  let inlineFallbackApplied = false;
   const faPathMap = {
     'fa-bars': iconPaths.menu,
     'fa-moon': iconPaths.moon,
@@ -177,14 +186,31 @@ document.addEventListener('DOMContentLoaded', () => {
     iconEl.remove();
   };
 
-  if (useInlineFallbackIcons) {
+  const applyInlineFallbackIcons = () => {
+    if (inlineFallbackApplied || hasFontAwesome()) {
+      return;
+    }
+    useInlineFallbackIcons = true;
+    inlineFallbackApplied = true;
     toggles.forEach((button) => replaceIconWithInline(button, iconPaths.menu));
     fullscreenToggles.forEach((button) => replaceIconWithInline(button, iconPaths.fullscreen));
     messageLinks.forEach((button) => replaceIconWithInline(button, iconPaths.message));
     document.querySelectorAll('i.fa-solid, i.fa-regular, i.fa-brands').forEach((iconEl) => {
       replaceAnyFaIcon(iconEl);
     });
-  }
+  };
+
+  const scheduleInlineFallbackDetection = () => {
+    const detectAndApply = () => {
+      if (!hasFontAwesome()) {
+        applyInlineFallbackIcons();
+      }
+    };
+    window.setTimeout(detectAndApply, 900);
+    window.addEventListener('load', detectAndApply, { once: true });
+  };
+
+  scheduleInlineFallbackDetection();
 
   const activateLogoFallback = (brandMark) => {
     if (!brandMark || brandMark.classList.contains('logo-fallback')) return;
@@ -223,6 +249,143 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }, 3000);
   });
+
+  document.querySelectorAll('.company-logo').forEach((logo) => {
+    const img = logo.querySelector('img');
+    if (!img) return;
+
+    const userName = (
+      logo.closest('.company-user')?.querySelector('.company-user-meta strong')?.textContent || 'A'
+    )
+      .trim()
+      .charAt(0)
+      .toUpperCase() || 'A';
+
+    const fallbackToInitial = () => {
+      if (!logo) return;
+      if (logo.querySelector('span')) {
+        const existing = logo.querySelector('span');
+        existing.textContent = userName;
+        if (img && img.parentNode) img.remove();
+        return;
+      }
+      const fallback = document.createElement('span');
+      fallback.textContent = userName;
+      if (img && img.parentNode) img.remove();
+      logo.appendChild(fallback);
+    };
+
+    if (img.complete && img.naturalWidth === 0) {
+      fallbackToInitial();
+      return;
+    }
+    img.addEventListener('error', fallbackToInitial, { once: true });
+  });
+
+  if (isSubadminPanel) {
+    document.body.dataset.panelRole = 'subadmin';
+    document.body.dataset.canDelete = 'false';
+
+    document.querySelectorAll('.company-user-meta span, .profile-meta span').forEach((node) => {
+      node.textContent = 'Platform Sub-Admin';
+    });
+    document.querySelectorAll('.brand-subtitle').forEach((node) => {
+      node.textContent = 'Subadmin Control';
+    });
+
+    const isDeleteControl = (element) => {
+      if (!element) return false;
+      const action = (
+        element.dataset.action ||
+        element.dataset.subAction ||
+        element.dataset.addonAction ||
+        ''
+      )
+        .trim()
+        .toLowerCase();
+      if (action === 'delete' || action === 'remove') return true;
+
+      const id = (element.id || '').trim().toLowerCase();
+      if (id.includes('delete') || id.includes('remove')) return true;
+
+      const text = (element.textContent || '').trim().toLowerCase();
+      return text === 'delete' || text.startsWith('delete ') || text.endsWith(' delete') || text.includes('remove');
+    };
+
+    const hideDeleteControls = (root = document) => {
+      root.querySelectorAll('button, a, [role="button"]').forEach((element) => {
+        if (!isDeleteControl(element)) return;
+        element.style.display = 'none';
+        element.setAttribute('aria-hidden', 'true');
+        if ('disabled' in element) {
+          element.disabled = true;
+        }
+      });
+    };
+
+    hideDeleteControls(document);
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (!(node instanceof Element)) return;
+          hideDeleteControls(node);
+        });
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  const clearStuckLoadingOverlays = () => {
+    document.querySelectorAll('.loading-overlay.active').forEach((overlayEl) => {
+      overlayEl.classList.remove('active');
+    });
+  };
+  const cleanupModalArtifacts = () => {
+    const hasVisibleModal = Boolean(document.querySelector('.modal.show'));
+    if (hasVisibleModal) {
+      const backdrops = document.querySelectorAll('.modal-backdrop');
+      if (backdrops.length > 1) {
+        backdrops.forEach((node, index) => {
+          if (index < backdrops.length - 1) {
+            node.remove();
+          }
+        });
+      }
+      return;
+    }
+    document.querySelectorAll('.modal-backdrop').forEach((node) => node.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
+  };
+
+  const scheduleModalCleanup = (delay = 80) => {
+    window.setTimeout(() => {
+      clearStuckLoadingOverlays();
+      cleanupModalArtifacts();
+    }, delay);
+  };
+
+  document.addEventListener('shown.bs.modal', () => {
+    clearStuckLoadingOverlays();
+    cleanupModalArtifacts();
+  });
+  document.addEventListener('hidden.bs.modal', () => {
+    scheduleModalCleanup(40);
+  });
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('[data-bs-dismiss="modal"], .btn-close')) {
+      scheduleModalCleanup(120);
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      scheduleModalCleanup(20);
+    }
+  });
+  window.addEventListener('pageshow', () => scheduleModalCleanup(20));
+  window.addEventListener('error', () => scheduleModalCleanup(20));
+  window.addEventListener('unhandledrejection', () => scheduleModalCleanup(20));
 
   const closeMobileSidebar = () => {
     if (!isMobile()) return;

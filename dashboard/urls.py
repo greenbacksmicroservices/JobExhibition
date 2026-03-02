@@ -249,6 +249,7 @@ urlpatterns = [
     ),
     path("logout/", views.logout_view, name="logout"),
     path("admin-dashboard/", views.dashboard_view, name="dashboard"),
+    path("subadmin-dashboard/", views.subadmin_dashboard_view, name="subadmin_dashboard"),
     path(
         "admin-dashboard/profile/",
         views.admin_profile_view,
@@ -435,6 +436,11 @@ urlpatterns = [
         "security/role-permissions/",
         views.security_role_permissions_view,
         name="security_role_permissions",
+    ),
+    path(
+        "api/security/login-history/",
+        views.api_security_login_history,
+        name="api_security_login_history",
     ),
     path("settings/", views.settings_platform_view, name="settings_platform"),
     path(

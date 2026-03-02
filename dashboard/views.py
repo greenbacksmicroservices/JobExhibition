@@ -18,6 +18,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import check_password, identify_hasher, make_password
+from django.contrib.auth.models import Group
 from django.core.files.base import ContentFile
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
@@ -98,6 +99,15 @@ MIN_PROFILE_COMPLETION_TO_APPLY = 60
 PASSWORD_RESET_TTL_MINUTES = 30
 SUBADMIN_USERNAME = "subadmin"
 SUBADMIN_DEFAULT_PASSWORD = "123456789"
+SUBADMIN_ROLE_GROUP_PREFIX = "subadmin-role:"
+DEFAULT_SUBADMIN_ROLE = "Sub Admin"
+SUBADMIN_ROLE_OPTIONS = [
+    "Sub Admin",
+    "Content Moderator",
+    "Payment Reviewer",
+    "Support Admin",
+    "Supervised Admin",
+]
 CONSULTANCY_JOB_LIFECYCLE_VALUES = {choice[0] for choice in CONSULTANCY_JOB_LIFECYCLE_CHOICES}
 CONSULTANCY_JOB_LIFECYCLE_TO_STATUS = {
     "Draft": "Pending",
@@ -669,27 +679,106 @@ def _record_login_history(request, account_type, username_or_email="", account_i
     )
 
 
-def _is_subadmin_user(user):
-    username = (getattr(user, "username", "") or "").strip().lower()
-    return bool(
-        user
-        and getattr(user, "is_authenticated", False)
-        and username == SUBADMIN_USERNAME
-        and getattr(user, "is_staff", False)
-        and not getattr(user, "is_superuser", False)
+def _normalize_subadmin_role(value):
+    role = (value or "").strip()
+    if not role:
+        return DEFAULT_SUBADMIN_ROLE
+    if role in SUBADMIN_ROLE_OPTIONS:
+        return role
+    return role[:80]
+
+
+def _subadmin_role_group_name(role):
+    return f"{SUBADMIN_ROLE_GROUP_PREFIX}{_normalize_subadmin_role(role)}"
+
+
+def _is_subadmin_role_name(group_name):
+    return (group_name or "").startswith(SUBADMIN_ROLE_GROUP_PREFIX)
+
+
+def _subadmin_base_queryset(user_model=None):
+    if user_model is None:
+        user_model = get_user_model()
+    return (
+        user_model.objects.filter(is_staff=True, is_superuser=False)
+        .filter(
+            Q(username__iexact=SUBADMIN_USERNAME)
+            | Q(groups__name__startswith=SUBADMIN_ROLE_GROUP_PREFIX)
+        )
+        .distinct()
+        .order_by("-id")
     )
+
+
+def _extract_subadmin_role(user):
+    if not user:
+        return DEFAULT_SUBADMIN_ROLE
+    role_name = (
+        user.groups.filter(name__startswith=SUBADMIN_ROLE_GROUP_PREFIX)
+        .values_list("name", flat=True)
+        .first()
+    )
+    if role_name and _is_subadmin_role_name(role_name):
+        return role_name[len(SUBADMIN_ROLE_GROUP_PREFIX) :] or DEFAULT_SUBADMIN_ROLE
+    return DEFAULT_SUBADMIN_ROLE
+
+
+def _set_subadmin_role(user, role):
+    normalized_role = _normalize_subadmin_role(role)
+    role_group_name = _subadmin_role_group_name(normalized_role)
+    existing_role_groups = list(
+        user.groups.filter(name__startswith=SUBADMIN_ROLE_GROUP_PREFIX)
+    )
+    if existing_role_groups:
+        user.groups.remove(*existing_role_groups)
+    role_group, _ = Group.objects.get_or_create(name=role_group_name)
+    user.groups.add(role_group)
+    return normalized_role
+
+
+def _serialize_subadmin_account(user):
+    try:
+        profile = user.admin_profile
+    except AdminProfile.DoesNotExist:
+        profile = AdminProfile.objects.create(user=user)
+
+    full_name = (user.get_full_name() or user.first_name or "").strip()
+    return {
+        "id": user.id,
+        "username": user.username,
+        "name": full_name or user.username,
+        "email": user.email or "",
+        "phone": (profile.phone or "").strip(),
+        "role": _extract_subadmin_role(user),
+        "account_status": "Active" if user.is_active else "Inactive",
+        "last_login": user.last_login.strftime("%Y-%m-%d %H:%M") if user.last_login else "",
+        "created_at": user.date_joined.strftime("%Y-%m-%d %H:%M") if user.date_joined else "",
+    }
+
+
+def _is_subadmin_user(user):
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if not getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return False
+    username = (getattr(user, "username", "") or "").strip().lower()
+    if username == SUBADMIN_USERNAME:
+        return True
+    return user.groups.filter(name__startswith=SUBADMIN_ROLE_GROUP_PREFIX).exists()
 
 
 def _ensure_subadmin_account(user_model, reset_password=False):
     subadmin = user_model.objects.filter(username__iexact=SUBADMIN_USERNAME).first()
     if not subadmin:
-        return user_model.objects.create_user(
+        subadmin = user_model.objects.create_user(
             username=SUBADMIN_USERNAME,
             email="subadmin@jobexhibition.local",
             password=SUBADMIN_DEFAULT_PASSWORD,
             is_staff=True,
             is_superuser=False,
         )
+        _set_subadmin_role(subadmin, DEFAULT_SUBADMIN_ROLE)
+        return subadmin
 
     update_fields = []
     if not subadmin.is_staff:
@@ -706,6 +795,7 @@ def _ensure_subadmin_account(user_model, reset_password=False):
         update_fields.append("password")
     if update_fields:
         subadmin.save(update_fields=update_fields)
+    _set_subadmin_role(subadmin, _extract_subadmin_role(subadmin))
     return subadmin
 
 
@@ -7449,15 +7539,218 @@ def security_admin_activity_view(request):
 
 @login_required
 def security_role_permissions_view(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
     return render(
         request,
         "dashboard/security_audit.html",
         {
             "audit_section": "role-permissions",
-            "page_title": "Role Permissions",
-            "page_subtitle": "Manage sub-admin access and permission controls.",
+            "page_title": "Sub-Admin Management",
+            "page_subtitle": "Create, update, and manage sub-admin access.",
+            "can_manage_subadmins": not _is_subadmin_user(request.user),
+            "subadmin_role_options": SUBADMIN_ROLE_OPTIONS,
         },
     )
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_subadmin_list(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"success": False, "error": "Unauthorized"}, status=403)
+
+    qs = _subadmin_base_queryset().select_related("admin_profile").prefetch_related("groups")
+
+    search = (request.GET.get("search") or "").strip()
+    if search:
+        qs = qs.filter(
+            Q(username__icontains=search)
+            | Q(first_name__icontains=search)
+            | Q(last_name__icontains=search)
+            | Q(email__icontains=search)
+            | Q(admin_profile__phone__icontains=search)
+        )
+
+    role = (request.GET.get("role") or "all").strip()
+    if role and role.lower() != "all":
+        qs = qs.filter(groups__name=_subadmin_role_group_name(role))
+
+    status = (request.GET.get("status") or "all").strip().lower()
+    if status == "active":
+        qs = qs.filter(is_active=True)
+    elif status == "inactive":
+        qs = qs.filter(is_active=False)
+
+    try:
+        page = int(request.GET.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = max(1, page)
+
+    try:
+        page_size = int(request.GET.get("page_size", 10))
+    except (TypeError, ValueError):
+        page_size = 10
+    page_size = max(1, min(page_size, 50))
+
+    paginator = Paginator(qs, page_size)
+    page_obj = paginator.get_page(page)
+    results = [_serialize_subadmin_account(item) for item in page_obj.object_list]
+
+    return JsonResponse(
+        {
+            "success": True,
+            "results": results,
+            "page": page_obj.number,
+            "pages": paginator.num_pages,
+            "count": paginator.count,
+        }
+    )
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_subadmin_detail(request, pk):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"success": False, "error": "Unauthorized"}, status=403)
+
+    subadmin = (
+        _subadmin_base_queryset()
+        .select_related("admin_profile")
+        .prefetch_related("groups")
+        .filter(pk=pk)
+        .first()
+    )
+    if not subadmin:
+        return JsonResponse({"success": False, "error": "Sub-admin not found."}, status=404)
+    return JsonResponse({"success": True, "item": _serialize_subadmin_account(subadmin)})
+
+
+@login_required
+@require_http_methods(["POST"])
+def api_subadmin_create(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"success": False, "error": "Unauthorized"}, status=403)
+    if _is_subadmin_user(request.user):
+        return JsonResponse({"success": False, "error": "Read-only access for sub-admin."}, status=403)
+
+    user_model = get_user_model()
+    name = (request.POST.get("name") or "").strip()[:150]
+    username = (request.POST.get("username") or "").strip()[:150]
+    email = (request.POST.get("email") or "").strip()
+    phone = (request.POST.get("phone") or "").strip()
+    role = _normalize_subadmin_role(request.POST.get("role"))
+    account_status = (request.POST.get("account_status") or "Active").strip()
+    password = request.POST.get("password") or ""
+
+    if not name or not username or not password.strip():
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Name, username, and password are required.",
+            },
+            status=400,
+        )
+
+    if user_model.objects.filter(username__iexact=username).exists():
+        return JsonResponse({"success": False, "error": "Username already exists."}, status=400)
+
+    if email and user_model.objects.filter(email__iexact=email).exists():
+        return JsonResponse({"success": False, "error": "Email already exists."}, status=400)
+
+    try:
+        subadmin = user_model.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            first_name=name,
+            last_name="",
+            is_staff=True,
+            is_superuser=False,
+            is_active=(account_status == "Active"),
+        )
+    except IntegrityError:
+        return JsonResponse({"success": False, "error": "Unable to create sub-admin."}, status=400)
+
+    profile, _ = AdminProfile.objects.get_or_create(user=subadmin)
+    profile.phone = phone
+    profile.save(update_fields=["phone"])
+    _set_subadmin_role(subadmin, role)
+
+    return JsonResponse({"success": True, "item": _serialize_subadmin_account(subadmin)})
+
+
+@login_required
+@require_http_methods(["POST"])
+def api_subadmin_update(request, pk):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"success": False, "error": "Unauthorized"}, status=403)
+    if _is_subadmin_user(request.user):
+        return JsonResponse({"success": False, "error": "Read-only access for sub-admin."}, status=403)
+
+    subadmin = _subadmin_base_queryset().filter(pk=pk).first()
+    if not subadmin:
+        return JsonResponse({"success": False, "error": "Sub-admin not found."}, status=404)
+
+    name = (request.POST.get("name") or "").strip()[:150]
+    username = (request.POST.get("username") or "").strip()[:150]
+    email = (request.POST.get("email") or "").strip()
+    phone = (request.POST.get("phone") or "").strip()
+    role = _normalize_subadmin_role(request.POST.get("role"))
+    account_status = (request.POST.get("account_status") or "Active").strip()
+    password = request.POST.get("password") or ""
+
+    if not name or not username:
+        return JsonResponse({"success": False, "error": "Name and username are required."}, status=400)
+
+    if (
+        username.lower() != (subadmin.username or "").lower()
+        and get_user_model().objects.filter(username__iexact=username).exists()
+    ):
+        return JsonResponse({"success": False, "error": "Username already exists."}, status=400)
+
+    if email and email.lower() != (subadmin.email or "").lower():
+        if get_user_model().objects.filter(email__iexact=email).exists():
+            return JsonResponse({"success": False, "error": "Email already exists."}, status=400)
+
+    subadmin.username = username
+    subadmin.email = email
+    subadmin.first_name = name
+    subadmin.last_name = ""
+    subadmin.is_staff = True
+    subadmin.is_superuser = False
+    subadmin.is_active = account_status == "Active"
+    if password.strip():
+        subadmin.set_password(password)
+    subadmin.save()
+
+    profile, _ = AdminProfile.objects.get_or_create(user=subadmin)
+    profile.phone = phone
+    profile.save(update_fields=["phone"])
+    _set_subadmin_role(subadmin, role)
+
+    return JsonResponse({"success": True, "item": _serialize_subadmin_account(subadmin)})
+
+
+@login_required
+@require_http_methods(["POST"])
+def api_subadmin_delete(request, pk):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"success": False, "error": "Unauthorized"}, status=403)
+
+    blocked = _deny_subadmin_delete_action(request)
+    if blocked:
+        return blocked
+
+    subadmin = _subadmin_base_queryset().filter(pk=pk).first()
+    if not subadmin:
+        return JsonResponse({"success": False, "error": "Sub-admin not found."}, status=404)
+    if request.user.id == subadmin.id:
+        return JsonResponse({"success": False, "error": "You cannot delete your own account."}, status=400)
+
+    subadmin.delete()
+    return JsonResponse({"success": True})
 
 
 @login_required

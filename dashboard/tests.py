@@ -438,6 +438,127 @@ class DashboardViewTests(TestCase):
         self.assertContains(response, "floatingSkills")
         self.assertContains(response, "createFloatingSkill")
         self.assertContains(response, "iconPaths")
+        self.assertContains(response, 'id="toggleRegisterLinks"')
+        self.assertContains(response, 'id="registerLinks" hidden')
+
+    def test_security_role_permissions_page_renders_subadmin_live_management(self):
+        admin_user = self.user_model.objects.create_user(
+            username="admin_roles",
+            email="admin.roles@test.com",
+            password="StrongPass123!",
+            is_staff=True,
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("dashboard:security_role_permissions"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="subadminForm"')
+        self.assertContains(response, 'id="subadminTableBody"')
+        self.assertContains(response, "subadmin-management.js")
+        self.assertNotContains(response, "Permission Control")
+        self.assertNotContains(response, "Assign Role")
+
+    def test_subadmin_api_crud_flow_works_for_admin(self):
+        admin_user = self.user_model.objects.create_user(
+            username="admin_subcrud",
+            email="admin.subcrud@test.com",
+            password="StrongPass123!",
+            is_staff=True,
+        )
+        self.client.force_login(admin_user)
+
+        create_response = self.client.post(
+            reverse("dashboard:api_subadmin_create"),
+            {
+                "name": "Riya Mehta",
+                "username": "riya_subadmin",
+                "email": "riya.subadmin@test.com",
+                "phone": "+919999999901",
+                "role": "Support Admin",
+                "account_status": "Active",
+                "password": "SubPass@123",
+            },
+        )
+        self.assertEqual(create_response.status_code, 200)
+        create_payload = create_response.json()
+        self.assertTrue(create_payload["success"])
+        subadmin_id = create_payload["item"]["id"]
+
+        list_response = self.client.get(reverse("dashboard:api_subadmin_list"), {"search": "riya_subadmin"})
+        self.assertEqual(list_response.status_code, 200)
+        list_payload = list_response.json()
+        self.assertTrue(list_payload["success"])
+        self.assertGreaterEqual(list_payload["count"], 1)
+
+        detail_response = self.client.get(reverse("dashboard:api_subadmin_detail", args=[subadmin_id]))
+        self.assertEqual(detail_response.status_code, 200)
+        detail_payload = detail_response.json()
+        self.assertTrue(detail_payload["success"])
+        self.assertEqual(detail_payload["item"]["username"], "riya_subadmin")
+
+        update_response = self.client.post(
+            reverse("dashboard:api_subadmin_update", args=[subadmin_id]),
+            {
+                "name": "Riya Updated",
+                "username": "riya_subadmin_updated",
+                "email": "riya.updated@test.com",
+                "phone": "+919999999902",
+                "role": "Payment Reviewer",
+                "account_status": "Inactive",
+                "password": "",
+            },
+        )
+        self.assertEqual(update_response.status_code, 200)
+        update_payload = update_response.json()
+        self.assertTrue(update_payload["success"])
+        self.assertEqual(update_payload["item"]["account_status"], "Inactive")
+        self.assertEqual(update_payload["item"]["role"], "Payment Reviewer")
+
+        delete_response = self.client.post(reverse("dashboard:api_subadmin_delete", args=[subadmin_id]))
+        self.assertEqual(delete_response.status_code, 200)
+        delete_payload = delete_response.json()
+        self.assertTrue(delete_payload["success"])
+        self.assertFalse(self.user_model.objects.filter(id=subadmin_id).exists())
+
+    def test_subadmin_api_is_read_only_for_subadmin_accounts(self):
+        admin_user = self.user_model.objects.create_user(
+            username="admin_creator",
+            email="admin.creator@test.com",
+            password="StrongPass123!",
+            is_staff=True,
+        )
+        self.client.force_login(admin_user)
+
+        create_response = self.client.post(
+            reverse("dashboard:api_subadmin_create"),
+            {
+                "name": "Read Only User",
+                "username": "readonly_subadmin",
+                "email": "readonly.subadmin@test.com",
+                "role": "Content Moderator",
+                "account_status": "Active",
+                "password": "SubPass@123",
+            },
+        )
+        self.assertEqual(create_response.status_code, 200)
+        subadmin_id = create_response.json()["item"]["id"]
+        subadmin_user = self.user_model.objects.get(id=subadmin_id)
+
+        self.client.force_login(subadmin_user)
+        create_as_subadmin = self.client.post(
+            reverse("dashboard:api_subadmin_create"),
+            {
+                "name": "Blocked User",
+                "username": "blocked_subadmin",
+                "password": "SubPass@123",
+            },
+        )
+        self.assertEqual(create_as_subadmin.status_code, 403)
+        self.assertFalse(create_as_subadmin.json()["success"])
+
+        delete_as_subadmin = self.client.post(reverse("dashboard:api_subadmin_delete", args=[admin_user.id]))
+        self.assertEqual(delete_as_subadmin.status_code, 403)
+        self.assertFalse(delete_as_subadmin.json()["success"])
 
     def test_candidate_notification_bell_shows_unread_feed_items(self):
         candidate = Candidate.objects.create(

@@ -442,6 +442,23 @@ urlpatterns = [
         views.api_security_login_history,
         name="api_security_login_history",
     ),
+    path("api/subadmins/list/", views.api_subadmin_list, name="api_subadmin_list"),
+    path("api/subadmins/create/", views.api_subadmin_create, name="api_subadmin_create"),
+    path(
+        "api/subadmins/<int:pk>/detail/",
+        views.api_subadmin_detail,
+        name="api_subadmin_detail",
+    ),
+    path(
+        "api/subadmins/<int:pk>/update/",
+        views.api_subadmin_update,
+        name="api_subadmin_update",
+    ),
+    path(
+        "api/subadmins/<int:pk>/delete/",
+        views.api_subadmin_delete,
+        name="api_subadmin_delete",
+    ),
     path("settings/", views.settings_platform_view, name="settings_platform"),
     path(
         "settings/job-categories/",

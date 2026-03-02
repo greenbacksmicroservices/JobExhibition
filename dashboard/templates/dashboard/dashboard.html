@@ -228,9 +228,8 @@
               <span class="caret">v</span>
             </button>
             <div class="nav-accordion-body" id="subAdmin">
-              <a class="nav-sub{% if audit_section == 'role-permissions' %} active{% endif %}" href="{% url 'dashboard:security_role_permissions' %}#subadmin-create">Create Sub Admin</a>
-              <a class="nav-sub{% if audit_section == 'role-permissions' %} active{% endif %}" href="{% url 'dashboard:security_role_permissions' %}#subadmin-roles">Assign Role</a>
-              <a class="nav-sub{% if audit_section == 'role-permissions' %} active{% endif %}" href="{% url 'dashboard:security_role_permissions' %}#subadmin-permission">Permission Control</a>
+              <a class="nav-sub{% if audit_section == 'role-permissions' %} active{% endif %}" href="{% url 'dashboard:security_role_permissions' %}#subadmin-create">Add New Sub-Admin</a>
+              <a class="nav-sub{% if audit_section == 'role-permissions' %} active{% endif %}" href="{% url 'dashboard:security_role_permissions' %}#subadmin-roles">Sub-Admin Table</a>
             </div>
           </div>
         </nav>

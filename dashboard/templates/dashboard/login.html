@@ -279,6 +279,10 @@
             gap: 8px;
         }
 
+        .register-links[hidden] {
+            display: none !important;
+        }
+
         .register-links a {
             color: #0077b6;
             text-decoration: none;
@@ -402,8 +406,8 @@
         </form>
 
         <div class="new-user-section">
-            <a class="register-here-link" href="{% url 'dashboard:register_options' %}">New user? Register here</a>
-            <div class="register-links">
+            <a class="register-here-link" href="#" id="toggleRegisterLinks" aria-expanded="false" aria-controls="registerLinks">New user? Register here</a>
+            <div class="register-links" id="registerLinks" hidden>
                 <a href="{% url 'dashboard:company_register' %}">Company</a>
                 <a href="{% url 'dashboard:consultancy_register' %}">Consultancy</a>
                 <a href="{% url 'dashboard:candidate_register' %}">Candidate</a>
@@ -487,6 +491,8 @@
         const usePasswordBtn = document.getElementById('usePasswordLoginBtn');
         const otpInput = document.getElementById('loginOtpInput');
         const passwordInput = document.getElementById('login_password');
+        const registerToggleLink = document.getElementById('toggleRegisterLinks');
+        const registerLinks = document.getElementById('registerLinks');
 
         function setOtpMode(enabled) {
             if (!loginForm) return;
@@ -517,6 +523,19 @@
         if (usePasswordBtn) {
             usePasswordBtn.addEventListener('click', function () {
                 setOtpMode(false);
+            });
+        }
+
+        if (registerToggleLink && registerLinks) {
+            registerToggleLink.addEventListener('click', function (event) {
+                event.preventDefault();
+                const showLinks = registerLinks.hasAttribute('hidden');
+                if (showLinks) {
+                    registerLinks.removeAttribute('hidden');
+                } else {
+                    registerLinks.setAttribute('hidden', '');
+                }
+                registerToggleLink.setAttribute('aria-expanded', String(showLinks));
             });
         }
     </script>

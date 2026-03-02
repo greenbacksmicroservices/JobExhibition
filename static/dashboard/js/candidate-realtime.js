@@ -50,6 +50,26 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(() => {});
   };
 
+  let pollHandle = null;
+  const startPolling = () => {
+    if (pollHandle) return;
+    pollHandle = setInterval(refreshMetrics, 12000);
+  };
+  const stopPolling = () => {
+    if (!pollHandle) return;
+    clearInterval(pollHandle);
+    pollHandle = null;
+  };
+
   refreshMetrics();
-  setInterval(refreshMetrics, 30000);
+  startPolling();
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopPolling();
+      return;
+    }
+    refreshMetrics();
+    startPolling();
+  });
 });

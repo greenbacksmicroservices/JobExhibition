@@ -54,14 +54,25 @@
             position: absolute;
             background: rgba(255, 255, 255, 0.1);
             border-radius: 50%;
-            animation: float 20s infinite ease-in-out;
+            animation: floatUp 20s infinite linear;
+            will-change: transform, opacity;
         }
 
-        @keyframes float {
-            0%, 100% { transform: translateY(0) translateX(0); opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { transform: translateY(-100vh) translateX(100px); opacity: 0; }
+        @keyframes floatUp {
+            0% {
+                transform: translate3d(0, 0, 0) scale(0.8);
+                opacity: 0;
+            }
+            10% {
+                opacity: 0.9;
+            }
+            80% {
+                opacity: 0.9;
+            }
+            100% {
+                transform: translate3d(var(--drift-x, 0px), -130vh, 0) scale(1.15);
+                opacity: 0;
+            }
         }
 
         /* --- WELCOME CONTAINER --- */
@@ -303,15 +314,16 @@
                 
                 const size = Math.random() * 100 + 20;
                 const left = Math.random() * 100;
-                const delay = Math.random() * 5;
-                const duration = Math.random() * 10 + 20;
+                const duration = Math.random() * 10 + 18;
+                const driftX = (Math.random() * 180) - 90;
                 
                 particle.style.width = size + 'px';
                 particle.style.height = size + 'px';
                 particle.style.left = left + '%';
-                particle.style.bottom = '-100px';
+                particle.style.bottom = `${-120 - Math.random() * 140}px`;
+                particle.style.setProperty('--drift-x', `${driftX}px`);
                 particle.style.animationDuration = duration + 's';
-                particle.style.animationDelay = delay + 's';
+                particle.style.animationDelay = `-${Math.random() * duration}s`;
                 
                 container.appendChild(particle);
             }

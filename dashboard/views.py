@@ -78,6 +78,19 @@ PIPELINE_STATUSES = [
 ]
 INTERVIEW_STATUSES = ["Interview", "Interview Scheduled"]
 SELECTED_STATUSES = ["Selected", "Offer Issued"]
+CANDIDATE_APPLICATION_STATUS_FLOW = [
+    "Applied",
+    "Under Review",
+    "Shortlisted",
+    "Interview Scheduled",
+    "Selected",
+    "Offer Received",
+    "Rejected",
+]
+CANDIDATE_APPLICATION_STATUS_MAP = {
+    "Interview": "Interview Scheduled",
+    "Offer Issued": "Offer Received",
+}
 FREE_EMAIL_DOMAINS = {
     "gmail.com",
     "yahoo.com",
@@ -5461,6 +5474,13 @@ def candidate_saved_jobs_view(request):
     )
 
 
+def _normalize_candidate_application_status(status_value):
+    status = (status_value or "").strip()
+    if not status:
+        return "Applied"
+    return CANDIDATE_APPLICATION_STATUS_MAP.get(status, status)
+
+
 @candidate_login_required
 def candidate_applications_view(request):
     candidate_id = request.session.get("candidate_id")
@@ -5468,22 +5488,14 @@ def candidate_applications_view(request):
     if not candidate:
         return redirect("dashboard:login")
 
-    applications = Application.objects.filter(candidate_email__iexact=candidate.email).order_by("-applied_date", "-created_at")
-    status_flow = [
-        "Applied",
-        "Under Review",
-        "Shortlisted",
-        "Interview Scheduled",
-        "Selected",
-        "Offer Received",
-        "Rejected",
-    ]
+    applications = (
+        Application.objects.filter(candidate_email__iexact=candidate.email)
+        .select_related("job")
+        .order_by("-applied_date", "-created_at")
+    )
+    status_flow = CANDIDATE_APPLICATION_STATUS_FLOW
     for app in applications:
-        current_status = app.status
-        if current_status == "Interview":
-            current_status = "Interview Scheduled"
-        if current_status == "Offer Issued":
-            current_status = "Offer Received"
+        current_status = _normalize_candidate_application_status(app.status)
         app.current_step = status_flow.index(current_status) + 1 if current_status in status_flow else 1
 
     return render(
@@ -5742,6 +5754,51 @@ def candidate_support_view(request):
         request,
         "dashboard/candidate/candidate_support.html",
         {"candidate": candidate, "tickets": tickets},
+    )
+
+
+@candidate_login_required
+@require_http_methods(["GET"])
+def api_candidate_applications(request):
+    candidate_id = _safe_session_get(request, "candidate_id")
+    candidate = Candidate.objects.filter(id=candidate_id).first()
+    if not candidate:
+        return JsonResponse({"error": "unauthorized"}, status=401)
+
+    status_flow = CANDIDATE_APPLICATION_STATUS_FLOW
+    applications_qs = (
+        Application.objects.filter(candidate_email__iexact=candidate.email)
+        .select_related("job")
+        .order_by("-applied_date", "-created_at")
+    )
+
+    applications = []
+    for app in applications_qs:
+        current_status = _normalize_candidate_application_status(app.status)
+        current_step = status_flow.index(current_status) + 1 if current_status in status_flow else 1
+        job_id = app.job.job_id if app.job else ""
+        applications.append(
+            {
+                "application_id": app.application_id,
+                "job_title": app.job_title,
+                "company": app.company,
+                "status": current_status,
+                "current_step": current_step,
+                "applied_date": app.applied_date.isoformat() if app.applied_date else "",
+                "interview_date": app.interview_date.isoformat() if app.interview_date else "",
+                "interview_time": app.interview_time or "",
+                "interviewer": app.interviewer or "",
+                "offer_package": app.offer_package or "",
+                "job_url": reverse("dashboard:candidate_job_detail", args=[job_id]) if job_id else "",
+            }
+        )
+
+    return JsonResponse(
+        {
+            "status_flow": status_flow,
+            "applications": applications,
+            "generated_at": timezone.now().isoformat(),
+        }
     )
 
 

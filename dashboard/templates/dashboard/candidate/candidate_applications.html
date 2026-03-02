@@ -8,7 +8,7 @@
   <div>
     <p class="eyebrow">My Applications</p>
     <h2>Application Tracker</h2>
-    <p class="muted">Track your application status and timeline.</p>
+    <p class="muted">Track your application status and timeline in real time.</p>
   </div>
 </section>
 
@@ -16,7 +16,7 @@
   <div class="card-header">
     <div>
       <h3>Status Flow</h3>
-      <p class="muted">Applied → Under Review → Shortlisted → Interview Scheduled → Selected → Offer Received</p>
+      <p class="muted">Applied -> Under Review -> Shortlisted -> Interview Scheduled -> Selected -> Offer Received</p>
     </div>
   </div>
   <div class="summary-tags">
@@ -34,7 +34,10 @@
   <div class="card-header">
     <div>
       <h3>Applications</h3>
-      <p class="muted">Real-time status updates</p>
+      <p class="muted">
+        Real-time status updates
+        <span class="candidate-app-live" id="candidateApplicationsLiveStatus">Syncing...</span>
+      </p>
     </div>
   </div>
   <div class="table-wrap">
@@ -48,54 +51,86 @@
           <th>Action</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="candidateApplicationsBody">
         {% if applications %}
-          {% for app in applications %}
-          <tr>
-            <td><strong>{{ app.job_title }}</strong></td>
-            <td>{{ app.company }}</td>
-            <td>{{ app.applied_date|date:"d M Y"|default:"--" }}</td>
-            <td>
-              <span class="badge {% if app.status == 'Applied' %}info{% elif app.status == 'Under Review' %}warning{% elif app.status == 'Shortlisted' %}success{% elif app.status == 'Interview Scheduled' or app.status == 'Interview' %}neutral{% elif app.status == 'Selected' %}info{% elif app.status == 'Rejected' %}danger{% elif app.status == 'Offer Received' or app.status == 'Offer Issued' %}success{% else %}neutral{% endif %}">
-                {{ app.status }}
-              </span>
-            </td>
-            <td>
-              <div class="table-actions">
-                <button class="action-btn" type="button">View</button>
-                <button class="action-btn" type="button">Timeline</button>
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
+        {% for app in applications %}
+        <tr data-application-id="{{ app.application_id }}" {% if forloop.first %}class="candidate-app-row-active"{% endif %}>
+          <td><strong>{{ app.job_title }}</strong></td>
+          <td>{{ app.company }}</td>
+          <td>{{ app.applied_date|date:"d M Y"|default:"--" }}</td>
+          <td>
+            <span class="badge {% if app.status == 'Applied' %}info{% elif app.status == 'Under Review' %}warning{% elif app.status == 'Shortlisted' %}success{% elif app.status == 'Interview Scheduled' or app.status == 'Interview' %}neutral{% elif app.status == 'Selected' %}info{% elif app.status == 'Rejected' %}danger{% elif app.status == 'Offer Received' or app.status == 'Offer Issued' %}success{% else %}neutral{% endif %}">
+              {{ app.status }}
+            </span>
+          </td>
+          <td>
+            <div class="table-actions">
+              {% if app.job and app.job.job_id %}
+              <a class="action-btn" href="{% url 'dashboard:candidate_job_detail' app.job.job_id %}" data-action="view" data-application-id="{{ app.application_id }}">View</a>
+              {% else %}
+              <button class="action-btn" type="button" data-action="view" data-application-id="{{ app.application_id }}">View</button>
+              {% endif %}
+              <button class="action-btn" type="button" data-action="timeline" data-application-id="{{ app.application_id }}">Timeline</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
         {% else %}
-          <tr>
-            <td colspan="5" class="muted" style="text-align:center; padding: 16px;">No applications found yet.</td>
-          </tr>
+        <tr>
+          <td colspan="5" class="muted" style="text-align:center; padding: 16px;">No applications found yet.</td>
+        </tr>
         {% endif %}
       </tbody>
     </table>
   </div>
 </section>
 
-{% if applications %}
-<section class="card section-block">
+<section class="card section-block" id="applicationTimelineSection" data-status-flow="{{ status_flow|join:'|' }}">
   <div class="card-header">
     <div>
       <h3>Application Timeline</h3>
-      <p class="muted">Latest application progress</p>
+      <p class="muted" id="applicationTimelineSummary">
+        {% if applications %}
+        Tracking {{ applications.0.job_title }} at {{ applications.0.company }}.
+        {% else %}
+        Apply to jobs to unlock your timeline.
+        {% endif %}
+      </p>
     </div>
   </div>
+  {% if applications %}
   {% with applications.0 as latest %}
-  <div class="timeline-grid">
+  <div class="timeline-grid" id="applicationTimelineGrid" data-selected-application="{{ latest.application_id }}">
     {% for step in status_flow %}
-      <div class="timeline-step {% if forloop.counter <= latest.current_step %}active{% endif %}">
-        <span class="timeline-dot"></span>
-        <span class="timeline-label">{{ step }}</span>
-      </div>
+    <div class="timeline-step {% if forloop.counter <= latest.current_step %}active{% endif %}">
+      <span class="timeline-dot"></span>
+      <span class="timeline-label">{{ step }}</span>
+    </div>
     {% endfor %}
   </div>
   {% endwith %}
+  {% else %}
+  <div class="timeline-grid is-empty" id="applicationTimelineGrid">
+    <div class="candidate-app-empty">No application timeline yet.</div>
+  </div>
+  {% endif %}
 </section>
-{% endif %}
+
+<div class="modal fade" id="candidateApplicationDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="candidateApplicationDetailTitle">Application Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="candidate-app-detail-grid" id="candidateApplicationDetailGrid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/candidate-applications.js' %}?v={{ static_asset_version }}"></script>
 {% endblock %}

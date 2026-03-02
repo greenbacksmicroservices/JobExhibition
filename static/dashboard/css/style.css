@@ -2998,9 +2998,14 @@ body.sidebar-collapsed .profile-progress-text {
 
 .candidate-dashboard .candidate-top-row {
     align-items: stretch;
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
 }
 
 .candidate-dashboard .metrics-graph-card {
+    min-height: 100%;
+}
+
+.candidate-dashboard .candidate-ad-card {
     min-height: 100%;
 }
 
@@ -5180,6 +5185,10 @@ body.sidebar-collapsed .profile-progress-text {
     margin-top: 10px;
 }
 
+.timeline-grid.is-empty {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 .timeline-step {
     border: 1px solid #e5e7eb;
     border-radius: 12px;
@@ -5210,6 +5219,60 @@ body.sidebar-collapsed .profile-progress-text {
 .timeline-step.active .timeline-dot {
     background: #4338ca;
     box-shadow: 0 0 8px rgba(67, 56, 202, 0.4);
+}
+
+.candidate-app-live {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid #c7d2fe;
+    background: #eef2ff;
+    color: #3730a3;
+    font-size: 11px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.candidate-app-live.live-error {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+.table tbody tr.candidate-app-row-active {
+    background: #eef2ff;
+}
+
+.candidate-app-empty {
+    border: 1px dashed #dbeafe;
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+    color: #64748b;
+    font-size: 12px;
+    background: #f8fbff;
+}
+
+.candidate-app-detail-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.candidate-app-detail-grid div {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 10px;
+    background: #f8fafc;
+    font-size: 12px;
+    display: grid;
+    gap: 3px;
+}
+
+.candidate-app-detail-grid span {
+    color: #64748b;
 }
 
 /* =========================
@@ -5716,6 +5779,33 @@ body.dark-mode .timeline-step.active {
     background: rgba(67, 56, 202, 0.25);
     border-color: rgba(129, 140, 248, 0.5);
     color: #e2e8f0;
+}
+
+body.dark-mode .candidate-app-live {
+    border-color: rgba(129, 140, 248, 0.7);
+    background: rgba(67, 56, 202, 0.2);
+    color: #c7d2fe;
+}
+
+body.dark-mode .candidate-app-live.live-error {
+    border-color: rgba(248, 113, 113, 0.6);
+    background: rgba(127, 29, 29, 0.35);
+    color: #fecaca;
+}
+
+body.dark-mode .table tbody tr.candidate-app-row-active {
+    background: rgba(67, 56, 202, 0.28);
+}
+
+body.dark-mode .candidate-app-empty {
+    border-color: #1e293b;
+    background: #0b1220;
+    color: #cbd5e1;
+}
+
+body.dark-mode .candidate-app-detail-grid div {
+    border-color: #1f2937;
+    background: #111827;
 }
 
 body.dark-mode .job-search-hero {

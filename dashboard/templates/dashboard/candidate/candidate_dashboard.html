@@ -40,50 +40,50 @@
       {% endfor %}
     </div>
   </article>
-</section>
 
-<section class="card section-block">
-  <div class="card-header">
-    <div>
-      <h3>Admin Advertisement</h3>
-      <p class="muted">Latest sponsored update for your candidate account.</p>
+  <article class="card compact-card candidate-ad-card">
+    <div class="card-header">
+      <div>
+        <h3>Admin Advertisement</h3>
+        <p class="muted">Latest sponsored update for your candidate account.</p>
+      </div>
     </div>
-  </div>
-  {% with current_ad=advertisement|default:candidate_sidebar_ad %}
-  {% if current_ad %}
-  <div class="activity-item ad-item">
-    <div class="ad-item-content">
-      <strong>{{ current_ad.title|default:"Admin Update" }}</strong>
-      <span class="muted">{{ current_ad.message }}</span>
-      <span class="muted">Audience: {{ current_ad.segment|default:"General"|cut:"_"|title }}</span>
-    </div>
-    {% if current_ad.media_file %}
-    <div class="ad-media">
-      {% if current_ad.media_kind == "video" %}
-      <video class="ad-video" autoplay muted loop playsinline preload="metadata">
-        <source src="{{ current_ad.media_file.url }}" />
-      </video>
-      <button class="ad-sound-toggle" type="button" data-ad-sound-toggle aria-pressed="false">
-        <i class="fa-solid fa-volume-xmark"></i>
-        <span>Sound</span>
-      </button>
-      {% elif current_ad.media_kind == "image" %}
-      <img src="{{ current_ad.media_file.url }}" alt="Advertisement media" class="ad-image" loading="lazy" />
+    {% with current_ad=advertisement|default:candidate_sidebar_ad %}
+    {% if current_ad %}
+    <div class="activity-item ad-item">
+      <div class="ad-item-content">
+        <strong>{{ current_ad.title|default:"Admin Update" }}</strong>
+        <span class="muted">{{ current_ad.message }}</span>
+        <span class="muted">Audience: {{ current_ad.segment|default:"General"|cut:"_"|title }}</span>
+      </div>
+      {% if current_ad.media_file %}
+      <div class="ad-media">
+        {% if current_ad.media_kind == "video" %}
+        <video class="ad-video" autoplay muted loop playsinline preload="metadata">
+          <source src="{{ current_ad.media_file.url }}" />
+        </video>
+        <button class="ad-sound-toggle" type="button" data-ad-sound-toggle aria-pressed="false">
+          <i class="fa-solid fa-volume-xmark"></i>
+          <span>Sound</span>
+        </button>
+        {% elif current_ad.media_kind == "image" %}
+        <img src="{{ current_ad.media_file.url }}" alt="Advertisement media" class="ad-image" loading="lazy" />
+        {% endif %}
+      </div>
       {% endif %}
+      <span class="activity-time">{{ current_ad.created_at|date:"d M Y" }}</span>
+    </div>
+    {% else %}
+    <div class="activity-item">
+      <div>
+        <strong>No advertisement yet</strong>
+        <span class="muted">Admin ad will appear here when active.</span>
+      </div>
+      <span class="activity-time">--</span>
     </div>
     {% endif %}
-    <span class="activity-time">{{ current_ad.created_at|date:"d M Y" }}</span>
-  </div>
-  {% else %}
-  <div class="activity-item">
-    <div>
-      <strong>No advertisement yet</strong>
-      <span class="muted">Admin ad will appear here when active.</span>
-    </div>
-    <span class="activity-time">--</span>
-  </div>
-  {% endif %}
-  {% endwith %}
+    {% endwith %}
+  </article>
 </section>
 
 <section class="dashboard-row">

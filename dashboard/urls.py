@@ -545,5 +545,6 @@ urlpatterns = [
         name="api_subscriptions_delete",
     ),
     path("api/dashboard/metrics/", views.api_dashboard_metrics, name="api_dashboard_metrics"),
+    path("candidate/api/applications/", views.api_candidate_applications, name="candidate_api_applications"),
     path("candidate/api/metrics/", views.api_candidate_metrics, name="candidate_api_metrics"),
 ]

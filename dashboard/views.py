@@ -49,6 +49,7 @@ from .models import (
     CandidateExperience,
     CandidateProject,
     CandidateResume,
+    CandidateSavedJob,
     CandidateSkill,
     Company,
     CompanyKycDocument,
@@ -107,8 +108,9 @@ CAPTCHA_SESSION_PREFIX = "registration_captcha_"
 OTP_SESSION_PREFIX = "registration_otp_"
 LOGIN_OTP_SESSION_KEY = "login_otp_payload"
 PASSWORD_RESET_OTP_SESSION_KEY = "password_reset_otp_payload"
+CANDIDATE_DELETE_OTP_SESSION_KEY = "candidate_delete_otp_payload"
 OTP_TTL_SECONDS = 10 * 60
-MIN_PROFILE_COMPLETION_TO_APPLY = 60
+MIN_PROFILE_COMPLETION_TO_APPLY = 0
 PASSWORD_RESET_TTL_MINUTES = 30
 SUBADMIN_USERNAME = "subadmin"
 SUBADMIN_DEFAULT_PASSWORD = "123456789"
@@ -236,21 +238,58 @@ def _consultancy_posted_jobs_queryset(consultancy):
 
 def _communication_candidate_options(limit=500):
     options = []
-    qs = Candidate.objects.order_by("name", "id").values("id", "name", "email", "phone")[:limit]
-    for row in qs:
-        name = (row.get("name") or "").strip() or "Candidate"
-        email = (row.get("email") or "").strip()
-        phone = (row.get("phone") or "").strip()
-        search_text = " ".join([name, email, phone]).strip().lower()
+    seen_keys = set()
+
+    def add_option(candidate_id, name, email="", phone=""):
+        normalized_name = (name or "").strip() or "Candidate"
+        normalized_email = (email or "").strip()
+        normalized_phone = (phone or "").strip()
+        if normalized_email:
+            dedupe_key = f"email:{normalized_email.lower()}"
+        elif normalized_phone:
+            dedupe_key = f"phone:{re.sub(r'\D+', '', normalized_phone)}"
+        else:
+            dedupe_key = f"name:{normalized_name.lower()}"
+        if dedupe_key in seen_keys:
+            return
+        seen_keys.add(dedupe_key)
+        search_text = " ".join([normalized_name, normalized_email, normalized_phone]).strip().lower()
         options.append(
             {
-                "id": row.get("id"),
-                "name": name,
-                "email": email,
-                "phone": phone,
+                "id": candidate_id,
+                "name": normalized_name,
+                "email": normalized_email,
+                "phone": normalized_phone,
                 "search_text": search_text,
             }
         )
+
+    candidate_rows = Candidate.objects.order_by("name", "id").values("id", "name", "email", "phone")[:limit]
+    for row in candidate_rows:
+        if len(options) >= limit:
+            break
+        add_option(
+            row.get("id"),
+            row.get("name"),
+            row.get("email"),
+            row.get("phone"),
+        )
+
+    # Include applicants who may not have completed a candidate account yet.
+    if len(options) < limit:
+        app_rows = (
+            Application.objects.order_by("-created_at")
+            .values("application_id", "candidate_name", "candidate_email", "candidate_phone")
+        )[: max(500, limit * 2)]
+        for row in app_rows:
+            if len(options) >= limit:
+                break
+            add_option(
+                f"app:{row.get('application_id')}",
+                row.get("candidate_name"),
+                row.get("candidate_email"),
+                row.get("candidate_phone"),
+            )
     return options
 
 
@@ -417,7 +456,48 @@ def _ensure_message_threads(application, job=None, candidate=None, company=None,
     return threads
 
 
+def _is_support_thread(thread):
+    if not thread:
+        return False
+    if thread.application_id or thread.job_id:
+        return False
+    if (
+        thread.thread_type == "company_consultancy"
+        and thread.company_id
+        and not thread.consultancy_id
+        and not thread.candidate_id
+    ):
+        return True
+    if (
+        thread.thread_type == "candidate_consultancy"
+        and thread.consultancy_id
+        and not thread.company_id
+        and not thread.candidate_id
+    ):
+        return True
+    if (
+        thread.thread_type == "candidate_consultancy"
+        and thread.candidate_id
+        and not thread.company_id
+        and not thread.consultancy_id
+    ):
+        return True
+    return False
+
+
 def _thread_partner_info(thread, role):
+    if _is_support_thread(thread):
+        if role in {"company", "consultancy", "candidate"}:
+            return ("Admin Support", "Support")
+        if role == "admin":
+            if thread.company:
+                return (thread.company.name, "Company")
+            if thread.candidate:
+                return (thread.candidate.name, "Candidate")
+            if thread.consultancy:
+                return (thread.consultancy.name, "Consultancy")
+            return ("Support Thread", "Support")
+
     if role == "candidate":
         if thread.thread_type == "candidate_company":
             partner = thread.company
@@ -476,6 +556,198 @@ def _build_thread_cards(threads, role):
             }
         )
     return cards
+
+
+def _get_or_create_company_support_thread(company):
+    if not company:
+        return None
+    thread = (
+        MessageThread.objects.filter(
+            thread_type="company_consultancy",
+            company=company,
+            application__isnull=True,
+            job__isnull=True,
+            candidate__isnull=True,
+            consultancy__isnull=True,
+        )
+        .order_by("-last_message_at", "-created_at")
+        .first()
+    )
+    if thread:
+        return thread
+
+    thread = MessageThread.objects.create(
+        thread_type="company_consultancy",
+        company=company,
+    )
+    welcome = Message.objects.create(
+        thread=thread,
+        sender_role="admin",
+        sender_name="Support Team",
+        body="Hello! Share your issue here and our support team will respond shortly.",
+    )
+    thread.last_message_at = welcome.created_at
+    thread.save(update_fields=["last_message_at"])
+    return thread
+
+
+def _get_or_create_company_candidate_thread(company, application):
+    if not company or not application:
+        return None
+
+    thread = (
+        MessageThread.objects.filter(
+            thread_type="candidate_company",
+            company=company,
+            application=application,
+        )
+        .select_related("job", "candidate", "consultancy", "application")
+        .first()
+    )
+    if thread:
+        return thread
+
+    job = application.job
+    if not job and application.job_title:
+        job = (
+            Job.objects.filter(
+                company__iexact=company.name,
+                title__iexact=application.job_title,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+    candidate = None
+    if application.candidate_email:
+        candidate = Candidate.objects.filter(email__iexact=application.candidate_email).first()
+
+    thread = _get_or_create_thread(
+        "candidate_company",
+        application,
+        job=job,
+        candidate=candidate,
+        company=company,
+        consultancy=application.consultancy,
+    )
+    if thread and not thread.last_message_at:
+        thread.last_message_at = timezone.now()
+        thread.save(update_fields=["last_message_at"])
+    return thread
+
+
+def _get_or_create_consultancy_support_thread(consultancy):
+    if not consultancy:
+        return None
+    thread = (
+        MessageThread.objects.filter(
+            thread_type="candidate_consultancy",
+            consultancy=consultancy,
+            application__isnull=True,
+            job__isnull=True,
+            candidate__isnull=True,
+            company__isnull=True,
+        )
+        .order_by("-last_message_at", "-created_at")
+        .first()
+    )
+    if thread:
+        return thread
+
+    thread = MessageThread.objects.create(
+        thread_type="candidate_consultancy",
+        consultancy=consultancy,
+    )
+    welcome = Message.objects.create(
+        thread=thread,
+        sender_role="admin",
+        sender_name="Support Team",
+        body="Hello! Share your issue here and our support team will respond shortly.",
+    )
+    thread.last_message_at = welcome.created_at
+    thread.save(update_fields=["last_message_at"])
+    return thread
+
+
+def _get_or_create_candidate_support_thread(candidate):
+    if not candidate:
+        return None
+    thread = (
+        MessageThread.objects.filter(
+            thread_type="candidate_consultancy",
+            candidate=candidate,
+            application__isnull=True,
+            job__isnull=True,
+            company__isnull=True,
+            consultancy__isnull=True,
+        )
+        .order_by("-last_message_at", "-created_at")
+        .first()
+    )
+    if thread:
+        return thread
+
+    thread = MessageThread.objects.create(
+        thread_type="candidate_consultancy",
+        candidate=candidate,
+    )
+    welcome = Message.objects.create(
+        thread=thread,
+        sender_role="admin",
+        sender_name="Support Team",
+        body="Hello! Share your issue here and our support team will respond shortly.",
+    )
+    thread.last_message_at = welcome.created_at
+    thread.save(update_fields=["last_message_at"])
+    return thread
+
+
+def _thread_access_role(request, thread):
+    if request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser):
+        sender_name = (request.user.get_full_name() or request.user.username or "Admin").strip()
+        return ("admin", sender_name)
+
+    company_id = _safe_session_get(request, "company_id")
+    if company_id and thread.company_id == company_id:
+        sender_name = (
+            request.session.get("company_name")
+            or (thread.company.name if thread.company else "Company")
+        ).strip()
+        return ("company", sender_name or "Company")
+
+    consultancy_id = _safe_session_get(request, "consultancy_id")
+    if consultancy_id and thread.consultancy_id == consultancy_id:
+        sender_name = (
+            request.session.get("consultancy_name")
+            or (thread.consultancy.name if thread.consultancy else "Consultancy")
+        ).strip()
+        return ("consultancy", sender_name or "Consultancy")
+
+    candidate_id = _safe_session_get(request, "candidate_id")
+    if candidate_id and thread.candidate_id == candidate_id:
+        sender_name = (
+            request.session.get("candidate_name")
+            or (thread.candidate.name if thread.candidate else "Candidate")
+        ).strip()
+        return ("candidate", sender_name or "Candidate")
+
+    return (None, "")
+
+
+def _serialize_thread_messages(message_items):
+    payload = []
+    for msg in message_items:
+        payload.append(
+            {
+                "id": msg.id,
+                "sender_role": msg.sender_role,
+                "sender_name": msg.sender_name or msg.sender_role.title(),
+                "body": msg.body or "",
+                "attachment_url": msg.attachment.url if msg.attachment else "",
+                "created_at": msg.created_at.isoformat() if msg.created_at else "",
+                "created_display": _format_audit_datetime(msg.created_at),
+            }
+        )
+    return payload
 
 
 def welcome_view(request):
@@ -625,9 +897,13 @@ def _issue_session_otp(request, session_key, phone, extra_payload=None):
     clean_phone = (phone or "").strip()
     otp_value = f"{random.randint(100000, 999999)}"
     is_sent, error_message = send_otp_sms(clean_phone, otp_value)
+    allow_debug_fallback = bool(
+        getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False)
+    )
     if not is_sent:
-        request.session.pop(session_key, None)
-        return "", error_message or "Unable to send OTP right now. Please try again."
+        if not allow_debug_fallback:
+            request.session.pop(session_key, None)
+            return "", error_message or "Unable to send OTP right now. Please try again."
 
     payload = {
         "phone": clean_phone,
@@ -690,6 +966,125 @@ def _record_login_history(request, account_type, username_or_email="", account_i
         is_success=bool(is_success),
         note=(note or "")[:255],
     )
+
+
+def _device_label(user_agent):
+    agent = (user_agent or "").strip()
+    if not agent:
+        return "Unknown Device"
+    normalized = agent.lower()
+    if "edg" in normalized:
+        browser = "Edge"
+    elif "chrome" in normalized and "edg" not in normalized:
+        browser = "Chrome"
+    elif "firefox" in normalized:
+        browser = "Firefox"
+    elif "safari" in normalized and "chrome" not in normalized:
+        browser = "Safari"
+    elif "opr" in normalized or "opera" in normalized:
+        browser = "Opera"
+    else:
+        browser = "Browser"
+
+    if "windows" in normalized:
+        platform = "Windows"
+    elif "mac os" in normalized or "macintosh" in normalized:
+        platform = "macOS"
+    elif "iphone" in normalized:
+        platform = "iPhone"
+    elif "ipad" in normalized:
+        platform = "iPad"
+    elif "android" in normalized:
+        platform = "Android"
+    elif "linux" in normalized:
+        platform = "Linux"
+    else:
+        platform = "Device"
+    return f"{platform} - {browser}"
+
+
+def _format_audit_datetime(value):
+    if not value:
+        return "--"
+    local_value = timezone.localtime(value) if timezone.is_aware(value) else value
+    return local_value.strftime("%d %b %Y, %I:%M %p")
+
+
+def _company_security_activity_payload(company, request=None, limit=20):
+    if not company:
+        return {"stats": {"total": 0, "success": 0, "failed": 0}, "entries": [], "sessions": []}
+
+    limit = max(10, min(int(limit or 20), 100))
+    account_filter = Q(account_id=company.id)
+    if company.email:
+        account_filter |= Q(username_or_email__iexact=company.email)
+    if company.name:
+        account_filter |= Q(username_or_email__iexact=company.name)
+
+    login_qs = (
+        LoginHistory.objects.filter(account_type="company")
+        .filter(account_filter)
+        .order_by("-created_at")
+    )
+    total = login_qs.count()
+    success = login_qs.filter(is_success=True).count()
+    failed = total - success
+
+    entries = []
+    for entry in login_qs[:limit]:
+        entries.append(
+            {
+                "id": entry.id,
+                "created_at": _format_audit_datetime(entry.created_at),
+                "device": _device_label(entry.user_agent),
+                "ip_address": entry.ip_address or "--",
+                "status": "Success" if entry.is_success else "Failed",
+                "status_class": "success" if entry.is_success else "danger",
+                "note": entry.note or "",
+            }
+        )
+
+    sessions = []
+    seen_sessions = set()
+    if request is not None:
+        current_ip = _client_ip(request) or "--"
+        current_agent = (request.META.get("HTTP_USER_AGENT") or "").strip()
+        current_key = (current_ip, current_agent)
+        seen_sessions.add(current_key)
+        sessions.append(
+            {
+                "device": _device_label(current_agent),
+                "ip_address": current_ip,
+                "last_seen": _format_audit_datetime(timezone.now()),
+                "is_current": True,
+            }
+        )
+
+    for entry in login_qs.filter(is_success=True)[: max(40, limit * 2)]:
+        key = (entry.ip_address or "--", (entry.user_agent or "").strip())
+        if key in seen_sessions:
+            continue
+        seen_sessions.add(key)
+        sessions.append(
+            {
+                "device": _device_label(entry.user_agent),
+                "ip_address": entry.ip_address or "--",
+                "last_seen": _format_audit_datetime(entry.created_at),
+                "is_current": False,
+            }
+        )
+        if len(sessions) >= 6:
+            break
+
+    return {
+        "stats": {
+            "total": total,
+            "success": success,
+            "failed": failed,
+        },
+        "entries": entries,
+        "sessions": sessions,
+    }
 
 
 def _normalize_subadmin_role(value):
@@ -924,6 +1319,12 @@ def _resolve_account_phone(account_type, account):
     return ""
 
 
+def _resolve_candidate_primary_phone(candidate):
+    if not candidate:
+        return ""
+    return ((getattr(candidate, "phone", "") or getattr(candidate, "alt_phone", "")) or "").strip()
+
+
 def _create_password_reset_token(account_type, account_id, email):
     now = timezone.now()
     PasswordResetToken.objects.filter(
@@ -1005,6 +1406,20 @@ def _extract_resume_text(file_obj):
             return xml_bytes.decode("utf-8", errors="ignore")
         except Exception:
             return ""
+    if name.endswith(".pdf"):
+        try:
+            from pypdf import PdfReader  # type: ignore
+
+            reader = PdfReader(BytesIO(raw))
+            pdf_text = "\n".join((page.extract_text() or "") for page in reader.pages).strip()
+            if pdf_text:
+                return pdf_text
+        except Exception:
+            pass
+        # Fallback for environments without PDF parser.
+        extracted = re.findall(rb"[A-Za-z0-9@#&+./_\-\s]{3,}", raw)
+        fallback = " ".join(chunk.decode("utf-8", errors="ignore").strip() for chunk in extracted[:600])
+        return fallback
     return raw.decode("utf-8", errors="ignore")
 
 
@@ -1018,6 +1433,149 @@ def _extract_skills_from_resume(file_obj):
         if re.search(pattern, text):
             found.append(keyword.title())
     return found
+
+
+def _split_skill_values(*values):
+    items = []
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple, set)):
+            values_to_split = value
+        else:
+            values_to_split = [value]
+        for raw in values_to_split:
+            for part in re.split(r"[,;/|\n]+", str(raw or "")):
+                cleaned = re.sub(r"\s+", " ", part).strip()
+                if cleaned:
+                    items.append(cleaned)
+    return items
+
+
+def _expand_skill_tokens(values):
+    tokens = set()
+    for value in _split_skill_values(values):
+        normalized = re.sub(r"\s+", " ", str(value).strip().lower())
+        if not normalized:
+            continue
+        tokens.add(normalized)
+        for part in normalized.split():
+            if len(part) >= 3:
+                tokens.add(part)
+    return tokens
+
+
+def _resolve_candidate_resume_source(candidate):
+    if not candidate:
+        return None
+    latest_uploaded = (
+        candidate.resumes.exclude(title__iexact="Job Exhibition Resume")
+        .order_by("-created_at")
+        .first()
+    )
+    if latest_uploaded and latest_uploaded.resume_file:
+        return latest_uploaded.resume_file
+    if candidate.resume:
+        return candidate.resume
+    default_resume = candidate.resumes.filter(is_default=True).order_by("-created_at").first()
+    if default_resume and default_resume.resume_file:
+        return default_resume.resume_file
+    latest_resume = candidate.resumes.order_by("-created_at").first()
+    if latest_resume and latest_resume.resume_file:
+        return latest_resume.resume_file
+    return None
+
+
+def _extract_resume_highlights(resume_text, limit=6):
+    if not resume_text:
+        return []
+    lines = [
+        re.sub(r"\s+", " ", line).strip(" -•\t")
+        for line in resume_text.splitlines()
+    ]
+    lines = [line for line in lines if line and len(line) > 20]
+    highlights = []
+    seen = set()
+    for line in lines:
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        highlights.append(line)
+        if len(highlights) >= limit:
+            break
+    return highlights
+
+
+def _collect_candidate_skill_tokens(candidate):
+    if not candidate:
+        return set()
+    values = []
+    values.extend(_split_skill_values(candidate.skills, candidate.secondary_skills, candidate.preferred_industry))
+    values.extend(_split_skill_values([entry.name for entry in candidate.skill_entries.all()]))
+    resume_source = _resolve_candidate_resume_source(candidate)
+    if resume_source:
+        values.extend(_extract_skills_from_resume(resume_source))
+    return _expand_skill_tokens(values)
+
+
+def _collect_job_skill_tokens(job):
+    if not job:
+        return set()
+    values = [job.skills, job.category, job.title, job.description, job.requirements]
+    return _expand_skill_tokens(values)
+
+
+def _recommend_jobs_for_candidate(candidate, jobs_queryset=None, limit=6, exclude_job_id=None):
+    jobs_qs = jobs_queryset if jobs_queryset is not None else Job.objects.filter(status="Approved")
+    if exclude_job_id:
+        jobs_qs = jobs_qs.exclude(job_id=exclude_job_id)
+
+    jobs = list(jobs_qs)
+    if not jobs:
+        return []
+
+    candidate_tokens = _collect_candidate_skill_tokens(candidate)
+    preferred_location = (candidate.preferred_job_location or candidate.location or "").strip().lower()
+    preferred_industry = (candidate.preferred_industry or "").strip().lower()
+
+    for job in jobs:
+        job_tokens = _collect_job_skill_tokens(job)
+        overlap = sorted(candidate_tokens & job_tokens)
+        score = round((len(overlap) / len(job_tokens)) * 100) if job_tokens else 0
+
+        location = (job.location or "").strip().lower()
+        if preferred_location and location and preferred_location in location:
+            score += 8
+        if preferred_industry:
+            industry_haystack = f"{job.category or ''} {job.title or ''}".lower()
+            if preferred_industry in industry_haystack:
+                score += 6
+        if candidate_tokens and not score:
+            score = 5
+        score = max(0, min(100, score))
+
+        job.match_score = score
+        job.matched_skills = overlap[:4]
+        if overlap:
+            job.match_reason = f"Matched skills: {', '.join(overlap[:3])}"
+        elif preferred_location and location and preferred_location in location:
+            job.match_reason = "Location match"
+        elif preferred_industry and preferred_industry in f"{job.category or ''} {job.title or ''}".lower():
+            job.match_reason = "Industry preference match"
+        else:
+            job.match_reason = "Recommended for your profile"
+
+    jobs.sort(
+        key=lambda item: (
+            getattr(item, "match_score", 0),
+            getattr(item, "created_at", timezone.now()),
+        ),
+        reverse=True,
+    )
+    if limit:
+        return jobs[:limit]
+    return jobs
 
 
 def register_options_view(request):
@@ -2407,6 +2965,7 @@ def consultancy_jobs_view(request):
                 "title": job.title,
                 "company": job.company,
                 "category": job.category,
+                "summary": job.summary,
                 "applicants": getattr(job, "apply_count", 0),
                 "posted_date": job.posted_date,
                 "status": lifecycle_status,
@@ -3373,6 +3932,36 @@ def consultancy_support_view(request, section="create", ticket_id=None):
         section, ("Customer Support", "Get help from our support team.")
     )
 
+    support_thread = _get_or_create_consultancy_support_thread(consultancy)
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "send_support_message" and support_thread:
+            body = (request.POST.get("message_body") or "").strip()
+            attachment = request.FILES.get("attachment")
+            if not body and not attachment:
+                messages.error(request, "Please type a message or attach a file.")
+            else:
+                Message.objects.create(
+                    thread=support_thread,
+                    sender_role="consultancy",
+                    sender_name=consultancy.name,
+                    body=body,
+                    attachment=attachment,
+                )
+                support_thread.last_message_at = timezone.now()
+                support_thread.save(update_fields=["last_message_at"])
+                messages.success(request, "Message sent to support.")
+        return redirect(request.path)
+
+    support_messages = []
+    if support_thread:
+        support_messages = list(support_thread.messages.order_by("created_at")[:150])
+        Message.objects.filter(thread=support_thread, is_read=False).exclude(
+            sender_role="consultancy"
+        ).update(is_read=True)
+
+    resolved_ticket_id = ticket_id or f"SUP-C{consultancy.id:04d}"
+
     return render(
         request,
         "dashboard/consultancy/consultancy_support.html",
@@ -3381,7 +3970,21 @@ def consultancy_support_view(request, section="create", ticket_id=None):
             "support_section": section,
             "page_title": page_title,
             "page_subtitle": page_subtitle,
-            "ticket_id": ticket_id or "SUP-1023",
+            "ticket_id": resolved_ticket_id,
+            "support_thread": support_thread,
+            "support_messages": support_messages,
+            "support_thread_messages_api": reverse(
+                "dashboard:api_thread_messages",
+                args=[support_thread.id],
+            )
+            if support_thread
+            else "",
+            "support_thread_send_api": reverse(
+                "dashboard:api_thread_send_message",
+                args=[support_thread.id],
+            )
+            if support_thread
+            else "",
         },
     )
 
@@ -3525,9 +4128,34 @@ def _build_ai_resume_context(candidate):
     projects = list(candidate.project_entries.all())
     certifications = list(candidate.certification_files.all().order_by("-uploaded_at"))
 
+    resume_source = _resolve_candidate_resume_source(candidate)
+    resume_text = _extract_resume_text(resume_source) if resume_source else ""
+    resume_skills = _extract_skills_from_resume(resume_source) if resume_source else []
+    resume_highlights = _extract_resume_highlights(resume_text, limit=6)
+    resume_summary = " ".join(resume_highlights[:2]).strip()
+
+    objective_line = ""
+    for line in resume_highlights:
+        lower = line.lower()
+        if "objective" in lower or "summary" in lower or "profile" in lower:
+            objective_line = line
+            break
+    if not objective_line and resume_highlights:
+        objective_line = resume_highlights[0]
+
     tech_skills = [s for s in skills if (s.category or "").lower().startswith("tech")]
     soft_skills = [s for s in skills if (s.category or "").lower().startswith("soft")]
     other_skills = [s for s in skills if s not in tech_skills and s not in soft_skills]
+
+    merged_skills = _split_skill_values(candidate.skills, candidate.secondary_skills, resume_skills)
+    deduped_skill_values = []
+    seen_skill_values = set()
+    for skill_value in merged_skills:
+        key = skill_value.lower()
+        if key in seen_skill_values:
+            continue
+        seen_skill_values.add(key)
+        deduped_skill_values.append(skill_value)
 
     profile_image_url = ""
     if candidate.profile_image:
@@ -3535,6 +4163,13 @@ def _build_ai_resume_context(candidate):
             profile_image_url = candidate.profile_image.url
         except Exception:
             profile_image_url = ""
+
+    resume_source_name = ""
+    if resume_source:
+        try:
+            resume_source_name = os.path.basename(resume_source.name or "")
+        except Exception:
+            resume_source_name = "Uploaded Resume"
 
     return {
         "name": candidate.name or "Candidate Resume",
@@ -3546,8 +4181,8 @@ def _build_ai_resume_context(candidate):
         "date_of_birth": candidate.date_of_birth.strftime("%d %B %Y") if candidate.date_of_birth else "-",
         "gender": candidate.gender or "-",
         "profile_image_url": profile_image_url,
-        "summary": candidate.bio or "No summary added.",
-        "objective": candidate.career_objective or "Not specified",
+        "summary": candidate.bio or resume_summary or "No summary added.",
+        "objective": candidate.career_objective or objective_line or "Not specified",
         "total_experience": candidate.total_experience or candidate.experience or "Not specified",
         "current_status": candidate.current_job_status or "Not specified",
         "expected_salary": candidate.expected_salary or "Not specified",
@@ -3567,8 +4202,12 @@ def _build_ai_resume_context(candidate):
         "linkedin": candidate.linkedin_url or "-",
         "github": candidate.github_url or "-",
         "portfolio": candidate.portfolio_url or "-",
-        "skills_text": candidate.skills or "",
-        "secondary_skills": candidate.secondary_skills or "",
+        "skills_text": ", ".join(deduped_skill_values[:20]),
+        "secondary_skills": candidate.secondary_skills or ", ".join(resume_skills[:8]),
+        "resume_skills": resume_skills,
+        "resume_highlights": resume_highlights,
+        "resume_seeded": bool(resume_source and (resume_skills or resume_highlights)),
+        "resume_source_name": resume_source_name,
     }
 
 
@@ -4893,8 +5532,12 @@ def _render_resume_template(template_name, context):
 
 def _build_ai_resume_text(candidate, template_name="showcase"):
     context = _build_ai_resume_context(candidate)
-    if not context["tech_skills"] and not context["soft_skills"] and (candidate.skills or candidate.secondary_skills):
+    if not context["tech_skills"] and not context["soft_skills"] and (
+        candidate.skills or candidate.secondary_skills or context.get("resume_skills")
+    ):
         fallback_values = [value for value in [candidate.skills, candidate.secondary_skills] if value]
+        if context.get("resume_skills"):
+            fallback_values.append(", ".join(context["resume_skills"]))
         context["skills_fallback"] = ", ".join(fallback_values)
     else:
         context["skills_fallback"] = ""
@@ -4934,8 +5577,12 @@ def candidate_dashboard_view(request):
         candidate_email__iexact=candidate.email,
         status__in=["scheduled", "rescheduled"],
     ).count()
-    saved_jobs = 0
-    recommended_jobs = list(Job.objects.filter(status="Approved").order_by("-created_at")[:6])
+    saved_jobs = CandidateSavedJob.objects.filter(candidate=candidate).count()
+    recommended_jobs = _recommend_jobs_for_candidate(
+        candidate,
+        jobs_queryset=Job.objects.filter(status="Approved"),
+        limit=6,
+    )
 
     metrics = {
         "profile_completion": candidate.profile_completion,
@@ -5243,6 +5890,12 @@ def candidate_resume_manager_view(request):
                     candidate.resume = resume.resume_file
                     candidate.profile_completion = _calculate_candidate_completion(candidate)
                     candidate.save(update_fields=["resume", "profile_completion"])
+                current_ai = CandidateResume.objects.filter(
+                    candidate=candidate,
+                    title__iexact="Job Exhibition Resume",
+                ).order_by("-created_at").first()
+                ai_template_name = current_ai.template_name if current_ai and current_ai.template_name else "showcase"
+                _get_or_create_ai_resume(candidate, ai_template_name)
                 messages.success(request, "Resume uploaded successfully.")
         elif action == "generate_ai_resume":
             template_name = (request.POST.get("template_name") or "showcase").strip().lower()
@@ -5289,7 +5942,7 @@ def candidate_job_search_view(request):
     if not candidate:
         return redirect("dashboard:login")
 
-    jobs = Job.objects.filter(status="Approved")
+    jobs_qs = Job.objects.filter(status="Approved")
     search = (request.GET.get("search") or "").strip()
     location = (request.GET.get("location") or "").strip()
     salary = (request.GET.get("salary") or "").strip()
@@ -5299,26 +5952,49 @@ def candidate_job_search_view(request):
     sort = (request.GET.get("sort") or "latest").strip()
 
     if search:
-        jobs = jobs.filter(Q(title__icontains=search) | Q(company__icontains=search))
+        jobs_qs = jobs_qs.filter(Q(title__icontains=search) | Q(company__icontains=search))
     if location:
-        jobs = jobs.filter(location__icontains=location)
+        jobs_qs = jobs_qs.filter(location__icontains=location)
     if salary:
-        jobs = jobs.filter(salary__icontains=salary)
+        jobs_qs = jobs_qs.filter(salary__icontains=salary)
     if experience:
-        jobs = jobs.filter(experience__icontains=experience)
+        jobs_qs = jobs_qs.filter(experience__icontains=experience)
     if skills:
-        jobs = jobs.filter(skills__icontains=skills)
+        jobs_qs = jobs_qs.filter(skills__icontains=skills)
     if job_type:
-        jobs = jobs.filter(job_type__iexact=job_type)
+        jobs_qs = jobs_qs.filter(job_type__iexact=job_type)
 
     if sort == "salary_high":
-        jobs = jobs.order_by("-salary")
+        jobs_qs = jobs_qs.order_by("-salary", "-created_at")
     else:
-        jobs = jobs.order_by("-created_at")
+        jobs_qs = jobs_qs.order_by("-created_at")
+
+    recommended_jobs = _recommend_jobs_for_candidate(candidate, jobs_queryset=jobs_qs, limit=None)
+    recommendation_map = {item.job_id: item for item in recommended_jobs}
+    jobs = list(jobs_qs)
+    for job in jobs:
+        matched = recommendation_map.get(job.job_id)
+        job.match_score = getattr(matched, "match_score", 0) if matched else 0
+        job.matched_skills = getattr(matched, "matched_skills", []) if matched else []
+        job.match_reason = getattr(matched, "match_reason", "Recommended for your profile") if matched else "Recommended for your profile"
+
+    if sort != "salary_high":
+        jobs.sort(
+            key=lambda item: (
+                getattr(item, "match_score", 0),
+                getattr(item, "created_at", timezone.now()),
+            ),
+            reverse=True,
+        )
+
+    saved_job_ids = set(
+        CandidateSavedJob.objects.filter(candidate=candidate).values_list("job_id", flat=True)
+    )
 
     context = {
         "candidate": candidate,
         "jobs": jobs,
+        "saved_job_ids": saved_job_ids,
         "filters": {
             "search": search,
             "location": location,
@@ -5343,11 +6019,27 @@ def candidate_job_detail_view(request, job_id):
     if latest_completion != candidate.profile_completion:
         candidate.profile_completion = latest_completion
         candidate.save(update_fields=["profile_completion"])
-    can_apply = candidate.profile_completion >= MIN_PROFILE_COMPLETION_TO_APPLY
+    can_apply = True
 
     job = get_object_or_404(Job, job_id=job_id, status="Approved")
     company = Company.objects.filter(name__iexact=job.company).first()
-    similar_jobs = Job.objects.filter(status="Approved", category=job.category).exclude(job_id=job_id)[:4]
+    current_job_match = _recommend_jobs_for_candidate(
+        candidate,
+        jobs_queryset=Job.objects.filter(pk=job.pk),
+        limit=1,
+    )
+    if current_job_match:
+        job.match_score = getattr(current_job_match[0], "match_score", 0)
+        job.match_reason = getattr(current_job_match[0], "match_reason", "Recommended for your profile")
+
+    similar_jobs = _recommend_jobs_for_candidate(
+        candidate,
+        jobs_queryset=Job.objects.filter(status="Approved"),
+        limit=8,
+        exclude_job_id=job_id,
+    )
+    is_saved_job = CandidateSavedJob.objects.filter(candidate=candidate, job=job).exists()
+    saved_jobs_count = CandidateSavedJob.objects.filter(candidate=candidate).count()
     candidate_resumes = list(candidate.resumes.order_by("-created_at"))
     ai_resume = next((resume for resume in candidate_resumes if (resume.title or "").lower() == "job exhibition resume"), None)
     default_resume = next((resume for resume in candidate_resumes if resume.is_default), None)
@@ -5372,13 +6064,32 @@ def candidate_job_detail_view(request, job_id):
 
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
-        if action == "apply":
-            if not can_apply:
-                messages.error(
-                    request,
-                    f"Please complete at least {MIN_PROFILE_COMPLETION_TO_APPLY}% profile before applying.",
+        is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+        if action == "toggle_save":
+            existing = CandidateSavedJob.objects.filter(candidate=candidate, job=job).first()
+            if existing:
+                existing.delete()
+                saved = False
+                message_text = "Job removed from saved list."
+            else:
+                CandidateSavedJob.objects.create(candidate=candidate, job=job)
+                saved = True
+                message_text = "Job saved successfully."
+            saved_jobs_count = CandidateSavedJob.objects.filter(candidate=candidate).count()
+            if is_ajax:
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "saved": saved,
+                        "saved_jobs_count": saved_jobs_count,
+                        "job_id": job.job_id,
+                        "message": message_text,
+                    }
                 )
-                return redirect("dashboard:candidate_profile")
+            messages.success(request, message_text)
+            return redirect("dashboard:candidate_job_detail", job_id=job_id)
+
+        if action == "apply":
             if has_applied:
                 messages.info(request, "You already applied to this job.")
             else:
@@ -5451,12 +6162,13 @@ def candidate_job_detail_view(request, job_id):
             "candidate_resumes": candidate_resumes,
             "ai_resume": ai_resume,
             "default_resume": default_resume,
-              "has_applied": has_applied,
-              "can_apply": can_apply,
-              "profile_completion_required": MIN_PROFILE_COMPLETION_TO_APPLY,
-              "chat_thread_id": chat_thread_id,
-          },
-      )
+            "has_applied": has_applied,
+            "can_apply": can_apply,
+            "is_saved_job": is_saved_job,
+            "saved_jobs_count": saved_jobs_count,
+            "chat_thread_id": chat_thread_id,
+        },
+    )
 
 
 @candidate_login_required
@@ -5466,11 +6178,44 @@ def candidate_saved_jobs_view(request):
     if not candidate:
         return redirect("dashboard:login")
 
-    saved_jobs = []
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        job_id = (request.POST.get("job_id") or "").strip()
+        if action == "remove" and job_id:
+            deleted, _ = CandidateSavedJob.objects.filter(
+                candidate=candidate,
+                job__job_id=job_id,
+            ).delete()
+            if deleted:
+                messages.success(request, "Saved job removed.")
+            else:
+                messages.error(request, "Saved job not found.")
+        return redirect("dashboard:candidate_saved_jobs")
+
+    saved_entries = list(
+        CandidateSavedJob.objects.filter(candidate=candidate)
+        .select_related("job")
+        .order_by("-created_at")
+    )
+    recommended_saved_jobs = _recommend_jobs_for_candidate(
+        candidate,
+        jobs_queryset=Job.objects.filter(id__in=[entry.job_id for entry in saved_entries], status="Approved"),
+        limit=None,
+    )
+    recommendation_map = {job.id: job for job in recommended_saved_jobs}
+    for entry in saved_entries:
+        recommendation = recommendation_map.get(entry.job_id)
+        entry.match_score = getattr(recommendation, "match_score", 0) if recommendation else 0
+        entry.match_reason = (
+            getattr(recommendation, "match_reason", "Saved for later")
+            if recommendation
+            else "Saved for later"
+        )
+
     return render(
         request,
         "dashboard/candidate/candidate_saved_jobs.html",
-        {"candidate": candidate, "saved_jobs": saved_jobs},
+        {"candidate": candidate, "saved_jobs": saved_entries},
     )
 
 
@@ -5625,6 +6370,7 @@ def candidate_settings_view(request):
     candidate = Candidate.objects.filter(id=candidate_id).first()
     if not candidate:
         return redirect("dashboard:login")
+    registered_mobile = _resolve_candidate_primary_phone(candidate)
 
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
@@ -5643,9 +6389,69 @@ def candidate_settings_view(request):
             candidate.profile_visibility = request.POST.get("profile_visibility") == "on"
             candidate.save(update_fields=["email", "profile_visibility"])
             messages.success(request, "Settings updated.")
+        elif action == "send_delete_otp":
+            phone = _resolve_candidate_primary_phone(candidate)
+            if not phone:
+                messages.error(request, "Add a valid mobile number in profile before requesting OTP.")
+            else:
+                otp_value, otp_error = _issue_session_otp(
+                    request,
+                    CANDIDATE_DELETE_OTP_SESSION_KEY,
+                    phone,
+                    {"candidate_id": str(candidate.id)},
+                )
+                if otp_error:
+                    messages.error(request, otp_error)
+                else:
+                    messages.success(
+                        request,
+                        f"Delete OTP sent to mobile ending {_mask_phone_number(phone)}.",
+                    )
+                    if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False):
+                        messages.info(
+                            request,
+                            f"Test OTP: {otp_value} (shown because debug OTP mode is enabled).",
+                        )
+        elif action == "delete_account":
+            phone = _resolve_candidate_primary_phone(candidate)
+            entered_otp = (request.POST.get("delete_otp") or "").strip()
+            payload = request.session.get(CANDIDATE_DELETE_OTP_SESSION_KEY) or {}
+            if not phone:
+                messages.error(request, "Mobile number missing. Update profile and try again.")
+                return redirect("dashboard:candidate_settings")
+            if str(payload.get("candidate_id") or "") != str(candidate.id):
+                messages.error(request, "Please request OTP first.")
+                return redirect("dashboard:candidate_settings")
+            if not entered_otp:
+                messages.error(request, "Enter OTP to confirm account deletion.")
+                return redirect("dashboard:candidate_settings")
+            if not _validate_session_otp(
+                request,
+                CANDIDATE_DELETE_OTP_SESSION_KEY,
+                phone,
+                entered_otp,
+            ):
+                messages.error(request, "Invalid or expired OTP. Request a new OTP.")
+                return redirect("dashboard:candidate_settings")
+
+            _clear_session_otp(request, CANDIDATE_DELETE_OTP_SESSION_KEY)
+            candidate_email = (candidate.email or "").strip()
+            Application.objects.filter(candidate_email__iexact=candidate_email).delete()
+            Interview.objects.filter(candidate_email__iexact=candidate_email).delete()
+            MessageThread.objects.filter(candidate=candidate).delete()
+            CandidateSavedJob.objects.filter(candidate=candidate).delete()
+            candidate.delete()
+            request.session.pop("candidate_id", None)
+            request.session.pop("candidate_name", None)
+            messages.success(request, "Your account and related candidate data were deleted.")
+            return redirect("dashboard:login")
         return redirect("dashboard:candidate_settings")
 
-    return render(request, "dashboard/candidate/candidate_settings.html", {"candidate": candidate})
+    return render(
+        request,
+        "dashboard/candidate/candidate_settings.html",
+        {"candidate": candidate, "registered_mobile": registered_mobile or "Not available"},
+    )
 
 
 @candidate_login_required
@@ -5745,15 +6551,76 @@ def candidate_support_view(request):
     if not candidate:
         return redirect("dashboard:login")
 
+    support_thread = _get_or_create_candidate_support_thread(candidate)
+
     if request.method == "POST":
-        messages.success(request, "Support ticket created. Our team will respond shortly.")
+        action = (request.POST.get("action") or "").strip()
+        if action == "send_support_message" and support_thread:
+            message_body = (request.POST.get("message_body") or "").strip()
+            attachment = request.FILES.get("attachment")
+            if not message_body and not attachment:
+                messages.error(request, "Type a message or attach a file before sending.")
+            else:
+                Message.objects.create(
+                    thread=support_thread,
+                    sender_role="candidate",
+                    sender_name=candidate.name,
+                    body=message_body,
+                    attachment=attachment,
+                )
+                support_thread.last_message_at = timezone.now()
+                support_thread.save(update_fields=["last_message_at"])
+                messages.success(request, "Message sent to support.")
+        elif action == "create_ticket":
+            category = (request.POST.get("category") or "general").strip()
+            subject = (request.POST.get("subject") or "").strip()
+            ticket_message = (request.POST.get("message") or "").strip()
+            if not subject or not ticket_message:
+                messages.error(request, "Subject and message are required to create ticket.")
+            elif support_thread:
+                Message.objects.create(
+                    thread=support_thread,
+                    sender_role="candidate",
+                    sender_name=candidate.name,
+                    body=f"[Ticket:{category}] {subject}\n{ticket_message}",
+                )
+                support_thread.last_message_at = timezone.now()
+                support_thread.save(update_fields=["last_message_at"])
+                messages.success(request, "Support ticket created. Our team will respond shortly.")
         return redirect("dashboard:candidate_support")
 
+    support_messages = []
+    if support_thread:
+        support_messages = list(support_thread.messages.order_by("created_at")[:150])
+        Message.objects.filter(thread=support_thread, is_read=False).exclude(
+            sender_role="candidate"
+        ).update(is_read=True)
+
     tickets = []
+    for item in reversed([msg for msg in support_messages if msg.sender_role == "candidate"][-8:]):
+        first_line = ((item.body or "").splitlines() or [""])[0]
+        ticket_id = f"SUP-CAN-{item.id}"
+        category = "general"
+        if first_line.lower().startswith("[ticket:"):
+            category = first_line.split("]", 1)[0].replace("[Ticket:", "").strip() or "general"
+        tickets.append(
+            {
+                "id": ticket_id,
+                "category": category.title(),
+                "status": "Open",
+            }
+        )
     return render(
         request,
         "dashboard/candidate/candidate_support.html",
-        {"candidate": candidate, "tickets": tickets},
+        {
+            "candidate": candidate,
+            "tickets": tickets,
+            "support_thread": support_thread,
+            "support_messages": support_messages,
+            "support_thread_messages_api": reverse("dashboard:api_thread_messages", args=[support_thread.id]) if support_thread else "",
+            "support_thread_send_api": reverse("dashboard:api_thread_send_message", args=[support_thread.id]) if support_thread else "",
+        },
     )
 
 
@@ -5789,6 +6656,7 @@ def api_candidate_applications(request):
                 "interview_time": app.interview_time or "",
                 "interviewer": app.interviewer or "",
                 "offer_package": app.offer_package or "",
+                "rejection_remark": (app.notes or "").strip() if (app.status or "").strip() == "Rejected" else "",
                 "job_url": reverse("dashboard:candidate_job_detail", args=[job_id]) if job_id else "",
             }
         )
@@ -5815,15 +6683,62 @@ def api_candidate_metrics(request):
         candidate_email__iexact=candidate.email,
         status__in=["scheduled", "rescheduled"],
     ).count()
+    recommended_jobs_count = Job.objects.filter(status="Approved").count()
     data = {
         "profile_completion": candidate.profile_completion,
         "total_applications": applications.count(),
         "shortlisted": shortlisted,
         "interviews": interviews,
-        "saved_jobs": 0,
-        "recommended_jobs": Job.objects.filter(status="Approved").count(),
+        "saved_jobs": CandidateSavedJob.objects.filter(candidate=candidate).count(),
+        "recommended_jobs": recommended_jobs_count,
     }
     return JsonResponse(data)
+
+
+@candidate_login_required
+@require_http_methods(["POST"])
+def api_candidate_toggle_saved_job(request):
+    candidate_id = _safe_session_get(request, "candidate_id")
+    candidate = Candidate.objects.filter(id=candidate_id).first()
+    if not candidate:
+        return JsonResponse({"success": False, "error": "Unauthorized"}, status=401)
+
+    job_id = (request.POST.get("job_id") or "").strip()
+    mode = (request.POST.get("mode") or "").strip().lower()
+    job = Job.objects.filter(job_id=job_id).first()
+    if not job:
+        return JsonResponse({"success": False, "error": "Job not found."}, status=404)
+
+    saved_entry = CandidateSavedJob.objects.filter(candidate=candidate, job=job).first()
+    if mode == "save" and job.status != "Approved":
+        return JsonResponse({"success": False, "error": "Only approved jobs can be saved."}, status=400)
+    if mode == "save":
+        if not saved_entry:
+            CandidateSavedJob.objects.create(candidate=candidate, job=job)
+        saved = True
+    elif mode == "unsave":
+        if saved_entry:
+            saved_entry.delete()
+        saved = False
+    else:
+        if saved_entry:
+            saved_entry.delete()
+            saved = False
+        else:
+            if job.status != "Approved":
+                return JsonResponse({"success": False, "error": "Only approved jobs can be saved."}, status=400)
+            CandidateSavedJob.objects.create(candidate=candidate, job=job)
+            saved = True
+
+    saved_jobs_count = CandidateSavedJob.objects.filter(candidate=candidate).count()
+    return JsonResponse(
+        {
+            "success": True,
+            "saved": saved,
+            "saved_jobs_count": saved_jobs_count,
+            "job_id": job.job_id,
+        }
+    )
 
 
 @company_login_required
@@ -6137,20 +7052,66 @@ def company_applications_view(request):
             return years >= start
         return start <= years <= end
 
+    def build_candidate_map(email_values):
+        normalized_emails = []
+        seen = set()
+        for raw in email_values:
+            email_value = (raw or "").strip().lower()
+            if not email_value or email_value in seen:
+                continue
+            seen.add(email_value)
+            normalized_emails.append(email_value)
+        if not normalized_emails:
+            return {}
+
+        query = Q()
+        for email_value in normalized_emails:
+            query |= Q(email__iexact=email_value)
+        candidates = (
+            Candidate.objects.filter(query)
+            .prefetch_related("resumes")
+            .only(
+                "id",
+                "email",
+                "resume",
+                "phone",
+                "location",
+                "experience",
+                "current_company",
+                "notice_period",
+                "expected_salary",
+                "profile_image",
+            )
+        )
+        return {
+            (candidate.email or "").strip().lower(): candidate
+            for candidate in candidates
+            if (candidate.email or "").strip()
+        }
+
     def resolve_resume(app, candidate_map):
         if app.resume:
             return app.resume
-        candidate = candidate_map.get(app.candidate_email.lower()) if app.candidate_email else None
-        if candidate and candidate.resume:
-            return candidate.resume
+        candidate = None
+        app_email = (app.candidate_email or "").strip().lower()
+        if app_email:
+            candidate = candidate_map.get(app_email)
+            if not candidate:
+                candidate = (
+                    Candidate.objects.filter(email__iexact=app.candidate_email)
+                    .prefetch_related("resumes")
+                    .first()
+                )
+                if candidate and candidate.email:
+                    candidate_map[candidate.email.strip().lower()] = candidate
+        resume_source = _resolve_candidate_resume_source(candidate)
+        if resume_source:
+            return resume_source
         return None
 
     def build_resume_zip(apps):
-        emails = [app.candidate_email.lower() for app in apps if app.candidate_email]
-        candidate_map = {
-            cand.email.lower(): cand
-            for cand in Candidate.objects.filter(email__in=emails)
-        }
+        emails = [app.candidate_email for app in apps if app.candidate_email]
+        candidate_map = build_candidate_map(emails)
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             for app in apps:
@@ -6274,6 +7235,7 @@ def company_applications_view(request):
             application_id = request.POST.get("application_id")
             internal_notes = (request.POST.get("internal_notes") or "").strip()
             interview_feedback = (request.POST.get("interview_feedback") or "").strip()
+            summary_notes = (request.POST.get("notes") or "").strip()
             if application_id:
                 updated = Application.objects.filter(
                     company__iexact=company_name,
@@ -6281,6 +7243,7 @@ def company_applications_view(request):
                 ).update(
                     internal_notes=internal_notes,
                     interview_feedback=interview_feedback,
+                    notes=summary_notes,
                     updated_at=timezone.now(),
                 )
                 if updated:
@@ -6350,6 +7313,14 @@ def company_applications_view(request):
         )
 
     job_filter = (request.GET.get("job") or "").strip()
+    job_id_filter = (request.GET.get("job_id") or "").strip()
+    if job_id_filter:
+        selected_job = Job.objects.filter(
+            company__iexact=company_name,
+            job_id=job_id_filter,
+        ).first()
+        if selected_job:
+            job_filter = selected_job.title or job_filter
     if job_filter:
         applications = applications.filter(job_title__iexact=job_filter)
 
@@ -6384,11 +7355,8 @@ def company_applications_view(request):
             app for app in applications if experience_in_range(app.experience, experience_filter)
         ]
 
-    emails = [app.candidate_email.lower() for app in applications if app.candidate_email]
-    candidate_map = {
-        cand.email.lower(): cand
-        for cand in Candidate.objects.filter(email__in=emails)
-    }
+    emails = [app.candidate_email for app in applications if app.candidate_email]
+    candidate_map = build_candidate_map(emails)
     job_map = {
         job.title.lower(): job.skills
         for job in Job.objects.filter(company__iexact=company_name)
@@ -6401,6 +7369,20 @@ def company_applications_view(request):
     for app in applications:
         candidate = candidate_map.get(app.candidate_email.lower()) if app.candidate_email else None
         app.profile_image_url = candidate.profile_image.url if candidate and candidate.profile_image else ""
+        if candidate:
+            if not app.candidate_phone:
+                app.candidate_phone = candidate.phone or ""
+            if not app.candidate_location:
+                app.candidate_location = candidate.location or ""
+            if not app.experience:
+                app.experience = candidate.experience or ""
+            if not app.current_company:
+                app.current_company = candidate.current_company or ""
+            if not app.notice_period:
+                app.notice_period = candidate.notice_period or ""
+            if not app.expected_salary:
+                app.expected_salary = candidate.expected_salary or ""
+
         resume_file = resolve_resume(app, candidate_map)
         app.has_resume = bool(resume_file)
         app.resume_filename = os.path.basename(resume_file.name) if resume_file else ""
@@ -6450,6 +7432,7 @@ def company_applications_view(request):
             "filters": {
                 "search": search,
                 "job": job_filter,
+                "job_id": job_id_filter,
                 "status": status_filter or "all",
                 "experience": experience_filter,
                 "skills": skills_filter,
@@ -6469,12 +7452,34 @@ def company_messages_view(request):
         return redirect("dashboard:login")
 
     threads = (
-        MessageThread.objects.filter(company=company)
+        MessageThread.objects.filter(
+            company=company,
+            thread_type="candidate_company",
+            application__isnull=False,
+        )
         .select_related("job", "candidate", "consultancy", "application")
         .order_by("-last_message_at", "-created_at")
     )
     active_thread = None
     thread_id = (request.GET.get("thread") or "").strip()
+    application_id = (request.GET.get("application_id") or "").strip()
+    if application_id:
+        application = Application.objects.filter(
+            company__iexact=company.name,
+            application_id=application_id,
+        ).first()
+        thread_from_application = _get_or_create_company_candidate_thread(company, application)
+        if thread_from_application:
+            active_thread = thread_from_application
+            threads = (
+                MessageThread.objects.filter(
+                    company=company,
+                    thread_type="candidate_company",
+                    application__isnull=False,
+                )
+                .select_related("job", "candidate", "consultancy", "application")
+                .order_by("-last_message_at", "-created_at")
+            )
     if thread_id:
         active_thread = threads.filter(id=thread_id).first()
     if not active_thread and threads:
@@ -6484,7 +7489,12 @@ def company_messages_view(request):
         action = (request.POST.get("action") or "").strip()
         if action == "send_message":
             thread_id = (request.POST.get("thread_id") or "").strip()
-            thread = MessageThread.objects.filter(id=thread_id, company=company).first()
+            thread = MessageThread.objects.filter(
+                id=thread_id,
+                company=company,
+                thread_type="candidate_company",
+                application__isnull=False,
+            ).first()
             body = (request.POST.get("message_body") or "").strip()
             attachment = request.FILES.get("attachment")
             if not thread:
@@ -6530,7 +7540,49 @@ def company_messages_view(request):
             "active_thread": active_thread,
             "thread_messages": thread_messages,
             "current_role": "company",
+            "thread_messages_api": reverse("dashboard:api_thread_messages", args=[active_thread.id]) if active_thread else "",
+            "thread_send_api": reverse("dashboard:api_thread_send_message", args=[active_thread.id]) if active_thread else "",
         },
+    )
+
+
+@company_login_required
+@require_http_methods(["GET"])
+def api_company_application_thread(request, application_id):
+    company_id = _safe_session_get(request, "company_id")
+    company = Company.objects.filter(id=company_id).first()
+    if not company:
+        return JsonResponse({"success": False, "error": "Unauthorized"}, status=401)
+
+    application = (
+        Application.objects.filter(
+            company__iexact=company.name,
+            application_id=application_id,
+        )
+        .select_related("job", "consultancy")
+        .first()
+    )
+    if not application:
+        return JsonResponse({"success": False, "error": "Application not found."}, status=404)
+
+    thread = _get_or_create_company_candidate_thread(company, application)
+    if not thread:
+        return JsonResponse({"success": False, "error": "Unable to open conversation."}, status=500)
+
+    partner_name, partner_role = _thread_partner_info(thread, "company")
+    return JsonResponse(
+        {
+            "success": True,
+            "thread": {
+                "id": thread.id,
+                "application_id": application.application_id,
+                "partner_name": partner_name,
+                "partner_role": partner_role,
+                "job_title": application.job_title or (thread.job.title if thread.job else ""),
+                "messages_endpoint": reverse("dashboard:api_thread_messages", args=[thread.id]),
+                "send_endpoint": reverse("dashboard:api_thread_send_message", args=[thread.id]),
+            },
+        }
     )
 
 
@@ -6581,19 +7633,25 @@ def company_application_resume_view(request, application_id):
     )
     resume_file = app.resume
     if not resume_file and app.candidate_email:
-        candidate = Candidate.objects.filter(email__iexact=app.candidate_email).first()
-        if candidate and candidate.resume:
-            resume_file = candidate.resume
+        candidate = (
+            Candidate.objects.filter(email__iexact=app.candidate_email)
+            .prefetch_related("resumes")
+            .first()
+        )
+        resume_file = _resolve_candidate_resume_source(candidate)
     if not resume_file:
         return HttpResponse("Resume not available.", status=404)
 
     download = request.GET.get("download") == "1"
     content_type, _ = mimetypes.guess_type(resume_file.name)
-    response = FileResponse(
-        resume_file.open("rb"),
-        as_attachment=download,
-        filename=os.path.basename(resume_file.name),
-    )
+    try:
+        response = FileResponse(
+            resume_file.open("rb"),
+            as_attachment=download,
+            filename=os.path.basename(resume_file.name),
+        )
+    except OSError:
+        return HttpResponse("Resume file could not be opened.", status=404)
     if content_type:
         response["Content-Type"] = content_type
     response["X-Content-Type-Options"] = "nosniff"
@@ -6898,8 +7956,43 @@ def company_security_view(request):
     company = Company.objects.filter(id=company_id).first()
     if not company:
         return redirect("dashboard:login")
-    
-    return render(request, "dashboard/company/company_security.html", {"company": company})
+
+    payload = _company_security_activity_payload(company, request=request, limit=20)
+    return render(
+        request,
+        "dashboard/company/company_security.html",
+        {
+            "company": company,
+            "security_stats": payload.get("stats", {}),
+            "security_entries": payload.get("entries", []),
+            "active_sessions": payload.get("sessions", []),
+            "security_generated_at": _format_audit_datetime(timezone.now()),
+        },
+    )
+
+
+@require_http_methods(["GET"])
+def api_company_security_activity(request):
+    company_id = _safe_session_get(request, "company_id")
+    company = Company.objects.filter(id=company_id).first()
+    if not company:
+        return JsonResponse({"success": False, "error": "Unauthorized"}, status=401)
+
+    try:
+        limit = int(request.GET.get("limit", 20))
+    except (TypeError, ValueError):
+        limit = 20
+
+    payload = _company_security_activity_payload(company, request=request, limit=limit)
+    return JsonResponse(
+        {
+            "success": True,
+            "stats": payload.get("stats", {}),
+            "entries": payload.get("entries", []),
+            "sessions": payload.get("sessions", []),
+            "generated_at": _format_audit_datetime(timezone.now()),
+        }
+    )
 
 
 @company_login_required
@@ -6922,6 +8015,36 @@ def company_support_view(request, section="create", ticket_id=None):
         section, ("Customer Support", "Get help from our support team.")
     )
 
+    support_thread = _get_or_create_company_support_thread(company)
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "send_support_message" and support_thread:
+            body = (request.POST.get("message_body") or "").strip()
+            attachment = request.FILES.get("attachment")
+            if not body and not attachment:
+                messages.error(request, "Please type a message or attach a file.")
+            else:
+                Message.objects.create(
+                    thread=support_thread,
+                    sender_role="company",
+                    sender_name=company.name,
+                    body=body,
+                    attachment=attachment,
+                )
+                support_thread.last_message_at = timezone.now()
+                support_thread.save(update_fields=["last_message_at"])
+                messages.success(request, "Message sent to support.")
+        return redirect(request.path)
+
+    support_messages = []
+    if support_thread:
+        support_messages = list(support_thread.messages.order_by("created_at")[:150])
+        Message.objects.filter(thread=support_thread, is_read=False).exclude(
+            sender_role="company"
+        ).update(is_read=True)
+
+    resolved_ticket_id = ticket_id or f"SUP-{company.id:04d}"
+
     return render(
         request,
         "dashboard/company/company_support.html",
@@ -6930,7 +8053,21 @@ def company_support_view(request, section="create", ticket_id=None):
             "support_section": section,
             "page_title": page_title,
             "page_subtitle": page_subtitle,
-            "ticket_id": ticket_id or "SUP-1023",
+            "ticket_id": resolved_ticket_id,
+            "support_thread": support_thread,
+            "support_messages": support_messages,
+            "support_thread_messages_api": reverse(
+                "dashboard:api_thread_messages",
+                args=[support_thread.id],
+            )
+            if support_thread
+            else "",
+            "support_thread_send_api": reverse(
+                "dashboard:api_thread_send_message",
+                args=[support_thread.id],
+            )
+            if support_thread
+            else "",
         },
     )
 
@@ -7225,9 +8362,36 @@ def message_monitor_view(request):
     if not active_thread and threads:
         active_thread = threads[0]
 
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "send_message":
+            target_thread_id = (request.POST.get("thread_id") or "").strip()
+            thread = threads.filter(id=target_thread_id).first()
+            body = (request.POST.get("message_body") or "").strip()
+            attachment = request.FILES.get("attachment")
+            if not thread:
+                messages.error(request, "Select a valid conversation.")
+            elif not body and not attachment:
+                messages.error(request, "Type a message or attach a file.")
+            else:
+                Message.objects.create(
+                    thread=thread,
+                    sender_role="admin",
+                    sender_name=(request.user.get_full_name() or request.user.username or "Admin").strip(),
+                    body=body,
+                    attachment=attachment,
+                )
+                thread.last_message_at = timezone.now()
+                thread.save(update_fields=["last_message_at"])
+                messages.success(request, "Message sent successfully.")
+            return redirect(f"{request.path}?thread={thread.id if thread else target_thread_id}")
+
     thread_messages = []
     if active_thread:
         thread_messages = list(active_thread.messages.order_by("created_at"))
+        Message.objects.filter(thread=active_thread, is_read=False).exclude(
+            sender_role="admin"
+        ).update(is_read=True)
 
     thread_cards = _build_thread_cards(threads, "admin")
     active_card = None
@@ -7250,8 +8414,86 @@ def message_monitor_view(request):
             "active_thread": active_thread,
             "thread_messages": thread_messages,
             "current_role": "admin",
+            "thread_messages_api": reverse("dashboard:api_thread_messages", args=[active_thread.id]) if active_thread else "",
+            "thread_send_api": reverse("dashboard:api_thread_send_message", args=[active_thread.id]) if active_thread else "",
             "communication_candidates": _communication_candidate_options(),
         },
+    )
+
+
+@require_http_methods(["GET"])
+def api_thread_messages(request, thread_id):
+    thread = (
+        MessageThread.objects.filter(id=thread_id)
+        .select_related("job", "candidate", "company", "consultancy", "application")
+        .first()
+    )
+    if not thread:
+        return JsonResponse({"success": False, "error": "Thread not found."}, status=404)
+
+    role, _ = _thread_access_role(request, thread)
+    if not role:
+        return JsonResponse({"success": False, "error": "Unauthorized"}, status=403)
+
+    mark_read = (request.GET.get("mark_read") or "1").strip().lower() not in {"0", "false", "no"}
+    message_items = list(thread.messages.order_by("-created_at")[:150])
+    message_items.reverse()
+    if mark_read:
+        Message.objects.filter(thread=thread, is_read=False).exclude(sender_role=role).update(is_read=True)
+
+    partner_name, partner_role = _thread_partner_info(thread, role)
+    return JsonResponse(
+        {
+            "success": True,
+            "thread": {
+                "id": thread.id,
+                "partner_name": partner_name,
+                "partner_role": partner_role,
+                "job_title": thread.job.title if thread.job else (thread.application.job_title if thread.application else ""),
+                "application_id": thread.application.application_id if thread.application else "",
+            },
+            "viewer_role": role,
+            "messages": _serialize_thread_messages(message_items),
+            "generated_at": _format_audit_datetime(timezone.now()),
+        }
+    )
+
+
+@require_http_methods(["POST"])
+def api_thread_send_message(request, thread_id):
+    thread = (
+        MessageThread.objects.filter(id=thread_id)
+        .select_related("job", "candidate", "company", "consultancy", "application")
+        .first()
+    )
+    if not thread:
+        return JsonResponse({"success": False, "error": "Thread not found."}, status=404)
+
+    role, sender_name = _thread_access_role(request, thread)
+    if not role:
+        return JsonResponse({"success": False, "error": "Unauthorized"}, status=403)
+
+    body = (request.POST.get("message_body") or "").strip()
+    attachment = request.FILES.get("attachment")
+    if not body and not attachment:
+        return JsonResponse({"success": False, "error": "Type a message or attach a file."}, status=400)
+
+    message_obj = Message.objects.create(
+        thread=thread,
+        sender_role=role,
+        sender_name=sender_name,
+        body=body,
+        attachment=attachment,
+    )
+    thread.last_message_at = timezone.now()
+    thread.save(update_fields=["last_message_at"])
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": _serialize_thread_messages([message_obj])[0],
+            "generated_at": _format_audit_datetime(timezone.now()),
+        }
     )
 
 
@@ -8312,15 +9554,260 @@ def api_user_detail(request, user_type, pk):
     if user_type == "candidates":
         _append_doc("Resume", getattr(obj, "resume", None))
 
+    def _date_text(value):
+        if not value:
+            return ""
+        if hasattr(value, "strftime"):
+            return value.strftime("%Y-%m-%d")
+        return str(value)
+
+    account_type_lookup = {
+        "companies": "company",
+        "consultancies": "consultancy",
+        "candidates": "candidate",
+    }.get(user_type, "")
+
+    kyc_history = []
+    if getattr(obj, "registration_date", None):
+        kyc_history.append(
+            {
+                "date": _date_text(obj.registration_date),
+                "status": "Pending",
+                "admin": "System",
+            }
+        )
+    if getattr(obj, "kyc_status", ""):
+        kyc_history.insert(
+            0,
+            {
+                "date": _date_text(getattr(obj, "last_login", None) or timezone.now()),
+                "status": obj.kyc_status,
+                "admin": "System",
+            },
+        )
+
+    status_history = []
+    if getattr(obj, "registration_date", None):
+        status_history.append(
+            {
+                "date": _date_text(obj.registration_date),
+                "status": "Active",
+                "note": "Account created",
+            }
+        )
+    status_note = (getattr(obj, "suspension_reason", "") or "").strip() or "Status updated"
+    status_history.insert(
+        0,
+        {
+            "date": _date_text(getattr(obj, "last_login", None) or timezone.now()),
+            "status": getattr(obj, "account_status", "") or "Active",
+            "note": status_note,
+        },
+    )
+
+    jobs = []
+    if user_type == "companies":
+        job_rows = Job.objects.filter(company__iexact=obj.name).order_by("-created_at")[:25]
+        jobs = [
+            {
+                "id": job.job_id or f"JOB-{job.id}",
+                "title": job.title or "-",
+                "status": job.status or "-",
+                "applications": job.applicants or 0,
+            }
+            for job in job_rows
+        ]
+    elif user_type == "consultancies":
+        job_rows = _consultancy_posted_jobs_queryset(obj).order_by("-created_at")[:25]
+        jobs = [
+            {
+                "id": job.job_id or f"JOB-{job.id}",
+                "title": job.title or "-",
+                "status": _consultancy_job_status(job),
+                "applications": job.applicants or 0,
+            }
+            for job in job_rows
+        ]
+    if not jobs:
+        if user_type == "companies":
+            application_rows = (
+                Application.objects.filter(company__iexact=obj.name)
+                .values("job_title")
+                .annotate(applications=Count("id"))
+                .order_by("-applications")[:25]
+            )
+        elif user_type == "consultancies":
+            application_rows = (
+                Application.objects.filter(consultancy=obj)
+                .values("job_title")
+                .annotate(applications=Count("id"))
+                .order_by("-applications")[:25]
+            )
+        else:
+            application_rows = []
+        for row in application_rows:
+            jobs.append(
+                {
+                    "id": "--",
+                    "title": row.get("job_title") or "-",
+                    "status": "Applied",
+                    "applications": row.get("applications") or 0,
+                }
+            )
+    if not jobs:
+        jobs.append(
+            {
+                "id": "--",
+                "title": "No jobs posted yet",
+                "status": "Draft",
+                "applications": 0,
+            }
+        )
+
+    payments = []
+    if account_type_lookup:
+        subscription_rows = (
+            Subscription.objects.filter(account_type__iexact=account_type_lookup)
+            .filter(Q(contact__iexact=obj.email) | Q(name__iexact=obj.name))
+            .order_by("-start_date", "-updated_at")[:20]
+        )
+        for row in subscription_rows:
+            amount_value = row.monthly_revenue or 0
+            if amount_value:
+                amount_text = f"INR {amount_value:,}"
+            else:
+                amount_text = f"{(row.plan or 'Free')} plan"
+            payments.append(
+                {
+                    "invoice": row.subscription_id or f"INV-{row.id}",
+                    "date": _date_text(row.start_date or row.created_at),
+                    "amount": amount_text,
+                    "status": row.payment_status or "Free",
+                }
+            )
+
+    if not payments and user_type in {"companies", "consultancies"} and (obj.plan_name or obj.plan_type):
+        payments.append(
+            {
+                "invoice": f"PLAN-{obj.id}",
+                "date": _date_text(obj.plan_start or obj.registration_date),
+                "amount": obj.plan_name or obj.plan_type or "Plan",
+                "status": obj.payment_status or "Due",
+            }
+        )
+    if not payments:
+        payments.append(
+            {
+                "invoice": f"FREE-{obj.id}",
+                "date": _date_text(obj.registration_date),
+                "amount": "Free plan",
+                "status": "Free",
+            }
+        )
+
+    complaints = []
+    if user_type in {"companies", "consultancies"}:
+        if user_type == "companies":
+            support_threads = MessageThread.objects.filter(
+                thread_type="company_consultancy",
+                company=obj,
+                application__isnull=True,
+                job__isnull=True,
+                candidate__isnull=True,
+                consultancy__isnull=True,
+            ).order_by("-last_message_at", "-created_at")
+            sender_role = "company"
+        else:
+            support_threads = MessageThread.objects.filter(
+                thread_type="candidate_consultancy",
+                consultancy=obj,
+                application__isnull=True,
+                job__isnull=True,
+                candidate__isnull=True,
+                company__isnull=True,
+            ).order_by("-last_message_at", "-created_at")
+            sender_role = "consultancy"
+
+        for thread in support_threads[:20]:
+            outbound = thread.messages.filter(sender_role=sender_role).order_by("-created_at").first()
+            if not outbound:
+                continue
+            has_admin_reply = thread.messages.filter(
+                sender_role="admin",
+                created_at__gt=outbound.created_at,
+            ).exists()
+            complaints.append(
+                {
+                    "id": f"SUP-{thread.id}",
+                    "type": "Support Ticket",
+                    "status": "Responded" if has_admin_reply else "Open",
+                    "date": _date_text(outbound.created_at),
+                }
+            )
+
+    if not complaints and getattr(obj, "warning_count", 0):
+        complaints.append(
+            {
+                "id": f"ACC-{obj.id}",
+                "type": "Account Warning",
+                "status": "Open",
+                "date": _date_text(getattr(obj, "last_login", None) or obj.registration_date),
+            }
+        )
+    if not complaints:
+        complaints.append(
+            {
+                "id": f"CMP-{obj.id}",
+                "type": "No complaint raised",
+                "status": "Clean",
+                "date": _date_text(obj.registration_date),
+            }
+        )
+
+    logins = []
+    if account_type_lookup:
+        login_rows = (
+            LoginHistory.objects.filter(account_type=account_type_lookup)
+            .filter(
+                Q(account_id=obj.id)
+                | Q(username_or_email__iexact=obj.email)
+                | Q(username_or_email__iexact=obj.name)
+            )
+            .order_by("-created_at")[:25]
+        )
+        for row in login_rows:
+            label = _device_label(row.user_agent)
+            if " - " in label:
+                device, browser = label.split(" - ", 1)
+            else:
+                device, browser = label, "--"
+            logins.append(
+                {
+                    "ip": row.ip_address or "--",
+                    "device": device or "--",
+                    "browser": browser or "--",
+                    "time": _format_audit_datetime(row.created_at),
+                }
+            )
+    if not logins:
+        logins.append(
+            {
+                "ip": "--",
+                "device": "System",
+                "browser": "System",
+                "time": _format_audit_datetime(obj.registration_date),
+            }
+        )
+
     payload = {
         "item": detail,
         "documents": documents,
-        "kyc_history": [],
-        "status_history": [],
-        "jobs": [],
-        "payments": [],
-        "complaints": [],
-        "logins": [],
+        "kyc_history": kyc_history,
+        "status_history": status_history,
+        "jobs": jobs,
+        "payments": payments,
+        "complaints": complaints,
+        "logins": logins,
     }
     if user_type == "candidates":
         selections = []
@@ -8438,6 +9925,7 @@ def _serialize_job(job):
         "recruiter_name": job.recruiter_name,
         "recruiter_email": job.recruiter_email,
         "recruiter_phone": job.recruiter_phone,
+        "summary": job.summary,
         "description": job.description,
         "requirements": job.requirements,
     }
@@ -8463,8 +9951,11 @@ def _apply_job_fields(job, data):
     job.recruiter_name = data.get("recruiter_name", "").strip()
     job.recruiter_email = data.get("recruiter_email", "").strip()
     job.recruiter_phone = data.get("recruiter_phone", "").strip()
+    job.summary = data.get("summary", "").strip()
     job.description = data.get("description", "").strip()
     job.requirements = data.get("requirements", "").strip()
+    if not job.summary and job.description:
+        job.summary = re.sub(r"\s+", " ", job.description).strip()[:255]
     lifecycle_status = data.get("lifecycle_status")
     if lifecycle_status:
         job.lifecycle_status = _normalize_consultancy_job_lifecycle(lifecycle_status)

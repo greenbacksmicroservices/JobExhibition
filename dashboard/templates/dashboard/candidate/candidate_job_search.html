@@ -77,11 +77,12 @@
             <div>
               <h4>{{ job.title }}</h4>
               <p class="muted">{{ job.company }} - {{ job.location }} - {{ job.job_type }}</p>
+              <p class="muted">Match Score: {{ job.match_score|default:0 }}%{% if job.match_reason %} - {{ job.match_reason }}{% endif %}</p>
             </div>
             <span class="badge info">{{ job.category }}</span>
           </div>
           <div class="job-card-tags">
-            <span>{{ job.salary|default:"Salary negotiable" }}</span>
+            <span>Price / Salary: {{ job.salary|default:"Negotiable" }}</span>
             <span>{{ job.experience|default:"Experience flexible" }}</span>
             <span>{{ job.skills|default:"Skills open" }}</span>
             {% if job.recruiter_name %}
@@ -91,7 +92,15 @@
           <div class="job-card-actions">
             <a class="btn primary" href="{% url 'dashboard:candidate_job_detail' job.job_id %}">Apply</a>
             <a class="btn ghost" href="{% url 'dashboard:candidate_job_detail' job.job_id %}">View</a>
-            <button class="btn ghost" type="button">Save</button>
+            <button
+              class="btn ghost"
+              type="button"
+              data-save-job-btn
+              data-job-id="{{ job.job_id }}"
+              data-saved="{% if job.id in saved_job_ids %}1{% else %}0{% endif %}"
+            >
+              {% if job.id in saved_job_ids %}Saved{% else %}Save{% endif %}
+            </button>
           </div>
         </article>
         {% endfor %}

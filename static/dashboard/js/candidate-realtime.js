@@ -1,5 +1,19 @@
 document.addEventListener('DOMContentLoaded', () => {
   const endpoint = '/candidate/api/metrics/';
+  const metricTargets = [
+    'metricProfileCompletion',
+    'metricTotalApplications',
+    'metricShortlisted',
+    'metricInterviews',
+    'metricSavedJobs',
+    'metricRecommendedJobs',
+    'profileCompletionBar',
+  ];
+  const shouldPoll = metricTargets.some((id) => document.getElementById(id));
+  if (!shouldPoll) {
+    return;
+  }
+
   const updateText = (id, value) => {
     const el = document.getElementById(id);
     if (el) {

@@ -100,6 +100,16 @@ urlpatterns = [
     path("candidate/support/", views.candidate_support_view, name="candidate_support"),
     path("company/dashboard/", views.company_dashboard_view, name="company_dashboard"),
     path("company/api/metrics/", views.api_company_metrics, name="company_api_metrics"),
+    path(
+        "company/api/applications/<str:application_id>/thread/",
+        views.api_company_application_thread,
+        name="company_api_application_thread",
+    ),
+    path(
+        "company/api/security/activity/",
+        views.api_company_security_activity,
+        name="company_api_security_activity",
+    ),
     path("consultancy/api/metrics/", views.api_consultancy_metrics, name="consultancy_api_metrics"),
     path("company/profile/", views.company_profile_view, name="company_profile"),
     path("company/jobs/", views.company_jobs_view, name="company_jobs"),
@@ -442,6 +452,16 @@ urlpatterns = [
         views.api_security_login_history,
         name="api_security_login_history",
     ),
+    path(
+        "api/messages/thread/<int:thread_id>/",
+        views.api_thread_messages,
+        name="api_thread_messages",
+    ),
+    path(
+        "api/messages/thread/<int:thread_id>/send/",
+        views.api_thread_send_message,
+        name="api_thread_send_message",
+    ),
     path("api/subadmins/list/", views.api_subadmin_list, name="api_subadmin_list"),
     path("api/subadmins/create/", views.api_subadmin_create, name="api_subadmin_create"),
     path(
@@ -547,4 +567,9 @@ urlpatterns = [
     path("api/dashboard/metrics/", views.api_dashboard_metrics, name="api_dashboard_metrics"),
     path("candidate/api/applications/", views.api_candidate_applications, name="candidate_api_applications"),
     path("candidate/api/metrics/", views.api_candidate_metrics, name="candidate_api_metrics"),
+    path(
+        "candidate/api/saved-jobs/toggle/",
+        views.api_candidate_toggle_saved_job,
+        name="candidate_api_toggle_saved_job",
+    ),
 ]

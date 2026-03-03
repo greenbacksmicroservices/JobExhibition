@@ -483,12 +483,14 @@
         const badgeClass = statusClass(job.status);
         const jobId = safeText(job.id);
         const title = safeText(job.title);
+        const summary = safeText(job.summary || '');
         const category = safeText(job.category);
         const location = safeText(job.location);
         const company = safeText(job.company);
         const status = safeText(job.status);
         const postedDate = safeText(job.posted_date);
         const applicants = safeText(job.applicants ?? 0, '0');
+        const applicationsUrl = `/applications/?search=${encodeURIComponent(job.title || '')}`;
         const featured = job.featured ? '<span class="badge info" style="margin-left:6px;">Featured</span>' : '';
         const deleteButton = canDelete
           ? `<button class="action-btn danger" data-action="delete" data-id="${jobId}"><i class="fa-solid fa-trash"></i> Delete</button>`
@@ -499,12 +501,17 @@
   <td>
     <strong>${title}</strong>
     <div class="muted">${category} - ${location}</div>
+    <div class="muted">${summary || '-'}</div>
     ${featured}
   </td>
   <td>${company}</td>
   <td><span class="badge ${badgeClass}">${status}</span></td>
   <td>${postedDate}</td>
-  <td>${applicants}</td>
+  <td>
+    <a class="action-btn" href="${applicationsUrl}" data-action="applications" data-id="${jobId}">
+      ${applicants} Applications
+    </a>
+  </td>
   <td>
     <div class="table-actions">
       <button class="action-btn" data-action="view" data-id="${jobId}"><i class="fa-solid fa-eye"></i> Details</button>
@@ -609,6 +616,7 @@
       'recruiter_name',
       'recruiter_email',
       'recruiter_phone',
+      'summary',
       'description',
       'requirements',
     ];
@@ -655,6 +663,7 @@
   <div class="details-card" style="grid-column: 1 / -1;">
     <h6>Job Content</h6>
     <div class="details-list">
+      <div><span>Summary</span> <strong>${safeMultilineText(job.summary)}</strong></div>
       <div><span>Description</span> <strong>${safeMultilineText(job.description)}</strong></div>
       <div><span>Requirements</span> <strong>${safeMultilineText(job.requirements)}</strong></div>
       <div><span>Skills</span> <strong>${safeText(job.skills)}</strong></div>
@@ -807,6 +816,9 @@
         if (action === 'edit') {
           openEditModal(id);
         }
+        if (action === 'applications') {
+          return;
+        }
         if (action === 'delete') {
           if (!canDelete) {
             showToast('Delete action is disabled for subadmin.', 'warning');
@@ -845,6 +857,7 @@
       recruiter_name: formData.get('recruiter_name') || '',
       recruiter_email: formData.get('recruiter_email') || '',
       recruiter_phone: formData.get('recruiter_phone') || '',
+      summary: formData.get('summary') || '',
       description: formData.get('description') || '',
       requirements: formData.get('requirements') || '',
     };

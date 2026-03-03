@@ -286,93 +286,79 @@
 {% endif %}
 
 {% if support_section == "details" %}
-<section class="card support-card">
+<section
+  class="card support-card"
+  data-thread-live="1"
+  data-thread-mode="support"
+  data-messages-endpoint="{{ support_thread_messages_api }}"
+  data-send-endpoint="{{ support_thread_send_api }}"
+>
   <div class="card-header">
     <div>
       <h3>Ticket #{{ ticket_id }}</h3>
-      <p class="muted">Full conversation and internal timeline.</p>
+      <p class="muted">Realtime conversation with admin support team.</p>
     </div>
     <div class="header-badges">
-      <span class="badge warning">High Priority</span>
-      <span class="badge info">In Progress</span>
-      <span class="badge neutral">SLA: 2h 15m</span>
+      <span class="badge info" data-thread-status>Syncing...</span>
+      <span class="badge neutral">Thread {{ support_thread.id|default:"--" }}</span>
     </div>
   </div>
   <div class="ticket-detail">
     <div class="ticket-summary">
       <div>
-        <strong>Subject</strong>
-        <p class="muted">Cannot post job after approval</p>
-      </div>
-      <div>
-        <strong>Category</strong>
-        <p class="muted">Job Posting Problem</p>
+        <strong>Support Ticket</strong>
+        <p class="muted">{{ ticket_id }}</p>
       </div>
       <div>
         <strong>Created</strong>
-        <p class="muted">2026-02-15 10:30</p>
+        <p class="muted">{{ support_thread.created_at|date:"d M Y, h:i A"|default:"--" }}</p>
       </div>
       <div>
-        <strong>Attachments</strong>
-        <p class="muted">error_screenshot.png</p>
-      </div>
-    </div>
-    <div class="ticket-description">
-      <strong>Description</strong>
-      <p class="muted">When attempting to post a new job, we see an error that says "KYC pending" even though KYC is verified.</p>
-    </div>
-    <div class="ticket-timeline">
-      <strong>Timeline</strong>
-      <div class="timeline-item">2026-02-15 10:30 - Ticket created</div>
-      <div class="timeline-item">2026-02-15 11:05 - Support requested KYC refresh</div>
-      <div class="timeline-item">2026-02-15 12:05 - Escalated to engineering</div>
-    </div>
-  </div>
-</section>
-
-<section class="card support-card">
-  <div class="card-header">
-    <div>
-      <h3>Conversation</h3>
-      <p class="muted">Timeline of support communication.</p>
-    </div>
-  </div>
-  <div class="support-conversation">
-    <div class="message-row company">
-      <div class="message-bubble">
-        <strong>Company</strong>
-        <p>We cannot post a job. The system shows KYC pending.</p>
-        <span class="muted">2026-02-15 10:30</span>
-      </div>
-    </div>
-    <div class="message-row support">
-      <div class="message-bubble">
-        <strong>Support</strong>
-        <p>Please refresh your KYC status and re-upload the document if needed.</p>
-        <span class="muted">2026-02-15 11:05</span>
-      </div>
-    </div>
-    <div class="message-row company">
-      <div class="message-bubble">
-        <strong>Company</strong>
-        <p>Done. KYC shows verified now. Issue still exists.</p>
-        <span class="muted">2026-02-15 11:40</span>
-      </div>
-    </div>
-    <div class="message-row support">
-      <div class="message-bubble">
-        <strong>Support</strong>
-        <p>We have escalated this to engineering. ETA 2 hours.</p>
-        <span class="muted">2026-02-15 12:05</span>
+        <strong>Last Update</strong>
+        <p class="muted">{{ support_thread.last_message_at|date:"d M Y, h:i A"|default:"--" }}</p>
       </div>
     </div>
   </div>
-  <form class="support-reply">
-    <textarea rows="3" placeholder="Write a reply..."></textarea>
+  <div class="support-conversation" data-thread-messages>
+    {% for msg in support_messages %}
+      <div class="message-row {% if msg.sender_role == 'company' %}company{% else %}support{% endif %}">
+        <div class="message-bubble">
+          <strong>
+            {% if msg.sender_role == "company" %}
+              {{ company.name|default:"Company" }}
+            {% elif msg.sender_role == "admin" %}
+              Support Team
+            {% else %}
+              {{ msg.sender_name|default:msg.sender_role|title }}
+            {% endif %}
+          </strong>
+          {% if msg.body %}
+            <p>{{ msg.body }}</p>
+          {% endif %}
+          {% if msg.attachment %}
+            <a class="action-link" href="{{ msg.attachment.url }}" target="_blank" rel="noopener">View attachment</a>
+          {% endif %}
+          <span class="muted">{{ msg.created_at|date:"d M Y, h:i A" }}</span>
+        </div>
+      </div>
+    {% empty %}
+      <div class="message-row support">
+        <div class="message-bubble">
+          <strong>Support Team</strong>
+          <p>No conversation yet. Start with your first message.</p>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  <form class="support-reply" data-thread-form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="send_support_message" />
+    <textarea rows="3" name="message_body" placeholder="Write a reply..."></textarea>
     <div class="reply-actions">
-      <input type="file" />
-      <button class="btn primary" type="button">Send Reply</button>
+      <input type="file" name="attachment" />
+      <button class="btn primary" type="submit" data-thread-submit>Send Reply</button>
     </div>
+    <p class="muted" data-thread-sync>Last sync: --</p>
   </form>
 </section>
 {% endif %}
@@ -419,64 +405,68 @@
 {% endif %}
 
 {% if support_section == "chat" %}
-<section class="card support-card">
+<section
+  class="card support-card"
+  data-thread-live="1"
+  data-thread-mode="support"
+  data-messages-endpoint="{{ support_thread_messages_api }}"
+  data-send-endpoint="{{ support_thread_send_api }}"
+>
   <div class="card-header">
     <div>
       <h3>Live Chat</h3>
-      <p class="muted">Talk to support in real time. Chat history is saved.</p>
+      <p class="muted">Direct realtime chat with admin support.</p>
     </div>
     <div class="header-badges">
-      <span class="badge success">Online</span>
-      <span class="badge neutral">Typing indicator enabled</span>
+      <span class="badge info" data-thread-status>Syncing...</span>
+      <span class="badge neutral">Thread {{ support_thread.id|default:"--" }}</span>
     </div>
   </div>
-  <div class="chat-shell">
-    <div class="chat-window">
-      <div class="chat-message support">
-        <div class="chat-bubble">
-          <strong>Support</strong>
-          <p>Hi! How can we help you today?</p>
-          <span class="muted">09:10 AM</span>
+  <div class="support-conversation" data-thread-messages>
+    {% for msg in support_messages %}
+      <div class="message-row {% if msg.sender_role == 'company' %}company{% else %}support{% endif %}">
+        <div class="message-bubble">
+          <strong>
+            {% if msg.sender_role == "company" %}
+              {{ company.name|default:"Company" }}
+            {% elif msg.sender_role == "admin" %}
+              Support Team
+            {% else %}
+              {{ msg.sender_name|default:msg.sender_role|title }}
+            {% endif %}
+          </strong>
+          {% if msg.body %}
+            <p>{{ msg.body }}</p>
+          {% endif %}
+          {% if msg.attachment %}
+            <a class="action-link" href="{{ msg.attachment.url }}" target="_blank" rel="noopener">View attachment</a>
+          {% endif %}
+          <span class="muted">{{ msg.created_at|date:"d M Y, h:i A" }}</span>
         </div>
       </div>
-      <div class="chat-message company">
-        <div class="chat-bubble">
-          <strong>Company</strong>
-          <p>We are facing a payment error on renewal.</p>
-          <span class="muted">09:12 AM</span>
+    {% empty %}
+      <div class="message-row support">
+        <div class="message-bubble">
+          <strong>Support Team</strong>
+          <p>No conversation yet. Start with your first message.</p>
         </div>
       </div>
-      <div class="chat-message support">
-        <div class="chat-bubble">
-          <strong>Support</strong>
-          <p>Thanks. Please share the payment reference ID.</p>
-          <span class="muted">09:13 AM</span>
-        </div>
-      </div>
-      <div class="typing-indicator">
-        <span></span><span></span><span></span>
-        <small class="muted">Support is typing...</small>
-      </div>
-    </div>
-    <div class="chat-sidebar">
-      <div class="chat-info">
-        <h4>Chat Details</h4>
-        <p class="muted">Agent: Priya S.</p>
-        <p class="muted">Avg response: 3 min</p>
-        <p class="muted">SLA: 1 hour</p>
-      </div>
-      <div class="chat-info">
-        <h4>Quick Actions</h4>
-        <button class="action-btn">Share Ticket ID</button>
-        <button class="action-btn">Send Screenshot</button>
-        <button class="action-btn">Escalate</button>
-      </div>
-    </div>
+    {% endfor %}
   </div>
-  <div class="chat-input">
-    <input type="text" placeholder="Type a message..." />
-    <button class="btn primary">Send</button>
-  </div>
+  <form class="support-reply" data-thread-form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="send_support_message" />
+    <textarea rows="3" name="message_body" placeholder="Type a message..."></textarea>
+    <div class="reply-actions">
+      <input type="file" name="attachment" />
+      <button class="btn primary" type="submit" data-thread-submit>Send</button>
+    </div>
+    <p class="muted" data-thread-sync>Last sync: --</p>
+  </form>
 </section>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/thread-realtime.js' %}?v={{ static_asset_version }}"></script>
 {% endblock %}

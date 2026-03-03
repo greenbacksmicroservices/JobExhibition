@@ -415,6 +415,19 @@ class CandidateProject(models.Model):
         return f"{self.candidate.name} - {self.title or 'Project'}"
 
 
+class CandidateSavedJob(models.Model):
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name="saved_jobs")
+    job = models.ForeignKey("Job", on_delete=models.CASCADE, related_name="saved_by_candidates")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("candidate", "job")
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return f"{self.candidate.name} saved {self.job.title}"
+
+
 class Job(models.Model):
     job_id = models.CharField(max_length=20, unique=True)
     title = models.CharField(max_length=200)
@@ -438,6 +451,7 @@ class Job(models.Model):
     recruiter_name = models.CharField(max_length=200, blank=True)
     recruiter_email = models.EmailField(max_length=254, blank=True)
     recruiter_phone = models.CharField(max_length=50, blank=True)
+    summary = models.CharField(max_length=255, blank=True)
     description = models.TextField(blank=True)
     requirements = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

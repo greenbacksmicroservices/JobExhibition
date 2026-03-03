@@ -10,71 +10,16 @@
     <h2>Applications</h2>
     <p class="muted">Track, filter, and manage all candidate applications.</p>
   </div>
-  <div class="hero-badges">
-    <div class="hero-badge">
-      <span>Total Applications</span>
-      <strong>{{ total_applications }}</strong>
-      <small>All time</small>
-    </div>
-    <div class="hero-badge">
-      <span>New This Week</span>
-      <strong>{{ new_applications }}</strong>
-      <small>Last 7 days</small>
-    </div>
-  </div>
-</section>
-
-<section class="pill-grid">
-  <article class="pill-card gradient-1">
-    <div class="pill-icon"><i class="fa-solid fa-file-lines"></i></div>
-    <div>
-      <p class="pill-title">Total Applications</p>
-      <strong class="pill-value">{{ total_applications }}</strong>
-      <span class="pill-sub">All applications</span>
-    </div>
-  </article>
-  <article class="pill-card gradient-2">
-    <div class="pill-icon"><i class="fa-solid fa-bolt"></i></div>
-    <div>
-      <p class="pill-title">New Applications</p>
-      <strong class="pill-value">{{ new_applications }}</strong>
-      <span class="pill-sub">Last 7 days</span>
-    </div>
-  </article>
-  <article class="pill-card gradient-3">
-    <div class="pill-icon"><i class="fa-solid fa-user-check"></i></div>
-    <div>
-      <p class="pill-title">Shortlisted</p>
-      <strong class="pill-value">{{ shortlisted_applications }}</strong>
-      <span class="pill-sub">Ready for interview</span>
-    </div>
-  </article>
-  <article class="pill-card gradient-4">
-    <div class="pill-icon"><i class="fa-solid fa-calendar-check"></i></div>
-    <div>
-      <p class="pill-title">Interview Scheduled</p>
-      <strong class="pill-value">{{ interview_applications }}</strong>
-      <span class="pill-sub">In pipeline</span>
-    </div>
-  </article>
-  <article class="pill-card gradient-5">
-    <div class="pill-icon"><i class="fa-solid fa-trophy"></i></div>
-    <div>
-      <p class="pill-title">Selected</p>
-      <strong class="pill-value">{{ selected_applications }}</strong>
-      <span class="pill-sub">Final stage</span>
-    </div>
-  </article>
 </section>
 
 <div class="card section-block">
   <div class="card-header">
     <div>
-      <h3>Filters & Search</h3>
-      <p class="muted">Filter by job, status, experience, skills, date, or location.</p>
+      <h3>Filters</h3>
+      <p class="muted">Compact search and quick filters.</p>
     </div>
   </div>
-  <form class="filters-grid" method="get">
+  <form class="filters-grid compact-filters" method="get">
     <div class="filter-group">
       <label>Search</label>
       <input type="text" name="search" value="{{ filters.search }}" placeholder="Name, email, resume keyword" />
@@ -127,6 +72,9 @@
       <a class="btn ghost" href="{% url 'dashboard:company_applications' %}">Clear</a>
     </div>
   </form>
+  {% if filters.job %}
+    <p class="muted" style="margin-top: 10px;">Showing applications for job: <strong>{{ filters.job }}</strong></p>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -181,6 +129,8 @@
         {% for app in applications %}
         <tr
           data-app-id="{{ app.application_id }}"
+          data-thread-bootstrap-url="{% url 'dashboard:company_api_application_thread' app.application_id %}"
+          data-message-page-url="{% url 'dashboard:company_messages' %}?application_id={{ app.application_id }}"
           data-name="{{ app.candidate_name|default:''|escapejs }}"
           data-email="{{ app.candidate_email|default:''|escapejs }}"
           data-phone="{{ app.candidate_phone|default:''|escapejs }}"
@@ -208,6 +158,7 @@
           data-meeting-link="{{ app.meeting_link|default:''|escapejs }}"
           data-interviewer="{{ app.interviewer|default:''|escapejs }}"
           data-rejection-remark="{{ app.rejection_remark|default:''|escapejs }}"
+          data-summary="{{ app.notes|default:''|escapejs }}"
         >
           <td>
             <input type="checkbox" form="bulkForm" class="row-select" name="selected_ids" value="{{ app.application_id }}" />
@@ -274,6 +225,17 @@
           <td>
             <div class="table-actions">
               <button class="action-btn" type="button" data-action="view-application">View</button>
+              {% if app.candidate_email %}
+                <button class="action-btn" type="button" data-action="chat-candidate" title="Chat with candidate">
+                  <i class="fa-solid fa-comments"></i>
+                  Chat
+                </button>
+              {% else %}
+                <button class="action-btn" type="button" disabled title="Candidate email not available">
+                  <i class="fa-solid fa-comments"></i>
+                  Chat
+                </button>
+              {% endif %}
               <button class="action-btn warning" type="button" data-action="schedule-interview">Schedule</button>
               {% if app.has_resume %}
                 <a class="action-btn" href="{% url 'dashboard:company_application_resume' app.application_id %}?download=1">Download</a>
@@ -333,8 +295,12 @@
               <div><span>Total Experience</span> <strong id="detailExperience">--</strong></div>
               <div><span>Current Company</span> <strong id="detailCompany">--</strong></div>
               <div><span>Notice Period</span> <strong id="detailNotice">--</strong></div>
+              <div><span>Applied Date</span> <strong id="detailAppliedDate">--</strong></div>
+              <div><span>Applied Time</span> <strong id="detailAppliedTime">--</strong></div>
+              <div><span>Applied Job</span> <strong id="detailAppliedJob">--</strong></div>
               <div><span>Expected Salary</span> <strong id="detailExpectedSalary">--</strong></div>
               <div><span>Status</span> <strong id="detailStatus">--</strong></div>
+              <div id="detailRejectionRow" style="display:none;"><span>Rejection Remark</span> <strong id="detailRejectionRemark">--</strong></div>
             </div>
           </div>
           <div class="modal-card">
@@ -345,7 +311,7 @@
                 <div class="muted" id="detailResumeMeta">Preview available</div>
               </div>
               <div class="table-actions">
-                <a class="action-btn" id="detailResumePreview" href="#" target="_blank" rel="noreferrer">Preview</a>
+                <a class="action-btn" id="detailResumePreview" href="#" target="_blank" rel="noreferrer">View Resume</a>
                 <a class="action-btn" id="detailResumeDownload" href="#">Download</a>
               </div>
             </div>
@@ -378,11 +344,48 @@
               <h6>Interview Remarks</h6>
               <textarea name="interview_feedback" id="detailInterviewRemarks" rows="4" placeholder="Add interview feedback..."></textarea>
             </div>
+            <div class="modal-card">
+              <h6>Summary / Rejection Note</h6>
+              <textarea name="notes" id="detailSummaryNotes" rows="4" placeholder="Write summary or rejection reason to review/edit later..."></textarea>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn ghost" data-bs-dismiss="modal">Close</button>
             <button type="submit" class="btn primary">Save Notes</button>
           </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="candidateChatModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="candidateChatModalTitle">Chat With Candidate</h5>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span class="badge info" id="candidateChatLiveBadge">Connecting...</span>
+          <a class="action-btn" id="candidateChatFullPageLink" href="{% url 'dashboard:company_messages' %}">Open Full Inbox</a>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="candidateChatThreadMeta" class="muted" style="margin-bottom: 10px;">Loading conversation...</div>
+        <div class="chat-messages app-chat-messages" id="candidateChatMessages"></div>
+      </div>
+      <div class="modal-footer" style="display:block;">
+        <form class="chat-input" id="candidateChatForm" enctype="multipart/form-data">
+          {% csrf_token %}
+          <textarea name="message_body" rows="2" id="candidateChatInput" placeholder="Type your message..."></textarea>
+          <div class="chat-actions">
+            <label class="file-pill">
+              <input type="file" name="attachment" id="candidateChatAttachment" />
+              Attach
+            </label>
+            <button class="btn primary" type="submit" id="candidateChatSendBtn">Send</button>
+          </div>
+          <p class="muted" id="candidateChatSyncInfo">Last sync: --</p>
         </form>
       </div>
     </div>
@@ -443,5 +446,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'dashboard/js/company-applications.js' %}"></script>
+<script src="{% static 'dashboard/js/company-applications.js' %}?v={{ static_asset_version }}"></script>
 {% endblock %}

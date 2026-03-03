@@ -22,7 +22,7 @@ from django.views.generic import RedirectView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('favicon.ico', RedirectView.as_view(url=static('dashboard/favicon.ico'), permanent=False)),
+    path('favicon.ico', RedirectView.as_view(url='/static/dashboard/favicon.ico', permanent=False)),
     path('', RedirectView.as_view(pattern_name='dashboard:login', permanent=False)),
     path('', include('dashboard.urls')),
 ]

@@ -8,7 +8,7 @@
   <div>
     <p class="eyebrow">Support</p>
     <h2>Help & Support</h2>
-    <p class="muted">Create tickets, track status, and chat with support.</p>
+    <p class="muted">Create tickets and chat directly with admin support.</p>
   </div>
 </section>
 
@@ -16,11 +16,12 @@
   <div class="card-header">
     <div>
       <h3>Create Ticket</h3>
-      <p class="muted">Describe your issue and our team will respond.</p>
+      <p class="muted">Describe the issue. It is sent to admin support instantly.</p>
     </div>
   </div>
   <form class="company-form-grid" method="post" data-loading-form>
     {% csrf_token %}
+    <input type="hidden" name="action" value="create_ticket" />
     <div class="company-form-group">
       <label>Subject</label>
       <input type="text" name="subject" placeholder="Ticket subject" required />
@@ -32,6 +33,7 @@
         <option value="applications">Applications</option>
         <option value="interviews">Interviews</option>
         <option value="payments">Payments</option>
+        <option value="other">Other</option>
       </select>
     </div>
     <div class="company-form-group company-form-full">
@@ -49,7 +51,7 @@
   <div class="card-header">
     <div>
       <h3>Ticket Status</h3>
-      <p class="muted">Track your support requests.</p>
+      <p class="muted">Latest tickets sent to support.</p>
     </div>
   </div>
   <div class="table-wrap">
@@ -59,7 +61,6 @@
           <th>Ticket</th>
           <th>Category</th>
           <th>Status</th>
-          <th>Action</th>
         </tr>
       </thead>
       <tbody>
@@ -69,12 +70,11 @@
             <td><strong>{{ ticket.id }}</strong></td>
             <td>{{ ticket.category }}</td>
             <td><span class="badge info">{{ ticket.status }}</span></td>
-            <td><button class="action-btn" type="button">View</button></td>
           </tr>
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="4" class="muted" style="text-align:center; padding: 16px;">No tickets created yet.</td>
+            <td colspan="3" class="muted" style="text-align:center; padding: 16px;">No tickets created yet.</td>
           </tr>
         {% endif %}
       </tbody>
@@ -82,18 +82,69 @@
   </div>
 </section>
 
-<section class="card">
+<section
+  class="card section-block"
+  data-thread-live="1"
+  data-thread-mode="chat"
+  data-messages-endpoint="{{ support_thread_messages_api }}"
+  data-send-endpoint="{{ support_thread_send_api }}"
+>
   <div class="card-header">
     <div>
       <h3>Live Chat</h3>
-      <p class="muted">Chat with support for quick responses.</p>
+      <p class="muted">Realtime chat with admin support team.</p>
+    </div>
+    <div class="header-badges">
+      <span class="badge info" data-thread-status>Connecting...</span>
+      <span class="muted" data-thread-sync>Last sync: --</span>
     </div>
   </div>
-  <div class="chat-window">
-    <div class="analysis-card">
-      <strong>Chat support is available 9 AM - 7 PM</strong>
-      <p class="muted">Start a conversation when ready.</p>
-    </div>
+  <div class="chat-window" data-thread-messages>
+    {% for msg in support_messages %}
+      <div class="chat-message {% if msg.sender_role == 'candidate' %}company{% else %}support{% endif %}">
+        <div class="chat-bubble">
+          <div class="chat-meta">
+            <strong>
+              {% if msg.sender_role == "candidate" %}
+                {{ candidate.name|default:"Candidate" }}
+              {% elif msg.sender_role == "admin" %}
+                Support Team
+              {% else %}
+                {{ msg.sender_name|default:msg.sender_role|title }}
+              {% endif %}
+            </strong>
+            <span class="muted">{{ msg.created_at|date:"d M Y, h:i A" }}</span>
+          </div>
+          {% if msg.body %}
+            <p>{{ msg.body }}</p>
+          {% endif %}
+          {% if msg.attachment %}
+            <a class="action-link" href="{{ msg.attachment.url }}" target="_blank" rel="noopener">View attachment</a>
+          {% endif %}
+        </div>
+      </div>
+    {% empty %}
+      <div class="analysis-card">
+        <strong>No messages yet</strong>
+        <p class="muted">Start the conversation now.</p>
+      </div>
+    {% endfor %}
   </div>
+  <form class="chat-input" data-thread-form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="send_support_message" />
+    <textarea rows="3" name="message_body" placeholder="Type your message..."></textarea>
+    <div class="chat-actions">
+      <label class="file-pill">
+        <input type="file" name="attachment" />
+        Attach
+      </label>
+      <button class="btn primary" type="submit" data-thread-submit>Send</button>
+    </div>
+  </form>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/thread-realtime.js' %}?v={{ static_asset_version }}"></script>
 {% endblock %}

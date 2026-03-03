@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import Advertisement, AdminProfile, Candidate, Subscription
+from .models import Advertisement, AdminProfile, Candidate, Message, Subscription
 from .notifications import build_panel_notifications
 
 
@@ -95,8 +95,42 @@ def static_assets_context(request):
 
 def panel_notifications_context(request):
     payload = build_panel_notifications(request, limit=8)
+    message_unread_count = 0
+
+    candidate_id = request.session.get("candidate_id")
+    company_id = request.session.get("company_id")
+    consultancy_id = request.session.get("consultancy_id")
+    if candidate_id:
+        message_unread_count = (
+            Message.objects.filter(
+                thread__candidate_id=candidate_id,
+                is_read=False,
+            )
+            .exclude(sender_role="candidate")
+            .count()
+        )
+    elif company_id:
+        message_unread_count = (
+            Message.objects.filter(
+                thread__company_id=company_id,
+                is_read=False,
+            )
+            .exclude(sender_role="company")
+            .count()
+        )
+    elif consultancy_id:
+        message_unread_count = (
+            Message.objects.filter(
+                thread__consultancy_id=consultancy_id,
+                is_read=False,
+            )
+            .exclude(sender_role="consultancy")
+            .count()
+        )
+
     return {
         "panel_notifications": payload.get("items", []),
         "panel_notification_unread_count": payload.get("unread_count", 0),
         "panel_notification_role": payload.get("role"),
+        "panel_message_unread_count": message_unread_count,
     }

@@ -50,7 +50,7 @@
   <div class="card-header">
     <div>
       <h3>Job Exhibition Resume (AI)</h3>
-      <p class="muted">Generate an AI resume from your profile details and save it as a version.</p>
+      <p class="muted">Generate an AI resume from profile details plus uploaded resume insights.</p>
     </div>
   </div>
   <div class="resume-card">
@@ -181,7 +181,7 @@
       <div class="candidate-metric-row">
         <div class="metric-meta">
           <strong>{{ check.label }}</strong>
-          <span>{% if check.complete %}Completed{% else %}Missing{% endif %} • Weight {{ check.weight }}</span>
+          <span>{% if check.complete %}Completed{% else %}Missing{% endif %} - Weight {{ check.weight }}</span>
         </div>
         <div class="metric-value">{% if check.complete %}{{ check.weight }}{% else %}0{% endif %}</div>
         <div class="metric-track">

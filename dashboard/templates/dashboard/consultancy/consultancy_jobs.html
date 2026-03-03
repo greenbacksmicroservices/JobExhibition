@@ -89,8 +89,8 @@
       <input type="text" name="location" value="{{ edit_job.location|default:'' }}" placeholder="e.g. Mumbai / Remote" {% if form_mode == "view" %}readonly{% endif %} required />
     </div>
     <div class="company-form-group">
-      <label>Salary Range</label>
-      <input type="text" name="salary" value="{{ edit_job.salary|default:'' }}" placeholder="e.g. 6 - 12 LPA" {% if form_mode == "view" %}readonly{% endif %} />
+      <label>Price / Salary Range</label>
+      <input type="text" name="salary" value="{{ edit_job.salary|default:'' }}" placeholder="e.g. 6 - 12 LPA or fixed price" {% if form_mode == "view" %}readonly{% endif %} />
     </div>
     <div class="company-form-group">
       <label>Experience</label>
@@ -121,6 +121,10 @@
         {% endwith %}
       </select>
       <span class="muted">Draft: saved only, Active: live for candidates, Archived: hidden but saved.</span>
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Summary</label>
+      <textarea rows="2" name="summary" placeholder="Short summary visible in admin and job overview..." {% if form_mode == "view" %}readonly{% endif %}>{{ edit_job.summary|default:'' }}</textarea>
     </div>
     {% if form_mode != "view" %}
     <div class="company-form-actions">
@@ -164,6 +168,7 @@
           <th>Job Title</th>
           <th>Company</th>
           <th>Category</th>
+          <th>Summary</th>
           <th>Applied</th>
           <th>Posted Date</th>
           <th>Status</th>
@@ -180,6 +185,7 @@
             </td>
             <td>{{ job.company }}</td>
             <td>{{ job.category|default:"--" }}</td>
+            <td class="muted">{{ job.summary|default:"--" }}</td>
             <td>{{ job.applicants }}</td>
             <td>{{ job.posted_date|date:"d M Y"|default:"--" }}</td>
             <td>
@@ -204,7 +210,7 @@
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="7" class="muted" style="text-align:center; padding: 16px;">No jobs posted yet. Click "Post New Job" to start.</td>
+            <td colspan="8" class="muted" style="text-align:center; padding: 16px;">No jobs posted yet. Click "Post New Job" to start.</td>
           </tr>
         {% endif %}
       </tbody>
@@ -259,5 +265,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'dashboard/js/consultancy-jobs.js' %}"></script>
+<script src="{% static 'dashboard/js/consultancy-jobs.js' %}?v={{ static_asset_version }}"></script>
 {% endblock %}

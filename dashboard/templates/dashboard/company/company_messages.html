@@ -8,7 +8,7 @@
   <div>
     <p class="eyebrow">Messages</p>
     <h2>Company Inbox</h2>
-    <p class="muted">Chat is enabled only for applied or submitted candidates.</p>
+    <p class="muted">Direct conversations with applied candidates only. Support chat stays in Customer Support > Live Chat.</p>
   </div>
 </section>
 
@@ -17,7 +17,7 @@
     <div class="chat-panel-header">
       <div>
         <h3>Conversations</h3>
-        <p class="muted">Applicant and consultancy threads.</p>
+        <p class="muted">Applicant threads only.</p>
       </div>
     </div>
     <div class="chat-thread-list">
@@ -47,16 +47,27 @@
     </div>
   </aside>
 
-  <div class="chat-window chat-threaded-window">
+  <div
+    class="chat-window chat-threaded-window"
+    {% if active_thread %}
+      data-thread-live="1"
+      data-thread-mode="chat"
+      data-messages-endpoint="{{ thread_messages_api }}"
+      data-send-endpoint="{{ thread_send_api }}"
+    {% endif %}
+  >
     {% if active_thread %}
     <div class="chat-header">
       <div>
         <h3>{{ active_card.partner_name|default:"Conversation" }}</h3>
         <p class="muted">{{ active_card.partner_role }} - {{ active_card.job_title }}</p>
       </div>
-      <span class="badge info">Application {{ active_card.application_id|default:"--" }}</span>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span class="badge info">Application {{ active_card.application_id|default:"--" }}</span>
+        <span class="badge info" data-thread-status>Syncing...</span>
+      </div>
     </div>
-    <div class="chat-messages">
+    <div class="chat-messages" data-thread-messages>
       {% if thread_messages %}
         {% for msg in thread_messages %}
         <div class="chat-message {% if msg.sender_role == current_role %}company{% else %}support{% endif %}">
@@ -81,7 +92,7 @@
         </div>
       {% endif %}
     </div>
-    <form class="chat-input" method="post" enctype="multipart/form-data">
+    <form class="chat-input" data-thread-form method="post" enctype="multipart/form-data">
       {% csrf_token %}
       <input type="hidden" name="action" value="send_message" />
       <input type="hidden" name="thread_id" value="{{ active_thread.id }}" />
@@ -91,8 +102,9 @@
           <input type="file" name="attachment" />
           Attach
         </label>
-        <button class="btn primary" type="submit">Send</button>
+        <button class="btn primary" type="submit" data-thread-submit>Send</button>
       </div>
+      <p class="muted" data-thread-sync>Last sync: --</p>
     </form>
     {% else %}
     <div class="analysis-card">
@@ -102,4 +114,8 @@
     {% endif %}
   </div>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/thread-realtime.js' %}?v={{ static_asset_version }}"></script>
 {% endblock %}

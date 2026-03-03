@@ -112,6 +112,27 @@
       <p class="muted">Delete account and remove all data.</p>
     </div>
   </div>
-  <button class="btn danger" type="button">Delete Account</button>
+  <form class="company-form-grid" method="post" data-loading-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="send_delete_otp" />
+    <div class="company-form-group">
+      <label>Registered Mobile</label>
+      <input type="text" value="{{ registered_mobile|default:'Not available' }}" readonly />
+    </div>
+    <div class="company-form-actions">
+      <button class="btn ghost" type="submit">Send OTP</button>
+    </div>
+  </form>
+  <form class="company-form-grid" method="post" data-loading-form style="margin-top: 10px;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="delete_account" />
+    <div class="company-form-group">
+      <label>Enter OTP</label>
+      <input type="text" name="delete_otp" placeholder="6-digit OTP" maxlength="6" required />
+    </div>
+    <div class="company-form-actions">
+      <button class="btn danger" type="submit">Delete Account</button>
+    </div>
+  </form>
 </section>
 {% endblock %}

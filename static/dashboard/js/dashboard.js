@@ -384,6 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   window.addEventListener('pageshow', () => scheduleModalCleanup(20));
+  window.addEventListener('beforeunload', () => scheduleModalCleanup(0));
   window.addEventListener('error', () => scheduleModalCleanup(20));
   window.addEventListener('unhandledrejection', () => scheduleModalCleanup(20));
 
@@ -578,6 +579,41 @@ document.addEventListener('DOMContentLoaded', () => {
         closeMobileSidebar();
       }
     });
+  });
+
+  // Lightweight same-origin prefetch for faster panel navigation.
+  const prefetchedUrls = new Set();
+  const shouldPrefetch = (url) => {
+    if (!url) return false;
+    if (url.startsWith('#') || url.startsWith('javascript:')) return false;
+    if (url.includes('/logout')) return false;
+    return true;
+  };
+  const prefetchUrl = (url) => {
+    try {
+      const resolved = new URL(url, window.location.origin);
+      if (resolved.origin !== window.location.origin) return;
+      const finalUrl = resolved.toString();
+      if (prefetchedUrls.has(finalUrl)) return;
+      prefetchedUrls.add(finalUrl);
+      fetch(finalUrl, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'Prefetch',
+        },
+      }).catch(() => {});
+    } catch {
+      // Ignore malformed URLs and keep UI smooth.
+    }
+  };
+  const prefetchLinks = document.querySelectorAll('.sidebar-nav a, .topbar a, .profile-menu a');
+  prefetchLinks.forEach((link) => {
+    const href = (link.getAttribute('href') || '').trim();
+    if (!shouldPrefetch(href)) return;
+    link.addEventListener('mouseenter', () => prefetchUrl(href));
+    link.addEventListener('focus', () => prefetchUrl(href));
+    link.addEventListener('touchstart', () => prefetchUrl(href), { passive: true });
   });
 
   document.addEventListener('keydown', (event) => {

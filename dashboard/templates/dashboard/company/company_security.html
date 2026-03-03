@@ -8,88 +8,117 @@
   <div>
     <p class="eyebrow">Protection</p>
     <h2>Security & Privacy</h2>
-    <p class="muted">Manage your account security and access.</p>
+    <p class="muted">Monitor login activity, sessions, and access health in real time.</p>
   </div>
 </section>
 
-<div style="max-width: 700px;">
-  <div class="card">
-    <div class="card-header">
+<section
+  class="card section-block"
+  id="companySecurityPanel"
+  data-security-endpoint="{% url 'dashboard:company_api_security_activity' %}"
+>
+  <div class="card-header">
+    <div>
+      <h3>Protection Summary</h3>
+      <p class="muted">Account access trends and live sync status.</p>
+    </div>
+    <span class="badge info" id="companySecurityLiveStatus">Syncing...</span>
+  </div>
+  <div class="pill-grid">
+    <article class="pill-card gradient-1">
+      <div class="pill-icon"><i class="fa-solid fa-shield-halved"></i></div>
+      <div>
+        <p class="pill-title">Total Access Events</p>
+        <strong class="pill-value" id="companySecurityTotal">{{ security_stats.total|default:0 }}</strong>
+      </div>
+    </article>
+    <article class="pill-card gradient-2">
+      <div class="pill-icon"><i class="fa-solid fa-check-circle"></i></div>
+      <div>
+        <p class="pill-title">Successful Logins</p>
+        <strong class="pill-value" id="companySecuritySuccess">{{ security_stats.success|default:0 }}</strong>
+      </div>
+    </article>
+    <article class="pill-card gradient-4">
+      <div class="pill-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <div>
+        <p class="pill-title">Failed Attempts</p>
+        <strong class="pill-value" id="companySecurityFailed">{{ security_stats.failed|default:0 }}</strong>
+      </div>
+    </article>
+  </div>
+  <p class="muted" id="companySecurityLastSync">Last sync: {{ security_generated_at|default:"--" }}</p>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
       <h3>Active Sessions</h3>
-      <p class="muted">Devices currently logged in to your account</p>
-    </div>
-    <div class="activity-list" style="padding: 20px;">
-      <div class="activity-item">
-        <div>
-          <strong>Windows PC - Chrome</strong>
-          <span class="muted">Last accessed: Today at 2:30 PM</span>
-        </div>
-        <span class="badge success">Current Session</span>
-      </div>
-      <div class="activity-item">
-        <div>
-          <strong>iPhone 13 - Safari</strong>
-          <span class="muted">Last accessed: Yesterday at 5:15 PM</span>
-        </div>
-        <button class="action-btn warning" style="cursor: pointer;">Logout</button>
-      </div>
-      <div class="activity-item">
-        <div>
-          <strong>MacBook Pro - Safari</strong>
-          <span class="muted">Last accessed: 3 days ago</span>
-        </div>
-        <button class="action-btn warning" style="cursor: pointer;">Logout</button>
-      </div>
+      <p class="muted">Recent successful sessions from trusted and untrusted devices.</p>
     </div>
   </div>
-
-  <div class="card" style="margin-top: 20px;">
-    <div class="card-header">
-      <h3>Two-Factor Authentication</h3>
-    </div>
-    <div style="padding: 20px;">
-      <p style="font-size: 13px; color: #374151; margin-bottom: 16px;">Add an extra layer of security to your account by enabling two-factor authentication.</p>
-      <button class="btn primary">Enable 2FA</button>
-    </div>
+  <div class="activity-list" style="padding: 20px;" id="companySessionList">
+    {% for session in active_sessions %}
+      <div class="activity-item">
+        <div>
+          <strong>{{ session.device }}</strong>
+          <span class="muted">IP: {{ session.ip_address }} | Last seen: {{ session.last_seen }}</span>
+        </div>
+        {% if session.is_current %}
+          <span class="badge success">Current Session</span>
+        {% else %}
+          <span class="badge info">Recent Session</span>
+        {% endif %}
+      </div>
+    {% empty %}
+      <div class="activity-item">
+        <div>
+          <strong>No active sessions found</strong>
+          <span class="muted">Session data will appear after login history is recorded.</span>
+        </div>
+      </div>
+    {% endfor %}
   </div>
+</section>
 
-  <div class="card" style="margin-top: 20px;">
-    <div class="card-header">
+<section class="card section-block">
+  <div class="card-header">
+    <div>
       <h3>Login History</h3>
-      <p class="muted">Recent login attempts</p>
-    </div>
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Date & Time</th>
-            <th>Device</th>
-            <th>IP Address</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>17 Feb 2026, 2:30 PM</td>
-            <td>Windows PC - Chrome</td>
-            <td>192.168.1.100</td>
-            <td><span class="badge success">Success</span></td>
-          </tr>
-          <tr>
-            <td>16 Feb 2026, 5:15 PM</td>
-            <td>iPhone 13 - Safari</td>
-            <td>203.0.113.45</td>
-            <td><span class="badge success">Success</span></td>
-          </tr>
-          <tr>
-            <td>15 Feb 2026, 10:20 AM</td>
-            <td>Unknown - Chrome</td>
-            <td>198.51.100.78</td>
-            <td><span class="badge danger">Failed</span></td>
-          </tr>
-        </tbody>
-      </table>
+      <p class="muted">Track every company login with device and network details.</p>
     </div>
   </div>
-</div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Date & Time</th>
+          <th>Device</th>
+          <th>IP Address</th>
+          <th>Status</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody id="companyLoginHistoryBody">
+        {% for entry in security_entries %}
+          <tr>
+            <td>{{ entry.created_at }}</td>
+            <td>{{ entry.device }}</td>
+            <td>{{ entry.ip_address }}</td>
+            <td><span class="badge {{ entry.status_class }}">{{ entry.status }}</span></td>
+            <td>{{ entry.note|default:"--" }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="5" class="text-center text-muted">No login activity recorded yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/company-security.js' %}?v={{ static_asset_version }}"></script>
 {% endblock %}

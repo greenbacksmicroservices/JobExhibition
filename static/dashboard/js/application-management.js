@@ -828,6 +828,21 @@
     }
   };
 
+  const applyInitialQueryFilters = () => {
+    const params = new URLSearchParams(window.location.search || '');
+    const searchValue = (params.get('search') || params.get('job') || '').trim();
+    if (searchInput && searchValue) {
+      searchInput.value = searchValue;
+    }
+    const statusValue = (params.get('status') || '').trim();
+    if (filterStatus && statusScope === 'all' && statusValue) {
+      const optionExists = Array.from(filterStatus.options).some((option) => option.value === statusValue);
+      if (optionExists) {
+        filterStatus.value = statusValue;
+      }
+    }
+  };
+
   if (applicationForm) {
     applicationForm.addEventListener('submit', handleFormSubmit);
   }
@@ -899,6 +914,7 @@
   });
 
   initStatusFilter();
+  applyInitialQueryFilters();
   refreshData();
 
   setInterval(() => {

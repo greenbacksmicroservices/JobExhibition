@@ -39,10 +39,28 @@
   const viewModalEl = document.getElementById('viewModal');
   const deleteModalEl = document.getElementById('deleteModal');
 
-  const modalOptions = { backdrop: false, keyboard: true };
+  const modalOptions = { backdrop: true, keyboard: true, focus: true };
   const formModal = formModalEl ? new bootstrap.Modal(formModalEl, modalOptions) : null;
   const viewModal = viewModalEl ? new bootstrap.Modal(viewModalEl, modalOptions) : null;
   const deleteModal = deleteModalEl ? new bootstrap.Modal(deleteModalEl, modalOptions) : null;
+
+  const cleanupModalArtifacts = () => {
+    const visibleModal = document.querySelector('.modal.show');
+    const backdrops = Array.from(document.querySelectorAll('.modal-backdrop'));
+    if (visibleModal) {
+      if (backdrops.length > 1) {
+        backdrops.slice(0, -1).forEach((node) => node.remove());
+      }
+      return;
+    }
+    backdrops.forEach((node) => node.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('padding-right');
+  };
+  [formModalEl, viewModalEl, deleteModalEl].forEach((modalEl) => {
+    if (!modalEl) return;
+    modalEl.addEventListener('hidden.bs.modal', cleanupModalArtifacts);
+  });
 
   const userForm = document.getElementById('userForm');
   const formTitle = document.getElementById('formTitle');

@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const detailGrid = document.getElementById('candidateApplicationDetailGrid');
 
   const detailModal = window.bootstrap && detailModalEl
-    ? new bootstrap.Modal(detailModalEl, { backdrop: true, keyboard: true })
+    ? new bootstrap.Modal(detailModalEl, { backdrop: true, keyboard: true, focus: true })
     : null;
 
   const endpoint = '/candidate/api/applications/';
@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ? fallbackStatusFlow
     : ['Applied', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Selected', 'Offer Received', 'Rejected'];
   let selectedApplicationId = timelineGrid?.dataset.selectedApplication || '';
+  let timelineVisible = false;
   let applicationsById = new Map();
   let isFetching = false;
 
@@ -68,6 +69,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!liveStatus) return;
     liveStatus.textContent = text;
     liveStatus.classList.toggle('live-error', isError);
+  };
+
+  const setTimelineVisible = (visible, { scroll = false } = {}) => {
+    timelineVisible = Boolean(visible);
+    if (!timelineSection) return;
+    timelineSection.hidden = !timelineVisible;
+    if (timelineVisible && scroll) {
+      timelineSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   };
 
   const highlightActiveRow = (applicationId) => {
@@ -150,6 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const rows = [
       { label: 'Application ID', value: app.application_id || '--' },
       { label: 'Status', value: status || '--' },
+      { label: 'Rejection Remark', value: app.rejection_remark || '--', hidden: status !== 'Rejected' && !app.rejection_remark },
       { label: 'Applied Date', value: formatDate(app.applied_date) },
       { label: 'Interview Date', value: formatDate(app.interview_date) },
       { label: 'Interview Time', value: app.interview_time || '--' },
@@ -165,6 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
     detailGrid.innerHTML = rows
+      .filter((item) => !item.hidden)
       .map((item) => {
         const content = item.isHtml ? item.value : escapeHtml(item.value);
         return `<div><span>${escapeHtml(item.label)}</span><strong>${content}</strong></div>`;
@@ -178,8 +190,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const app = applicationsById.get(applicationId);
     highlightActiveRow(applicationId);
     renderTimeline(app);
-    if (scrollToTimeline && timelineSection) {
-      timelineSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (scrollToTimeline) {
+      setTimelineVisible(true, { scroll: true });
     }
   };
 
@@ -249,6 +261,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  let pollHandle = null;
+  const startPolling = () => {
+    if (pollHandle) return;
+    pollHandle = setInterval(refreshApplications, 12000);
+  };
+  const stopPolling = () => {
+    if (!pollHandle) return;
+    clearInterval(pollHandle);
+    pollHandle = null;
+  };
+
+  setTimelineVisible(false);
   refreshApplications();
-  setInterval(refreshApplications, 12000);
+  startPolling();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopPolling();
+      return;
+    }
+    refreshApplications();
+    startPolling();
+  });
 });

@@ -302,7 +302,14 @@
     const selectEnabled = Array.from(selectToggles).some(
       (select) => (select.value || '').toLowerCase() === 'custom',
     );
-    group.hidden = !(checkboxEnabled || selectEnabled);
+    const shouldShow = checkboxEnabled || selectEnabled;
+    group.hidden = !shouldShow;
+    if (shouldShow) {
+      const searchInput = group.querySelector('[data-custom-search]');
+      if (searchInput && document.activeElement !== searchInput) {
+        searchInput.focus();
+      }
+    }
   };
 
   pickerGroups.forEach((group) => {
@@ -320,6 +327,8 @@
     });
 
     const searchInput = group.querySelector('[data-custom-search]');
+    const searchButton = group.querySelector('[data-custom-search-btn]');
+    const countLabel = group.querySelector('[data-custom-count]');
     const options = Array.from(group.querySelectorAll('.custom-recipient-item'));
     const emptyState = group.querySelector('[data-custom-empty]');
 
@@ -327,14 +336,20 @@
       if (!searchInput) return;
       const query = (searchInput.value || '').trim().toLowerCase();
       let visibleCount = 0;
+      let selectedCount = 0;
       options.forEach((option) => {
         const haystack = (option.getAttribute('data-search-text') || '').toLowerCase();
         const isVisible = !query || haystack.includes(query);
         option.hidden = !isVisible;
         if (isVisible) visibleCount += 1;
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        if (checkbox && checkbox.checked) selectedCount += 1;
       });
       if (emptyState) {
         emptyState.hidden = visibleCount > 0;
+      }
+      if (countLabel) {
+        countLabel.textContent = `${visibleCount} visible candidate(s) | ${selectedCount} selected`;
       }
     };
 
@@ -342,6 +357,14 @@
       searchInput.addEventListener('input', runFilter);
       runFilter();
     }
+    if (searchButton) {
+      searchButton.addEventListener('click', runFilter);
+    }
+    options.forEach((option) => {
+      const checkbox = option.querySelector('input[type="checkbox"]');
+      if (!checkbox) return;
+      checkbox.addEventListener('change', runFilter);
+    });
 
     updatePickerVisibility(groupId);
   });

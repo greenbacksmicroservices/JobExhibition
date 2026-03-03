@@ -47,6 +47,26 @@ button {
     display: none;
 }
 
+.modal-backdrop {
+    background-color: transparent !important;
+    opacity: 0 !important;
+}
+
+.modal-backdrop.show {
+    background-color: transparent !important;
+    opacity: 0 !important;
+}
+
+body.modal-open .app-shell,
+body.modal-open .main {
+    filter: none !important;
+}
+
+body.modal-open {
+    overflow: hidden !important;
+    padding-right: 0 !important;
+}
+
 /* =========================
    APP LAYOUT
 ========================= */
@@ -735,7 +755,6 @@ body.sidebar-collapsed .nav-sub {
     -webkit-overflow-scrolling: touch;
     transition: margin-left 0.3s ease;
     will-change: margin-left;
-    transform: translateZ(0);
 }
 
 /* =========================
@@ -1546,6 +1565,12 @@ details[open] .chevron {
     border: 1px solid #e5e7eb;
     background: #fff;
     color: #2563eb;
+}
+
+.action-btn.disabled,
+.action-btn[aria-disabled="true"] {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 .action-btn svg {
@@ -2694,6 +2719,22 @@ body.sidebar-collapsed .profile-progress-text {
     box-shadow: 0 0 0 2px #fff;
 }
 
+.icon-count-badge {
+    position: absolute;
+    top: -4px;
+    right: -5px;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+    padding: 0 4px;
+    border: 1px solid #fff;
+}
+
 .notification-menu {
     position: absolute;
     top: 42px;
@@ -3319,6 +3360,28 @@ body.sidebar-collapsed .profile-progress-text {
     flex-wrap: wrap;
 }
 
+.job-detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+    gap: 16px;
+}
+
+.job-detail-main,
+.job-detail-side {
+    display: grid;
+    gap: 16px;
+    align-content: start;
+}
+
+.job-side-actions .job-side-action-buttons {
+    display: grid;
+    gap: 10px;
+}
+
+.similar-jobs-panel[hidden] {
+    display: none !important;
+}
+
 @media (max-width: 992px) {
     .job-search-layout {
         grid-template-columns: 1fr;
@@ -3326,6 +3389,10 @@ body.sidebar-collapsed .profile-progress-text {
 
     .job-filter-panel {
         position: static;
+    }
+
+    .job-detail-layout {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -4283,6 +4350,22 @@ body.sidebar-collapsed .profile-progress-text {
     margin-bottom: 12px;
 }
 
+.filters-grid.compact-filters {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+}
+
+.filters-grid.compact-filters .filter-group label {
+    font-size: 11px;
+}
+
+.filters-grid.compact-filters .filter-group input,
+.filters-grid.compact-filters .filter-group select {
+    padding: 7px 9px;
+    font-size: 11px;
+    border-radius: 8px;
+}
+
 .filter-group {
     display: grid;
     gap: 6px;
@@ -4447,6 +4530,10 @@ body.sidebar-collapsed .profile-progress-text {
     margin-right: 6px;
 }
 
+.detail-list strong {
+    word-break: break-word;
+}
+
 .resume-card {
     display: flex;
     align-items: center;
@@ -4481,6 +4568,16 @@ body.sidebar-collapsed .profile-progress-text {
     font-size: 12px;
     background: #fff;
     resize: vertical;
+}
+
+.app-chat-messages {
+    min-height: 320px;
+    max-height: 420px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 12px;
+    background: #f8fafc;
+    overflow-y: auto;
 }
 
 /* Customer Support */
@@ -5284,6 +5381,21 @@ body.dark-mode {
     color: #e2e8f0;
 }
 
+body.dark-mode .sidebar {
+    background: linear-gradient(135deg, #0b1d45 0%, #112a63 50%, #0a1a40 100%);
+    box-shadow: 8px 0 28px rgba(1, 8, 28, 0.55);
+}
+
+body.dark-mode .sidebar .nav-item {
+    color: #dbeafe;
+}
+
+body.dark-mode .sidebar .nav-item.active,
+body.dark-mode .sidebar .nav-item:hover {
+    background: rgba(96, 165, 250, 0.18);
+    border-color: rgba(147, 197, 253, 0.35);
+}
+
 body.dark-mode .page-header {
     border-bottom-color: #1f2937;
 }
@@ -5306,7 +5418,8 @@ body.dark-mode .company-communication .credit-card,
 body.dark-mode .company-communication .template-body,
 body.dark-mode .company-communication .notice-card,
 body.dark-mode .automation-card,
-body.dark-mode .resume-card {
+body.dark-mode .resume-card,
+body.dark-mode .app-chat-messages {
     background: #0f172a;
     border-color: #1f2937;
     color: #e2e8f0;
@@ -5531,6 +5644,10 @@ body.dark-mode .icon-btn {
 
 body.dark-mode .icon-btn:hover {
     background: #1f2937;
+}
+
+body.dark-mode .icon-count-badge {
+    border-color: #0f172a;
 }
 
 body.dark-mode .btn.ghost {

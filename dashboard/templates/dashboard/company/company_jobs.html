@@ -144,6 +144,10 @@
       {% endif %}
       <span class="muted">Choose status to control visibility of this job.</span>
     </div>
+    <div class="company-form-group company-form-full">
+      <label>Summary</label>
+      <textarea rows="2" name="summary" placeholder="Short summary visible in admin and job overview..." {% if form_mode == "view" %}readonly{% endif %}>{{ edit_job.summary|default:'' }}</textarea>
+    </div>
     {% if form_mode != "view" %}
     <div class="company-form-actions">
       {% if form_mode == "edit" %}
@@ -184,6 +188,7 @@
         <tr>
           <th>Job Title</th>
           <th>Category</th>
+          <th>Summary</th>
           <th>Status</th>
           <th>Applications</th>
           <th>Posted Date</th>
@@ -195,6 +200,7 @@
         <tr>
           <td><strong>{{ job.title|default:"N/A" }}</strong></td>
           <td>{{ job.category|default:"--" }}</td>
+          <td class="muted">{{ job.summary|default:"--" }}</td>
           <td>
             {% with job.status|default:"pending"|lower as status %}
               <span class="badge {% if status == 'active' or status == 'approved' %}success{% elif status == 'draft' %}neutral{% elif status == 'paused' or status == 'pending' %}warning{% elif status == 'closed' %}info{% elif status == 'expired' or status == 'rejected' %}danger{% elif status == 'archived' %}neutral{% else %}warning{% endif %}">
@@ -202,7 +208,11 @@
               </span>
             {% endwith %}
           </td>
-          <td>{{ job.applicants|default:0 }}</td>
+          <td>
+            <a class="action-btn" href="{% url 'dashboard:company_applications' %}?job_id={{ job.job_id }}">
+              {{ job.applicants|default:0 }} Applications
+            </a>
+          </td>
           <td>{{ job.created_at|date:"d M Y"|default:"--" }}</td>
           <td>
             <div class="table-actions">
@@ -305,5 +315,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'dashboard/js/company-jobs.js' %}"></script>
+<script src="{% static 'dashboard/js/company-jobs.js' %}?v={{ static_asset_version }}"></script>
 {% endblock %}

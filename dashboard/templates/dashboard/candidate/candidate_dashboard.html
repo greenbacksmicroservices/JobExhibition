@@ -101,7 +101,7 @@
         <div class="activity-item">
           <div>
             <strong>{{ job.title }}</strong>
-            <span class="muted">{{ job.company }} - {{ job.location|default:"Remote" }}</span>
+            <span class="muted">{{ job.company }} - {{ job.location|default:"Remote" }} - Match {{ job.match_score|default:0 }}%</span>
           </div>
           <a class="link-button" href="{% url 'dashboard:candidate_job_detail' job.job_id %}">View</a>
         </div>

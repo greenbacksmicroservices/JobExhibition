@@ -1,11 +1,21 @@
 <div class="custom-recipient-picker" data-custom-recipient-group="{{ group_id }}" hidden>
   <label class="custom-picker-label">Custom Candidate Selection</label>
-  <input
-    type="search"
-    class="custom-picker-search"
-    placeholder="Search candidate name, email, phone"
-    data-custom-search
-  />
+  <div class="custom-picker-toolbar">
+    <input
+      type="search"
+      class="custom-picker-search"
+      placeholder="Search candidate name, email, phone"
+      data-custom-search
+    />
+    <button type="button" class="action-btn" data-custom-search-btn>Search</button>
+  </div>
+  <p class="muted" data-custom-count>
+    {% if communication_candidates %}
+      {{ communication_candidates|length }} candidates available
+    {% else %}
+      0 candidates available
+    {% endif %}
+  </p>
   <div class="custom-recipient-list" data-custom-list>
     {% if communication_candidates %}
       {% for candidate_item in communication_candidates %}

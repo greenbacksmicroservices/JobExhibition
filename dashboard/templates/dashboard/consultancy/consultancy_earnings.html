@@ -50,6 +50,51 @@
 <section class="card section-block">
   <div class="card-header">
     <div>
+      <h3>Commission Models</h3>
+      <p class="muted">Fixed fee, percentage, and milestone values are editable here.</p>
+    </div>
+  </div>
+  <form method="post" class="company-form-grid">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="update_commission_models" />
+    <div class="company-form-group">
+      <label>Fixed Fee</label>
+      <input type="number" name="commission_fixed_fee" min="0" step="1" value="{{ commission_defaults.fixed_fee }}" />
+      <span class="muted">INR per hire</span>
+    </div>
+    <div class="company-form-group">
+      <label>Percentage Model</label>
+      <input type="number" name="commission_percentage" min="0" step="1" value="{{ commission_defaults.percentage }}" />
+      <span class="muted">% of annual CTC</span>
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Milestone Based</label>
+      <input type="text" name="commission_milestone_notes" value="{{ commission_defaults.milestone_notes }}" />
+      <span class="muted">Stage-wise commission release text</span>
+    </div>
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Update Commission Models</button>
+    </div>
+  </form>
+  <div class="card-grid">
+    <article class="card">
+      <h4>Fixed Fee</h4>
+      <p class="muted">INR {{ commission_defaults.fixed_fee }} per hire</p>
+    </article>
+    <article class="card">
+      <h4>Percentage Model</h4>
+      <p class="muted">{{ commission_defaults.percentage }}% of annual CTC</p>
+    </article>
+    <article class="card">
+      <h4>Milestone Based</h4>
+      <p class="muted">{{ commission_defaults.milestone_notes }}</p>
+    </article>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
       <h3>Monthly Earnings</h3>
       <p class="muted">Commission summary by month.</p>
     </div>
@@ -92,7 +137,8 @@
       <thead>
         <tr>
           <th>Invoice ID</th>
-          <th>Placement</th>
+          <th>Candidate</th>
+          <th>Job</th>
           <th>Amount</th>
           <th>Status</th>
           <th>Date</th>
@@ -100,20 +146,36 @@
         </tr>
       </thead>
       <tbody>
-        {% for row in earnings %}
+        {% if payout_history %}
+        {% for row in payout_history %}
         <tr>
-          <td><strong>INV-{{ forloop.counter|add:1000 }}</strong></td>
-          <td>{{ row.placements }} placements</td>
-          <td>{{ row.commission }}</td>
+          <td><strong>{{ row.invoice_id }}</strong></td>
+          <td>{{ row.candidate }}</td>
+          <td>{{ row.job }}</td>
+          <td>INR {{ row.amount }}</td>
           <td>
-            <span class="badge {% if row.status == 'Paid' %}success{% elif row.status == 'Pending' %}warning{% else %}info{% endif %}">{{ row.status }}</span>
+            <span class="badge {% if row.status == 'Paid' %}success{% elif row.status == 'Pending Approval' %}warning{% elif row.status == 'Cancelled' %}danger{% else %}info{% endif %}">{{ row.status }}</span>
           </td>
-          <td>{{ row.month }}</td>
-          <td>{% if row.status == 'Paid' %}Bank Transfer{% else %}Processing{% endif %}</td>
+          <td>{{ row.date }}</td>
+          <td>{{ row.payment_mode }}</td>
         </tr>
         {% endfor %}
+        {% else %}
+        <tr>
+          <td colspan="7" class="muted" style="text-align:center; padding: 16px;">No payout history available yet.</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  setInterval(function () {
+    if (document.hidden) return;
+    window.location.reload();
+  }, 45000);
+</script>
 {% endblock %}

@@ -120,11 +120,12 @@
       {% if edit_job %}
         {% with edit_job.status|default:"Pending" as job_status %}
           <input type="hidden" name="status" id="jobStatusValue" value="{{ job_status }}" />
-          <select name="status_choice" id="jobStatusSelect" {% if form_mode == "view" %}disabled{% endif %}>
+          <select name="status_choice" id="jobStatusSelect">
             <option value="draft" {% if job_status|lower == "pending" or job_status|lower == "draft" %}selected{% endif %}>Draft</option>
             <option value="active" {% if job_status|lower == "approved" or job_status|lower == "active" %}selected{% endif %}>Active</option>
             <option value="paused" {% if job_status|lower == "paused" %}selected{% endif %}>Paused</option>
-            <option value="closed" {% if job_status|lower == "rejected" or job_status|lower == "closed" %}selected{% endif %}>Closed</option>
+            <option value="rejected" {% if job_status|lower == "rejected" %}selected{% endif %}>Rejected</option>
+            <option value="closed" {% if job_status|lower == "closed" %}selected{% endif %}>Closed</option>
             <option value="expired" {% if job_status|lower == "expired" %}selected{% endif %}>Expired</option>
             <option value="archived" {% if job_status|lower == "reported" or job_status|lower == "archived" %}selected{% endif %}>Archived</option>
           </select>
@@ -132,11 +133,12 @@
       {% else %}
         {% with "Pending" as job_status %}
           <input type="hidden" name="status" id="jobStatusValue" value="{{ job_status }}" />
-          <select name="status_choice" id="jobStatusSelect" {% if form_mode == "view" %}disabled{% endif %}>
+          <select name="status_choice" id="jobStatusSelect">
             <option value="draft" {% if job_status|lower == "pending" or job_status|lower == "draft" %}selected{% endif %}>Draft</option>
             <option value="active" {% if job_status|lower == "approved" or job_status|lower == "active" %}selected{% endif %}>Active</option>
             <option value="paused" {% if job_status|lower == "paused" %}selected{% endif %}>Paused</option>
-            <option value="closed" {% if job_status|lower == "rejected" or job_status|lower == "closed" %}selected{% endif %}>Closed</option>
+            <option value="rejected" {% if job_status|lower == "rejected" %}selected{% endif %}>Rejected</option>
+            <option value="closed" {% if job_status|lower == "closed" %}selected{% endif %}>Closed</option>
             <option value="expired" {% if job_status|lower == "expired" %}selected{% endif %}>Expired</option>
             <option value="archived" {% if job_status|lower == "reported" or job_status|lower == "archived" %}selected{% endif %}>Archived</option>
           </select>
@@ -163,6 +165,7 @@
       <button class="status-chip" type="button" data-job-status="draft">Draft</button>
       <button class="status-chip" type="button" data-job-status="active">Active</button>
       <button class="status-chip" type="button" data-job-status="paused">Paused</button>
+      <button class="status-chip" type="button" data-job-status="rejected">Rejected</button>
       <button class="status-chip" type="button" data-job-status="closed">Closed</button>
       <button class="status-chip" type="button" data-job-status="expired">Expired</button>
       <button class="status-chip" type="button" data-job-status="archived">Archived</button>
@@ -238,51 +241,6 @@
   {% endif %}
 </div>
 {% endif %}
-
-<section class="card section-block">
-  <div class="card-header">
-    <div>
-      <h3>Job Status System</h3>
-      <p class="muted">Very important status choices for your job pipeline.</p>
-    </div>
-  </div>
-  <div class="table-wrap">
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Status</th>
-          <th>Meaning</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><span class="badge neutral">Draft</span></td>
-          <td>Saved but not published</td>
-        </tr>
-        <tr>
-          <td><span class="badge success">Active</span></td>
-          <td>Live and visible</td>
-        </tr>
-        <tr>
-          <td><span class="badge warning">Paused</span></td>
-          <td>Temporarily stopped</td>
-        </tr>
-        <tr>
-          <td><span class="badge info">Closed</span></td>
-          <td>Hiring completed</td>
-        </tr>
-        <tr>
-          <td><span class="badge danger">Expired</span></td>
-          <td>Last date over</td>
-        </tr>
-        <tr>
-          <td><span class="badge neutral">Archived</span></td>
-          <td>Hidden but saved</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</section>
 
 <section class="card section-block">
   <div class="card-header">

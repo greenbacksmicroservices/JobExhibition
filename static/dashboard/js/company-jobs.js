@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     draft: 'Pending',
     active: 'Approved',
     paused: 'Pending',
+    rejected: 'Rejected',
     closed: 'Rejected',
     expired: 'Rejected',
     archived: 'Reported',

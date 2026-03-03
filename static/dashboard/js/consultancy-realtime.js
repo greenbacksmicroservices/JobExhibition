@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const endpoint = '/consultancy/api/metrics/';
+  const endpointNode = document.getElementById('consultancyMetricsEndpoint');
+  const endpoint = (endpointNode && endpointNode.dataset.endpoint) || '/consultancy/api/metrics/';
 
   const toNumber = (value) => {
     const parsed = parseInt(String(value || '').replace(/[^0-9]/g, ''), 10);

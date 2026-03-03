@@ -86,11 +86,13 @@
       </select>
     </div>
     <div class="company-form-group">
-      <label>Select Assigned Job</label>
+      <label>Select Assigned/Posted Job</label>
       <select name="assigned_job_id" required>
-        <option value="">Choose assigned job</option>
-        {% for assignment in assigned_jobs %}
-          <option value="{{ assignment.id }}" {% if selected_job_id == assignment.job.job_id %}selected{% endif %}>{{ assignment.job.title }} ({{ assignment.job.job_id }})</option>
+        <option value="">Choose assigned/posted job</option>
+        {% for option in job_submit_options %}
+          <option value="{{ option.value }}" {% if selected_job_id == option.job_id %}selected{% endif %}>
+            {{ option.label }} - {{ option.source }}
+          </option>
         {% endfor %}
       </select>
     </div>

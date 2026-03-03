@@ -8,7 +8,7 @@
   <div>
     <p class="eyebrow">Interviews</p>
     <h2>Interview Scheduling & Updates</h2>
-    <p class="muted">Track company schedules, inform candidates, reschedule, and capture feedback.</p>
+    <p class="muted">Track schedules, update status, and keep interview flow in realtime.</p>
   </div>
 </section>
 
@@ -26,39 +26,58 @@
   <div class="card-header">
     <div>
       <h3>Schedule Interview</h3>
-      <p class="muted">Pick candidate, job, and time slot.</p>
+      <p class="muted">Select shortlisted candidate, auto-fill details, and schedule.</p>
     </div>
   </div>
-  <form class="interview-form" method="post">
+  <form class="interview-form" method="post" id="consultancyInterviewForm">
     {% csrf_token %}
     <input type="hidden" name="action" value="schedule_interview" />
     <div class="form-grid">
-      <div class="form-group">
-        <label>Candidate</label>
-        <input type="text" name="candidate" placeholder="Candidate name" />
-      </div>
-      <div class="form-group">
-        <label>Job Title</label>
-        <input type="text" name="job_title" placeholder="Job role" />
-      </div>
-      <div class="form-group">
-        <label>Interview Date</label>
-        <input type="date" name="interview_date" />
-      </div>
-      <div class="form-group">
-        <label>Interview Time</label>
-        <input type="time" name="interview_time" />
-      </div>
-      <div class="form-group">
-        <label>Mode</label>
-        <select name="mode">
-          <option>Online</option>
-          <option>Offline</option>
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Shortlisted Candidate</label>
+        <select id="shortlistedCandidateSelect" name="application_id">
+          <option value="">Select shortlisted candidate</option>
+          {% for item in shortlisted_apps %}
+          <option
+            value="{{ item.application_id }}"
+            data-candidate="{{ item.candidate_name|default:''|escapejs }}"
+            data-job="{{ item.job_title|default:''|escapejs }}"
+          >
+            {{ item.candidate_name }} - {{ item.job_title }} ({{ item.application_id }})
+          </option>
+          {% endfor %}
         </select>
       </div>
       <div class="form-group">
+        <label>Candidate</label>
+        <input type="text" name="candidate" id="interviewCandidate" placeholder="Candidate name" required />
+      </div>
+      <div class="form-group">
+        <label>Job Title</label>
+        <input type="text" name="job_title" id="interviewJobTitle" placeholder="Job role" required />
+      </div>
+      <div class="form-group">
+        <label>Interview Date</label>
+        <input type="date" name="interview_date" required />
+      </div>
+      <div class="form-group">
+        <label>Interview Time</label>
+        <input type="time" name="interview_time" required />
+      </div>
+      <div class="form-group">
+        <label>Mode</label>
+        <select name="mode" id="interviewModeSelect">
+          <option value="Online">Online</option>
+          <option value="Offline">Offline</option>
+        </select>
+      </div>
+      <div class="form-group" id="interviewMeetingLinkGroup">
         <label>Meeting Link</label>
-        <input type="url" name="meeting_link" placeholder="https://meet..." />
+        <input type="url" name="meeting_link" id="interviewMeetingLink" placeholder="https://meet..." />
+      </div>
+      <div class="form-group" id="interviewLocationGroup" style="display:none;">
+        <label>Location</label>
+        <input type="text" name="location" id="interviewLocation" placeholder="Office address" />
       </div>
       <div class="form-group">
         <label>Interviewer</label>
@@ -89,7 +108,7 @@
   <div class="card-header">
     <div>
       <h3>Interview Line-up</h3>
-      <p class="muted">Company updates visible for your submitted candidates only.</p>
+      <p class="muted">Realtime list of consultancy interviews.</p>
     </div>
   </div>
   <div class="table-wrap">
@@ -102,8 +121,7 @@
           <th>Date</th>
           <th>Time</th>
           <th>Mode</th>
-          <th>Round</th>
-          <th>Meeting</th>
+          <th>Meeting / Location</th>
           <th>Interviewer</th>
           <th>Status</th>
           <th>Action</th>
@@ -119,9 +137,10 @@
             <td>{{ interview.date }}</td>
             <td>{{ interview.time }}</td>
             <td>{{ interview.mode }}</td>
-            <td>{{ interview.round }}</td>
             <td>
-              {% if interview.meeting_link %}
+              {% if interview.mode|lower == 'offline' %}
+                {{ interview.location|default:'--' }}
+              {% elif interview.meeting_link %}
                 <a class="link-button" href="{{ interview.meeting_link }}" target="_blank" rel="noopener">Open</a>
               {% else %}
                 --
@@ -136,21 +155,14 @@
                   <input type="hidden" name="action" value="update_status" />
                   <input type="hidden" name="interview_id" value="{{ interview.id }}" />
                   <input type="hidden" name="status" value="scheduled" />
-                  <button class="action-btn" type="submit">Confirm Candidate</button>
+                  <button class="action-btn" type="submit">Confirm</button>
                 </form>
                 <form method="post">
                   {% csrf_token %}
                   <input type="hidden" name="action" value="update_status" />
                   <input type="hidden" name="interview_id" value="{{ interview.id }}" />
                   <input type="hidden" name="status" value="rescheduled" />
-                  <button class="action-btn warning" type="submit">Request Reschedule</button>
-                </form>
-                <form method="post">
-                  {% csrf_token %}
-                  <input type="hidden" name="action" value="update_status" />
-                  <input type="hidden" name="interview_id" value="{{ interview.id }}" />
-                  <input type="hidden" name="status" value="no_show" />
-                  <button class="action-btn danger" type="submit">Mark No Show</button>
+                  <button class="action-btn warning" type="submit">Reschedule</button>
                 </form>
               </div>
             </td>
@@ -158,7 +170,7 @@
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="11" class="muted" style="text-align:center; padding: 16px;">No interviews available for this section.</td>
+            <td colspan="10" class="muted" style="text-align:center; padding: 16px;">No interviews available for this section.</td>
           </tr>
         {% endif %}
       </tbody>
@@ -170,7 +182,7 @@
   <div class="card-header">
     <div>
       <h3>Submit Interview Feedback</h3>
-      <p class="muted">Capture interview outcomes and candidate performance.</p>
+      <p class="muted">Capture outcomes and candidate performance.</p>
     </div>
   </div>
   <form class="company-form-grid" method="post">
@@ -221,30 +233,51 @@
     </div>
   </form>
 </section>
+{% endblock %}
 
-<section class="card section-block">
-  <div class="card-header">
-    <div>
-      <h3>Automation & Reminders</h3>
-      <p class="muted">Enable reminders and calendar invites for upcoming interviews.</p>
-    </div>
-  </div>
-  <div class="card-grid">
-    <article class="card">
-      <h4>24 Hour Reminder</h4>
-      <p class="muted">Send auto reminder to candidate.</p>
-      <button class="btn ghost" type="button">Enable</button>
-    </article>
-    <article class="card">
-      <h4>1 Hour Reminder</h4>
-      <p class="muted">Final interview reminder.</p>
-      <button class="btn ghost" type="button">Enable</button>
-    </article>
-    <article class="card">
-      <h4>Calendar Invite</h4>
-      <p class="muted">Generate .ics invite for interview.</p>
-      <button class="btn ghost" type="button">Generate</button>
-    </article>
-  </div>
-</section>
+{% block extra_js %}
+<script>
+  (function () {
+    const modeSelect = document.getElementById('interviewModeSelect');
+    const linkGroup = document.getElementById('interviewMeetingLinkGroup');
+    const linkInput = document.getElementById('interviewMeetingLink');
+    const locationGroup = document.getElementById('interviewLocationGroup');
+    const locationInput = document.getElementById('interviewLocation');
+    const shortlistedSelect = document.getElementById('shortlistedCandidateSelect');
+    const candidateInput = document.getElementById('interviewCandidate');
+    const jobInput = document.getElementById('interviewJobTitle');
+
+    const syncMode = () => {
+      if (!modeSelect || !linkGroup || !locationGroup || !linkInput || !locationInput) return;
+      const offline = (modeSelect.value || '').toLowerCase() === 'offline';
+      linkGroup.style.display = offline ? 'none' : 'block';
+      locationGroup.style.display = offline ? 'block' : 'none';
+      linkInput.required = !offline;
+      locationInput.required = offline;
+    };
+
+    if (modeSelect) {
+      modeSelect.addEventListener('change', syncMode);
+      syncMode();
+    }
+
+    if (shortlistedSelect && candidateInput && jobInput) {
+      shortlistedSelect.addEventListener('change', () => {
+        const option = shortlistedSelect.options[shortlistedSelect.selectedIndex];
+        if (!option) return;
+        candidateInput.value = option.dataset.candidate || '';
+        jobInput.value = option.dataset.job || '';
+      });
+    }
+
+    setInterval(() => {
+      if (document.hidden) return;
+      const activeTag = (document.activeElement && document.activeElement.tagName) || '';
+      const isTyping = ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag);
+      if (!isTyping) {
+        window.location.reload();
+      }
+    }, 60000);
+  })();
+</script>
 {% endblock %}

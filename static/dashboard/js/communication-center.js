@@ -220,6 +220,7 @@
   const bindFormActions = () => {
     const forms = document.querySelectorAll('.comm-form');
     forms.forEach((form) => {
+      if (form.dataset.serverMode === '1') return;
       const sendBtn = form.querySelector('.form-actions .btn.primary');
       const scheduleBtn = Array.from(form.querySelectorAll('.form-actions .btn.ghost')).find((btn) =>
         (btn.innerText || '').toLowerCase().includes('schedule'),
@@ -369,8 +370,21 @@
     updatePickerVisibility(groupId);
   });
 
+  document.querySelectorAll('.comm-form[data-server-mode="1"]').forEach((form) => {
+    form.addEventListener('submit', () => {
+      const editor = form.querySelector('.rich-editor');
+      const hiddenMessageInput = form.querySelector('textarea[name="message"]');
+      if (editor && hiddenMessageInput) {
+        hiddenMessageInput.value = (editor.innerText || '').trim();
+      }
+    });
+  });
+
   bindFormActions();
   bindTemplateUseButtons();
-  hydrateScheduledGrid();
-  wireScheduledCancelButtons();
+  const hasServerScheduledGrid = Boolean(document.querySelector('.schedule-grid[data-server-scheduled="1"]'));
+  if (!hasServerScheduledGrid) {
+    hydrateScheduledGrid();
+    wireScheduledCancelButtons();
+  }
 })();

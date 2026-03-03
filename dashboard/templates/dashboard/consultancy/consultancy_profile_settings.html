@@ -198,4 +198,49 @@
     </div>
   </article>
 </section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Delete My Account</h3>
+      <p class="muted">OTP verification required before deleting consultancy account.</p>
+    </div>
+  </div>
+  <div class="company-form-grid">
+    <form method="post" class="company-form-grid company-form-full">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="send_delete_otp" />
+      <div class="company-form-group">
+        <label>OTP Verification Mode</label>
+        <select name="otp_channel">
+          <option value="phone">Phone OTP (Recommended)</option>
+          <option value="email">Email OTP</option>
+        </select>
+      </div>
+      <div class="company-form-group">
+        <label>Registered Phone</label>
+        <input type="text" value="{{ registered_mobile }}" readonly />
+      </div>
+      <div class="company-form-group">
+        <label>Registered Email</label>
+        <input type="text" value="{{ registered_email }}" readonly />
+      </div>
+      <div class="company-form-actions">
+        <button class="btn ghost" type="submit">Send OTP</button>
+      </div>
+    </form>
+
+    <form method="post" class="company-form-grid company-form-full">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="delete_account" />
+      <div class="company-form-group">
+        <label>Enter OTP</label>
+        <input type="text" name="delete_otp" maxlength="6" placeholder="6-digit OTP" required />
+      </div>
+      <div class="company-form-actions">
+        <button class="btn danger" type="submit">Delete Account</button>
+      </div>
+    </form>
+  </div>
+</section>
 {% endblock %}

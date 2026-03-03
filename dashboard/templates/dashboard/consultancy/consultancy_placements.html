@@ -7,70 +7,140 @@
 <section class="page-hero">
   <div>
     <p class="eyebrow">Placements</p>
-    <h2>Placements & Commission</h2>
-    <p class="muted">Track successful hires and payout status.</p>
-  </div>
-</section>
-
-<section class="card section-block">
-  <div class="tab-nav">
-    <a class="tab-pill {% if filter_status == 'active' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=active">Active Placements</a>
-    <a class="tab-pill {% if filter_status == 'pending' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=pending">Pending Approval</a>
-    <a class="tab-pill {% if filter_status == 'completed' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=completed">Completed Placements</a>
-    <a class="tab-pill {% if filter_status == 'cancelled' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=cancelled">Cancelled</a>
+    <h2>Placement Tracker</h2>
+    <p class="muted">Monitor active, pending, completed, and cancelled placements in real time.</p>
   </div>
 </section>
 
 <section class="card section-block">
   <div class="card-header">
     <div>
-      <h3>Commission Models</h3>
-      <p class="muted">Fixed fee, percentage, and milestone values are editable here.</p>
+      <h3>Placement Status Summary</h3>
+      <p class="muted">Open any status group directly from this table.</p>
     </div>
   </div>
-  <form method="post" class="company-form-grid">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="update_commission_models" />
-    <div class="company-form-group">
-      <label>Fixed Fee</label>
-      <input type="number" name="commission_fixed_fee" min="0" step="1" value="{{ commission_defaults.fixed_fee }}" />
-      <span class="muted">INR per hire</span>
-    </div>
-    <div class="company-form-group">
-      <label>Percentage Model</label>
-      <input type="number" name="commission_percentage" min="0" step="1" value="{{ commission_defaults.percentage }}" />
-      <span class="muted">% of annual CTC</span>
-    </div>
-    <div class="company-form-group company-form-full">
-      <label>Milestone Based</label>
-      <input type="text" name="commission_milestone_notes" value="{{ commission_defaults.milestone_notes }}" />
-      <span class="muted">Stage-wise commission release text</span>
-    </div>
-    <div class="company-form-actions">
-      <button class="btn primary" type="submit">Update Commission Models</button>
-    </div>
-  </form>
-  <div class="card-grid">
-    <article class="card">
-      <h4>Fixed Fee</h4>
-      <p class="muted">INR {{ commission_defaults.fixed_fee }} per hire</p>
-    </article>
-    <article class="card">
-      <h4>Percentage Model</h4>
-      <p class="muted">{{ commission_defaults.percentage }}% of annual CTC</p>
-    </article>
-    <article class="card">
-      <h4>Milestone Based</h4>
-      <p class="muted">{{ commission_defaults.milestone_notes }}</p>
-    </article>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Total</th>
+          <th>Open</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge info">Active Placements</span></td>
+          <td>{{ status_counts.active|default:0 }}</td>
+          <td><a class="action-btn" href="{% url 'dashboard:consultancy_placements' %}?status=active">View</a></td>
+        </tr>
+        <tr>
+          <td><span class="badge warning">Pending Approval</span></td>
+          <td>{{ status_counts.pending|default:0 }}</td>
+          <td><a class="action-btn" href="{% url 'dashboard:consultancy_placements' %}?status=pending">View</a></td>
+        </tr>
+        <tr>
+          <td><span class="badge success">Completed Placements</span></td>
+          <td>{{ status_counts.completed|default:0 }}</td>
+          <td><a class="action-btn" href="{% url 'dashboard:consultancy_placements' %}?status=completed">View</a></td>
+        </tr>
+        <tr>
+          <td><span class="badge danger">Cancelled</span></td>
+          <td>{{ status_counts.cancelled|default:0 }}</td>
+          <td><a class="action-btn" href="{% url 'dashboard:consultancy_placements' %}?status=cancelled">View</a></td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </section>
+
+{% if focus_placement %}
+<section class="card section-block" id="placement-focus">
+  <div class="card-header">
+    <div>
+      <h3>{% if focus_mode == "edit" %}Edit Placement{% else %}Placement Details{% endif %}</h3>
+      <p class="muted">Application {{ focus_placement.application_id }} - Last updated {{ focus_placement.last_updated }}</p>
+    </div>
+    <div class="table-actions">
+      <a class="action-btn" href="{% url 'dashboard:consultancy_placements' %}?status={{ filter_status }}">Back to List</a>
+    </div>
+  </div>
+  {% if focus_mode == "edit" %}
+  <form method="post" class="company-form-grid">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="update_placement" />
+    <input type="hidden" name="application_id" value="{{ focus_placement.application_id }}" />
+    <div class="company-form-group">
+      <label>Candidate</label>
+      <input type="text" value="{{ focus_placement.candidate }}" readonly />
+    </div>
+    <div class="company-form-group">
+      <label>Company</label>
+      <input type="text" value="{{ focus_placement.company }}" readonly />
+    </div>
+    <div class="company-form-group">
+      <label>Job</label>
+      <input type="text" value="{{ focus_placement.job }}" readonly />
+    </div>
+    <div class="company-form-group">
+      <label>Placement Status</label>
+      <select name="placement_status" required>
+        {% for status in placement_status_choices %}
+        <option value="{{ status }}" {% if status == focus_placement.status %}selected{% endif %}>{{ status }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="company-form-group">
+      <label>Offer Package</label>
+      <input type="text" name="offer_package" value="{{ focus_placement.offer_package }}" placeholder="e.g. INR 8 LPA" />
+    </div>
+    <div class="company-form-group">
+      <label>Joining Date</label>
+      <input type="date" name="joining_date" value="{{ focus_placement.joining_date_input }}" />
+    </div>
+    <div class="company-form-group company-form-full">
+      <label>Remarks</label>
+      <textarea name="placement_notes" rows="3" placeholder="Placement remarks">{{ focus_placement.notes }}</textarea>
+    </div>
+    <div class="company-form-actions">
+      <button class="btn primary" type="submit">Save Placement</button>
+      <a class="btn ghost" href="{% url 'dashboard:consultancy_placements' %}?status={{ filter_status }}&mode=view&application_id={{ focus_placement.application_id }}#placement-focus">Cancel</a>
+    </div>
+  </form>
+  {% else %}
+  <div class="info-grid">
+    <div class="info-row"><span class="label">Candidate</span><strong>{{ focus_placement.candidate }}</strong></div>
+    <div class="info-row"><span class="label">Company</span><strong>{{ focus_placement.company }}</strong></div>
+    <div class="info-row"><span class="label">Job</span><strong>{{ focus_placement.job }}</strong></div>
+    <div class="info-row"><span class="label">Salary</span><strong>{{ focus_placement.salary }}</strong></div>
+    <div class="info-row"><span class="label">Joining Date</span><strong>{{ focus_placement.joining_date }}</strong></div>
+    <div class="info-row"><span class="label">Commission</span><strong>{{ focus_placement.commission }}</strong></div>
+    <div class="info-row"><span class="label">Status</span><strong>{{ focus_placement.status }}</strong></div>
+  </div>
+  {% if focus_placement.notes %}
+  <div class="card-subsection">
+    <h4>Remarks</h4>
+    <p class="muted">{{ focus_placement.notes }}</p>
+  </div>
+  {% endif %}
+  <div class="table-actions" style="margin-top: 16px;">
+    <a class="action-btn" href="{% url 'dashboard:consultancy_placements' %}?status={{ filter_status }}&mode=edit&application_id={{ focus_placement.application_id }}#placement-focus">Edit</a>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 
 <section class="card">
   <div class="card-header">
     <div>
       <h3>Placement Tracker</h3>
-      <p class="muted">Candidate, company, job, salary, and commission.</p>
+      <p class="muted">Candidate, company, job, salary, commission, and action controls.</p>
+    </div>
+    <div class="tab-nav">
+      <a class="tab-pill {% if filter_status == 'active' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=active">Active</a>
+      <a class="tab-pill {% if filter_status == 'pending' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=pending">Pending</a>
+      <a class="tab-pill {% if filter_status == 'completed' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=completed">Completed</a>
+      <a class="tab-pill {% if filter_status == 'cancelled' %}active{% endif %}" href="{% url 'dashboard:consultancy_placements' %}?status=cancelled">Cancelled</a>
     </div>
   </div>
   <div class="table-wrap">
@@ -84,6 +154,7 @@
           <th>Joining Date</th>
           <th>Commission</th>
           <th>Status</th>
+          <th>Last Updated</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -102,24 +173,24 @@
                 {{ row.status }}
               </span>
             </td>
+            <td>{{ row.last_updated }}</td>
             <td>
-              <form method="post" class="table-actions">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="update_placement_status" />
-                <input type="hidden" name="application_id" value="{{ row.application_id }}" />
-                <select name="placement_status">
-                  {% for status in placement_status_choices %}
-                    <option value="{{ status }}" {% if status == row.status %}selected{% endif %}>{{ status }}</option>
-                  {% endfor %}
-                </select>
-                <button class="action-btn" type="submit">Update</button>
-              </form>
+              <div class="table-actions">
+                <a class="action-btn" href="{% url 'dashboard:consultancy_placements' %}?status={{ filter_status }}&mode=view&application_id={{ row.application_id }}#placement-focus">View</a>
+                <a class="action-btn" href="{% url 'dashboard:consultancy_placements' %}?status={{ filter_status }}&mode=edit&application_id={{ row.application_id }}#placement-focus">Edit</a>
+                <form method="post" onsubmit="return confirm('Move this placement to cancelled?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete_placement" />
+                  <input type="hidden" name="application_id" value="{{ row.application_id }}" />
+                  <button class="action-btn danger" type="submit">Delete</button>
+                </form>
+              </div>
             </td>
           </tr>
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="8" class="muted" style="text-align:center; padding: 16px;">No placements available for this section.</td>
+            <td colspan="9" class="muted" style="text-align:center; padding: 16px;">No placements available for this section.</td>
           </tr>
         {% endif %}
       </tbody>
@@ -127,3 +198,16 @@
   </div>
 </section>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    if ("{{ focus_mode }}" === "edit") return;
+    setInterval(function () {
+      if (document.hidden) return;
+      window.location.reload();
+    }, 45000);
+  })();
+</script>
+{% endblock %}
+

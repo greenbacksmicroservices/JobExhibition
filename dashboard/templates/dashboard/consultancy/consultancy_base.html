@@ -26,7 +26,7 @@
           </div>
 </div>
 
-        <div class="company-user consultancy-user">
+        <a class="company-user consultancy-user profile-shortcut" href="{% url 'dashboard:consultancy_profile_settings' %}">
           <div class="company-logo-stack">
             <div class="company-logo" style="--progress: {{ consultancy.profile_completion|default:0 }};">
               {% if consultancy.profile_image %}
@@ -44,7 +44,7 @@
             <small class="muted">{{ consultancy.contact_position }}</small>
             {% endif %}
           </div>
-        </div>
+        </a>
 
         <nav class="sidebar-nav">
           <a class="nav-item {% if request.resolver_match.url_name == 'consultancy_dashboard' %}active{% endif %}" href="{% url 'dashboard:consultancy_dashboard' %}">
@@ -65,7 +65,10 @@
               <a class="nav-sub{% if request.GET.status == 'draft' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=draft">Draft Jobs</a>
               <a class="nav-sub{% if request.GET.status == 'active' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=active">Active Jobs</a>
               <a class="nav-sub{% if request.GET.status == 'paused' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=paused">Paused Jobs</a>
+              <a class="nav-sub{% if request.GET.status == 'rejected' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=rejected">Rejected Jobs</a>
               <a class="nav-sub{% if request.GET.status == 'closed' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=closed">Closed Jobs</a>
+              <a class="nav-sub{% if request.GET.status == 'expired' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=expired">Expired Jobs</a>
+              <a class="nav-sub{% if request.GET.status == 'archived' %} active{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=archived">Archived Jobs</a>
             </div>
           </div>
           <a class="nav-item {% if request.resolver_match.url_name == 'consultancy_assigned_jobs' %}active{% endif %}" href="{% url 'dashboard:consultancy_assigned_jobs' %}">
@@ -104,10 +107,6 @@
             <span class="nav-icon"><i class="fa-solid fa-credit-card"></i></span>
             <span>Billing / Subscription</span>
           </a>
-          <a class="nav-item {% if request.resolver_match.url_name == 'consultancy_communication' %}active{% endif %}" href="{% url 'dashboard:consultancy_communication' %}">
-            <span class="nav-icon"><i class="fa-solid fa-comments"></i></span>
-            <span>Communication Center</span>
-          </a>
           <a class="nav-item {% if request.resolver_match.url_name == 'consultancy_reports' %}active{% endif %}" href="{% url 'dashboard:consultancy_reports' %}">
             <span class="nav-icon"><i class="fa-solid fa-chart-pie"></i></span>
             <span>Reports</span>
@@ -116,8 +115,8 @@
             <span class="nav-icon"><i class="fa-solid fa-gear"></i></span>
             <span>Profile & Settings</span>
           </a>
-          <div class="nav-section {% if request.resolver_match.url_name == 'consultancy_support' or request.resolver_match.url_name == 'consultancy_support_create' or request.resolver_match.url_name == 'consultancy_support_tickets' or request.resolver_match.url_name == 'consultancy_support_open' or request.resolver_match.url_name == 'consultancy_support_closed' or request.resolver_match.url_name == 'consultancy_support_knowledge' or request.resolver_match.url_name == 'consultancy_support_chat' or request.resolver_match.url_name == 'consultancy_support_detail' %}open{% endif %}">
-            <button class="nav-item nav-toggle" type="button" data-target="consultancySupport" aria-expanded="{% if request.resolver_match.url_name == 'consultancy_support' or request.resolver_match.url_name == 'consultancy_support_create' or request.resolver_match.url_name == 'consultancy_support_tickets' or request.resolver_match.url_name == 'consultancy_support_open' or request.resolver_match.url_name == 'consultancy_support_closed' or request.resolver_match.url_name == 'consultancy_support_knowledge' or request.resolver_match.url_name == 'consultancy_support_chat' or request.resolver_match.url_name == 'consultancy_support_detail' %}true{% else %}false{% endif %}" aria-controls="consultancySupport">
+          <div class="nav-section {% if request.resolver_match.url_name == 'consultancy_support' or request.resolver_match.url_name == 'consultancy_support_create' or request.resolver_match.url_name == 'consultancy_support_tickets' or request.resolver_match.url_name == 'consultancy_support_open' or request.resolver_match.url_name == 'consultancy_support_closed' or request.resolver_match.url_name == 'consultancy_support_chat' or request.resolver_match.url_name == 'consultancy_support_detail' %}open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="consultancySupport" aria-expanded="{% if request.resolver_match.url_name == 'consultancy_support' or request.resolver_match.url_name == 'consultancy_support_create' or request.resolver_match.url_name == 'consultancy_support_tickets' or request.resolver_match.url_name == 'consultancy_support_open' or request.resolver_match.url_name == 'consultancy_support_closed' or request.resolver_match.url_name == 'consultancy_support_chat' or request.resolver_match.url_name == 'consultancy_support_detail' %}true{% else %}false{% endif %}" aria-controls="consultancySupport">
               <div class="nav-label">
                 <span class="nav-icon"><i class="fa-solid fa-headset"></i></span>
                 <span>Customer Support</span>
@@ -129,7 +128,6 @@
               <a class="nav-sub{% if request.resolver_match.url_name == 'consultancy_support_tickets' %} active{% endif %}" href="{% url 'dashboard:consultancy_support_tickets' %}">My Tickets</a>
               <a class="nav-sub{% if request.resolver_match.url_name == 'consultancy_support_open' %} active{% endif %}" href="{% url 'dashboard:consultancy_support_open' %}">Open Tickets</a>
               <a class="nav-sub{% if request.resolver_match.url_name == 'consultancy_support_closed' %} active{% endif %}" href="{% url 'dashboard:consultancy_support_closed' %}">Closed Tickets</a>
-              <a class="nav-sub{% if request.resolver_match.url_name == 'consultancy_support_knowledge' %} active{% endif %}" href="{% url 'dashboard:consultancy_support_knowledge' %}">Knowledge Base</a>
               <a class="nav-sub{% if request.resolver_match.url_name == 'consultancy_support_chat' %} active{% endif %}" href="{% url 'dashboard:consultancy_support_chat' %}">Live Chat</a>
             </div>
           </div>
@@ -181,7 +179,7 @@
                     {% endfor %}
                   </ul>
                   <div style="margin-top: 10px;">
-                    <a href="{% url 'dashboard:consultancy_communication' %}" class="action-link">Open communication center</a>
+                    <a href="{% url 'dashboard:consultancy_messages' %}" class="action-link">Open messages</a>
                   </div>
                   {% else %}
                   <p class="muted">No notifications yet.</p>

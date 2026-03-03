@@ -76,3 +76,12 @@
   </article>
 </section>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+  setInterval(function () {
+    if (document.hidden) return;
+    window.location.reload();
+  }, 60000);
+</script>
+{% endblock %}

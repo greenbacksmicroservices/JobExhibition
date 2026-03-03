@@ -109,6 +109,8 @@ OTP_SESSION_PREFIX = "registration_otp_"
 LOGIN_OTP_SESSION_KEY = "login_otp_payload"
 PASSWORD_RESET_OTP_SESSION_KEY = "password_reset_otp_payload"
 CANDIDATE_DELETE_OTP_SESSION_KEY = "candidate_delete_otp_payload"
+COMPANY_DELETE_OTP_SESSION_KEY = "company_delete_otp_payload"
+CONSULTANCY_DELETE_OTP_SESSION_KEY = "consultancy_delete_otp_payload"
 OTP_TTL_SECONDS = 10 * 60
 MIN_PROFILE_COMPLETION_TO_APPLY = 0
 PASSWORD_RESET_TTL_MINUTES = 30
@@ -128,14 +130,14 @@ CONSULTANCY_JOB_LIFECYCLE_TO_STATUS = {
     "Draft": "Pending",
     "Active": "Approved",
     "Paused": "Pending",
-    "Closed": "Rejected",
-    "Expired": "Rejected",
+    "Closed": "Approved",
+    "Expired": "Approved",
     "Archived": "Reported",
 }
 STATUS_TO_CONSULTANCY_JOB_LIFECYCLE = {
     "Approved": "Active",
     "Pending": "Draft",
-    "Rejected": "Closed",
+    "Rejected": "Rejected",
     "Reported": "Archived",
 }
 COMMON_SKILL_KEYWORDS = [
@@ -635,6 +637,60 @@ def _get_or_create_company_candidate_thread(company, application):
     return thread
 
 
+def _get_or_create_consultancy_candidate_thread(consultancy, application):
+    if not consultancy or not application:
+        return None
+
+    thread = (
+        MessageThread.objects.filter(
+            thread_type="candidate_consultancy",
+            consultancy=consultancy,
+            application=application,
+        )
+        .select_related("job", "candidate", "company", "application")
+        .first()
+    )
+    if thread:
+        return thread
+
+    job = application.job
+    if not job and application.job_title:
+        job = (
+            Job.objects.filter(
+                recruiter_email__iexact=consultancy.email,
+                title__iexact=application.job_title,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if not job:
+            job = (
+                Job.objects.filter(
+                    recruiter_name__iexact=consultancy.name,
+                    title__iexact=application.job_title,
+                )
+                .order_by("-created_at")
+                .first()
+            )
+    candidate = None
+    if application.candidate_email:
+        candidate = Candidate.objects.filter(email__iexact=application.candidate_email).first()
+    company = _get_company_for_job(job) or Company.objects.filter(name__iexact=application.company).first()
+
+    thread = _get_or_create_thread(
+        "candidate_consultancy",
+        application,
+        job=job,
+        candidate=candidate,
+        company=company,
+        consultancy=consultancy,
+    )
+    if thread and not thread.last_message_at:
+        thread.last_message_at = timezone.now()
+        thread.save(update_fields=["last_message_at"])
+    return thread
+
+
 def _get_or_create_consultancy_support_thread(consultancy):
     if not consultancy:
         return None
@@ -699,6 +755,232 @@ def _get_or_create_candidate_support_thread(candidate):
     thread.last_message_at = welcome.created_at
     thread.save(update_fields=["last_message_at"])
     return thread
+
+
+def _support_status_badge_class(status_value):
+    normalized = (status_value or "").strip().lower()
+    if normalized in {"resolved", "closed"}:
+        return "success"
+    if normalized in {"in progress", "in-progress"}:
+        return "info"
+    if normalized in {"in review", "review"}:
+        return "info"
+    if normalized in {"waiting", "awaiting response"}:
+        return "warning"
+    if normalized == "open":
+        return "neutral"
+    return "neutral"
+
+
+def _parse_tagged_metadata(first_line, marker):
+    line = (first_line or "").strip()
+    if not line.startswith("[") or "]" not in line:
+        return {}, line
+    close_index = line.find("]")
+    if close_index <= 1:
+        return {}, line
+    token = line[1:close_index]
+    parts = [part.strip() for part in token.split("|") if part.strip()]
+    if not parts or parts[0].lower() != marker.lower():
+        return {}, line
+    metadata = {}
+    for item in parts[1:]:
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        metadata[key.strip().lower()] = value.strip()
+    remainder = line[close_index + 1 :].strip()
+    return metadata, remainder
+
+
+def _parse_legacy_tag(first_line, marker):
+    line = (first_line or "").strip()
+    prefix = f"[{marker}:"
+    lower_line = line.lower()
+    if not lower_line.startswith(prefix.lower()) or "]" not in line:
+        return {}, line
+    close_index = line.find("]")
+    if close_index <= len(prefix):
+        return {}, line
+    raw_value = line[len(prefix):close_index].strip()
+    remainder = line[close_index + 1 :].strip()
+    if not raw_value:
+        return {}, remainder
+    return {"category": raw_value}, remainder
+
+
+def _compose_ticket_body(category, priority, subject, description):
+    category_value = (category or "general").strip().lower() or "general"
+    priority_value = (priority or "medium").strip().lower() or "medium"
+    clean_subject = (subject or "Support Request").strip()
+    clean_description = (description or "").strip()
+    return (
+        f"[Ticket|category={category_value}|priority={priority_value}|status=Open] {clean_subject}\n"
+        f"{clean_description}"
+    ).strip()
+
+
+def _compose_ticket_status_update(ticket_id, status, note=""):
+    clean_ticket = (ticket_id or "").strip()
+    clean_status = (status or "Open").strip().title()
+    clean_note = (note or "").strip()
+    prefix = f"[TicketStatus|ticket={clean_ticket}|status={clean_status}]"
+    return f"{prefix} {clean_note}".strip()
+
+
+def _compose_grievance_body(category, subject, description):
+    category_value = (category or "other").strip().lower() or "other"
+    clean_subject = (subject or "Grievance").strip()
+    clean_description = (description or "").strip()
+    return (
+        f"[Grievance|category={category_value}|status=Open] {clean_subject}\n"
+        f"{clean_description}"
+    ).strip()
+
+
+def _parse_ticket_body(raw_body):
+    body = (raw_body or "").strip()
+    if not body:
+        return None
+    lines = body.splitlines()
+    first_line = (lines[0] or "").strip()
+    metadata, subject = _parse_tagged_metadata(first_line, "Ticket")
+    if not metadata:
+        metadata, subject = _parse_legacy_tag(first_line, "Ticket")
+    if not metadata:
+        return None
+    description = "\n".join(lines[1:]).strip()
+    category = (metadata.get("category") or "general").strip().title()
+    priority = (metadata.get("priority") or "medium").strip().title()
+    status = (metadata.get("status") or "Open").strip().title()
+    return {
+        "category": category,
+        "priority": priority,
+        "status": status,
+        "subject": subject or "Support Request",
+        "description": description,
+    }
+
+
+def _parse_grievance_body(raw_body):
+    body = (raw_body or "").strip()
+    if not body:
+        return None
+    lines = body.splitlines()
+    first_line = (lines[0] or "").strip()
+    metadata, subject = _parse_tagged_metadata(first_line, "Grievance")
+    if not metadata:
+        metadata, subject = _parse_legacy_tag(first_line, "Grievance")
+    if not metadata:
+        return None
+    description = "\n".join(lines[1:]).strip()
+    category = (metadata.get("category") or "other").strip().title()
+    status = (metadata.get("status") or "Open").strip().title()
+    return {
+        "category": category,
+        "status": status,
+        "subject": subject or "Grievance",
+        "description": description,
+    }
+
+
+def _parse_ticket_status_update(raw_body):
+    body = (raw_body or "").strip()
+    if not body:
+        return None
+    first_line = body.splitlines()[0].strip()
+    metadata, _ = _parse_tagged_metadata(first_line, "TicketStatus")
+    ticket_id = (metadata.get("ticket") or "").strip()
+    status = (metadata.get("status") or "").strip()
+    if not ticket_id or not status:
+        return None
+    return {
+        "ticket_id": ticket_id,
+        "status": status.title(),
+    }
+
+
+def _extract_support_tickets(message_items, owner_role):
+    tickets = []
+    ticket_map = {}
+    for msg in message_items:
+        parsed = _parse_ticket_body(msg.body)
+        if not parsed or (msg.sender_role or "") != owner_role:
+            continue
+        ticket_id = f"SUP-{msg.id:04d}"
+        entry = {
+            "id": ticket_id,
+            "subject": parsed["subject"],
+            "category": parsed["category"],
+            "priority": parsed["priority"],
+            "status": parsed["status"],
+            "status_class": _support_status_badge_class(parsed["status"]),
+            "description": parsed["description"] or "--",
+            "created_at": msg.created_at,
+            "created_display": timezone.localtime(msg.created_at).strftime("%d %b %Y, %I:%M %p"),
+            "updated_display": timezone.localtime(msg.created_at).strftime("%d %b %Y, %I:%M %p"),
+        }
+        tickets.append(entry)
+        ticket_map[ticket_id] = entry
+
+    for msg in message_items:
+        status_update = _parse_ticket_status_update(msg.body)
+        if not status_update:
+            continue
+        target = ticket_map.get(status_update["ticket_id"])
+        if not target:
+            continue
+        target["status"] = status_update["status"]
+        target["status_class"] = _support_status_badge_class(target["status"])
+        target["updated_display"] = timezone.localtime(msg.created_at).strftime("%d %b %Y, %I:%M %p")
+        target["_manual_status"] = True
+
+    admin_messages = [msg for msg in message_items if msg.sender_role == "admin"]
+    for ticket in tickets:
+        if ticket.get("_manual_status"):
+            continue
+        has_admin_reply = any(msg.created_at > ticket["created_at"] for msg in admin_messages)
+        if has_admin_reply and ticket["status"] in {"Open", "Waiting"}:
+            ticket["status"] = "In Progress"
+            ticket["status_class"] = _support_status_badge_class(ticket["status"])
+            latest_reply = next(
+                (
+                    msg
+                    for msg in reversed(admin_messages)
+                    if msg.created_at > ticket["created_at"]
+                ),
+                None,
+            )
+            if latest_reply:
+                ticket["updated_display"] = timezone.localtime(latest_reply.created_at).strftime("%d %b %Y, %I:%M %p")
+
+    return sorted(tickets, key=lambda item: item["created_at"], reverse=True)
+
+
+def _extract_grievances(message_items, owner_role):
+    grievances = []
+    admin_messages = [msg for msg in message_items if msg.sender_role == "admin"]
+    for msg in message_items:
+        parsed = _parse_grievance_body(msg.body)
+        if not parsed or (msg.sender_role or "") != owner_role:
+            continue
+        status = parsed["status"]
+        has_reply = any(admin_msg.created_at > msg.created_at for admin_msg in admin_messages)
+        if status in {"Open", "Waiting"} and has_reply:
+            status = "In Review"
+        grievances.append(
+            {
+                "id": f"GRV-{msg.id:04d}",
+                "subject": parsed["subject"],
+                "category": parsed["category"],
+                "description": parsed["description"] or "--",
+                "status": status,
+                "status_class": _support_status_badge_class(status),
+                "submitted_display": timezone.localtime(msg.created_at).strftime("%d %b %Y, %I:%M %p"),
+                "created_at": msg.created_at,
+            }
+        )
+    return sorted(grievances, key=lambda item: item["created_at"], reverse=True)
 
 
 def _thread_access_role(request, thread):
@@ -933,6 +1215,60 @@ def _validate_session_otp(request, session_key, phone, otp_value):
 
 def _clear_session_otp(request, session_key):
     request.session.pop(session_key, None)
+
+
+def _issue_email_session_otp(request, session_key, email, extra_payload=None):
+    target_email = (email or "").strip().lower()
+    if not target_email:
+        request.session.pop(session_key, None)
+        return "", "Email address is required."
+
+    otp_value = f"{random.randint(100000, 999999)}"
+    subject = "Job Exhibition OTP Verification"
+    message = (
+        f"Your OTP is {otp_value}. "
+        f"It is valid for {OTP_TTL_SECONDS // 60} minutes."
+    )
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+    sent_count = send_mail(
+        subject,
+        message,
+        from_email,
+        [target_email],
+        fail_silently=True,
+    )
+    allow_debug_fallback = bool(
+        getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False)
+        or getattr(settings, "DEBUG", False)
+    )
+    if sent_count <= 0 and not allow_debug_fallback:
+        request.session.pop(session_key, None)
+        return "", "Unable to send OTP email right now. Please try again."
+
+    payload = {
+        "email": target_email,
+        "otp": otp_value,
+        "created_at": int(timezone.now().timestamp()),
+    }
+    if extra_payload:
+        payload.update(extra_payload)
+    request.session[session_key] = payload
+    return otp_value, ""
+
+
+def _validate_email_session_otp(request, session_key, email, otp_value):
+    payload = request.session.get(session_key) or {}
+    expected_email = (payload.get("email") or "").strip().lower()
+    expected_otp = (payload.get("otp") or "").strip()
+    created_at = int(payload.get("created_at") or 0)
+    now_ts = int(timezone.now().timestamp())
+    if not expected_email or not expected_otp:
+        return False
+    if expected_email != (email or "").strip().lower():
+        return False
+    if now_ts - created_at > OTP_TTL_SECONDS:
+        return False
+    return expected_otp == (otp_value or "").strip()
 
 
 def _issue_registration_otp(request, flow_key, phone):
@@ -2864,6 +3200,7 @@ def consultancy_jobs_view(request):
 
     filter_status = (request.GET.get("status") or "").strip().lower()
     action = (request.GET.get("action") or "").strip().lower()
+    query_text = (request.GET.get("q") or "").strip()
     lifecycle_filters = {
         "draft": "Draft",
         "active": "Active",
@@ -2876,6 +3213,17 @@ def consultancy_jobs_view(request):
     jobs_qs = base_qs
     if filter_status in lifecycle_filters:
         jobs_qs = jobs_qs.filter(lifecycle_status=lifecycle_filters[filter_status])
+    elif filter_status == "rejected":
+        jobs_qs = jobs_qs.filter(status="Rejected")
+    if query_text:
+        jobs_qs = jobs_qs.filter(
+            Q(job_id__icontains=query_text)
+            | Q(title__icontains=query_text)
+            | Q(company__icontains=query_text)
+            | Q(category__icontains=query_text)
+            | Q(location__icontains=query_text)
+            | Q(summary__icontains=query_text)
+        )
     jobs_qs = jobs_qs.order_by("-created_at", "-id")
 
     edit_job = None
@@ -2942,6 +3290,8 @@ def consultancy_jobs_view(request):
         section_title = "Edit Job" if action == "edit" else "View Job"
     elif action == "new":
         section_title = "Post New Job"
+    elif filter_status == "rejected":
+        section_title = "Rejected Jobs"
     elif filter_status in lifecycle_filters:
         section_title = f"{filter_status.title()} Jobs"
     else:
@@ -2952,6 +3302,7 @@ def consultancy_jobs_view(request):
         "draft": base_qs.filter(lifecycle_status="Draft").count(),
         "active": base_qs.filter(lifecycle_status="Active").count(),
         "paused": base_qs.filter(lifecycle_status="Paused").count(),
+        "rejected": base_qs.filter(status="Rejected").count(),
         "closed": base_qs.filter(lifecycle_status="Closed").count(),
         "expired": base_qs.filter(lifecycle_status="Expired").count(),
         "archived": base_qs.filter(lifecycle_status="Archived").count(),
@@ -2972,6 +3323,46 @@ def consultancy_jobs_view(request):
             }
         )
     total_applications = Application.objects.filter(job__in=base_qs).count()
+    total_views = base_qs.aggregate(total=Sum("applicants")).get("total") or 0
+    total_clicks = MessageThread.objects.filter(
+        consultancy=consultancy,
+        job__in=base_qs,
+        application__isnull=False,
+    ).count()
+    total_impressions = total_views + total_clicks
+    overview_metrics = {
+        "total_views": total_views,
+        "total_clicks": total_clicks,
+        "total_impressions": total_impressions,
+        "total_applications": total_applications,
+    }
+    if action == "view" and edit_job:
+        view_applications = Application.objects.filter(consultancy=consultancy, job=edit_job).count()
+        view_clicks = MessageThread.objects.filter(
+            consultancy=consultancy,
+            job=edit_job,
+            application__isnull=False,
+        ).count()
+        view_views = edit_job.applicants or view_applications
+        overview_metrics = {
+            "total_views": view_views,
+            "total_clicks": view_clicks,
+            "total_impressions": view_views + view_clicks,
+            "total_applications": view_applications,
+        }
+
+    form_mode = (
+        "view"
+        if action == "view" and edit_job
+        else "edit"
+        if action == "edit"
+        else "new"
+        if action == "new"
+        else "list"
+    )
+    metrics_api_url = ""
+    if form_mode == "view" and edit_job:
+        metrics_api_url = f"{reverse('dashboard:consultancy_jobs_metrics_api')}?job_id={edit_job.job_id}"
 
     return render(
         request,
@@ -2984,18 +3375,55 @@ def consultancy_jobs_view(request):
             "section_title": section_title,
             "action": action,
             "edit_job": edit_job,
-            "form_mode": (
-                "view"
-                if action == "view"
-                else "edit"
-                if action == "edit"
-                else "new"
-                if action == "new"
-                else "list"
-            ),
+            "form_mode": form_mode,
             "assigned_jobs_count": AssignedJob.objects.filter(consultancy=consultancy).count(),
             "total_applications": total_applications,
+            "overview_metrics": overview_metrics,
+            "search_query": query_text,
+            "metrics_api_url": metrics_api_url,
         },
+    )
+
+
+@consultancy_login_required
+def consultancy_jobs_metrics_api(request):
+    consultancy_id = request.session.get("consultancy_id")
+    consultancy = Consultancy.objects.filter(id=consultancy_id).first()
+    if not consultancy:
+        return JsonResponse({"error": "unauthorized"}, status=401)
+
+    base_qs = _consultancy_posted_jobs_queryset(consultancy)
+    selected_job_id = (request.GET.get("job_id") or "").strip()
+    if selected_job_id:
+        selected_job = base_qs.filter(job_id=selected_job_id).first()
+        if not selected_job:
+            return JsonResponse({"error": "job_not_found"}, status=404)
+        total_applications = Application.objects.filter(consultancy=consultancy, job=selected_job).count()
+        total_clicks = MessageThread.objects.filter(
+            consultancy=consultancy,
+            job=selected_job,
+            application__isnull=False,
+        ).count()
+        total_views = selected_job.applicants or total_applications
+    else:
+        total_applications = Application.objects.filter(job__in=base_qs).count()
+        total_views = base_qs.aggregate(total=Sum("applicants")).get("total") or 0
+        total_clicks = MessageThread.objects.filter(
+            consultancy=consultancy,
+            job__in=base_qs,
+            application__isnull=False,
+        ).count()
+
+    return JsonResponse(
+        {
+            "metrics": {
+                "total_views": total_views,
+                "total_clicks": total_clicks,
+                "total_impressions": total_views + total_clicks,
+                "total_applications": total_applications,
+            },
+            "updated_at": timezone.now().isoformat(),
+        }
     )
 
 
@@ -3105,51 +3533,72 @@ def consultancy_candidate_pool_view(request):
         action = (request.POST.get("action") or "add_candidate").strip()
         if action == "submit_candidate":
             candidate_id = request.POST.get("candidate_id")
-            assigned_job_id = request.POST.get("assigned_job_id")
+            assigned_job_id = (request.POST.get("assigned_job_id") or "").strip()
             notes = (request.POST.get("notes") or "").strip()
             candidate = Candidate.objects.filter(id=candidate_id, source_consultancy=consultancy).first()
-            assignment = AssignedJob.objects.filter(id=assigned_job_id, consultancy=consultancy).select_related("job").first()
-            if not candidate or not assignment:
+            assignment = None
+            selected_job = None
+            if assigned_job_id.startswith("assigned:"):
+                assignment_pk = assigned_job_id.split(":", 1)[1]
+                assignment = (
+                    AssignedJob.objects.filter(id=assignment_pk, consultancy=consultancy)
+                    .select_related("job")
+                    .first()
+                )
+                if assignment:
+                    selected_job = assignment.job
+            elif assigned_job_id.startswith("job:"):
+                job_pk = assigned_job_id.split(":", 1)[1]
+                selected_job = _consultancy_posted_jobs_queryset(consultancy).filter(id=job_pk).first()
+            elif assigned_job_id.isdigit():
+                assignment = (
+                    AssignedJob.objects.filter(id=assigned_job_id, consultancy=consultancy)
+                    .select_related("job")
+                    .first()
+                )
+                if assignment:
+                    selected_job = assignment.job
+
+            if not candidate or not selected_job:
                 messages.error(request, "Select a valid candidate and assigned job.")
             else:
-                job = assignment.job
                 existing = Application.objects.filter(
                     consultancy=consultancy,
                     candidate_email__iexact=candidate.email,
-                    job=job,
+                    job=selected_job,
                 ).exists()
                 if existing:
                     messages.info(request, "Candidate already submitted for this job.")
                 else:
-                      application = Application.objects.create(
-                          application_id=_generate_prefixed_id("APP", 1001, Application, "application_id"),
-                          candidate_name=candidate.name,
-                          candidate_email=candidate.email,
+                    application = Application.objects.create(
+                        application_id=_generate_prefixed_id("APP", 1001, Application, "application_id"),
+                        candidate_name=candidate.name,
+                        candidate_email=candidate.email,
                         candidate_phone=candidate.phone,
                         candidate_location=candidate.location,
                         education=candidate.education,
                         experience=candidate.experience,
                         skills=candidate.skills,
                         expected_salary=candidate.expected_salary,
-                        job_title=job.title,
-                        company=job.company,
+                        job_title=selected_job.title,
+                        company=selected_job.company,
                         status="Applied",
                         applied_date=timezone.localdate(),
-                          resume=candidate.resume,
-                          notes=notes,
-                          job=job,
-                          consultancy=consultancy,
-                      )
-                      Job.objects.filter(pk=job.pk).update(applicants=F("applicants") + 1)
-                      company_ref = _get_company_for_job(job)
-                      _ensure_message_threads(
-                          application,
-                          job=job,
-                          candidate=candidate,
-                          company=company_ref,
-                          consultancy=consultancy,
-                      )
-                      messages.success(request, "Candidate submitted successfully.")
+                        resume=candidate.resume,
+                        notes=notes,
+                        job=selected_job,
+                        consultancy=consultancy,
+                    )
+                    Job.objects.filter(pk=selected_job.pk).update(applicants=F("applicants") + 1)
+                    company_ref = _get_company_for_job(selected_job)
+                    _ensure_message_threads(
+                        application,
+                        job=selected_job,
+                        candidate=candidate,
+                        company=company_ref,
+                        consultancy=consultancy,
+                    )
+                    messages.success(request, "Candidate submitted successfully.")
             return redirect("dashboard:consultancy_candidate_pool")
 
         name = (request.POST.get("candidate_name") or "").strip()
@@ -3178,8 +3627,9 @@ def consultancy_candidate_pool_view(request):
             candidate.source_consultancy = consultancy
             if request.FILES.get("resume"):
                 candidate.resume = request.FILES["resume"]
-            candidate.profile_completion = _calculate_candidate_completion(candidate)
             candidate.save()
+            candidate.profile_completion = _calculate_candidate_completion(candidate)
+            candidate.save(update_fields=["profile_completion"])
             messages.success(request, "Candidate saved to pool.")
         return redirect("dashboard:consultancy_candidate_pool")
 
@@ -3202,6 +3652,31 @@ def consultancy_candidate_pool_view(request):
 
     selected_job_id = (request.GET.get("job_id") or "").strip()
     assigned_jobs = AssignedJob.objects.filter(consultancy=consultancy).select_related("job").order_by("-assigned_date")
+    posted_jobs = _consultancy_posted_jobs_queryset(consultancy).order_by("-created_at")
+    assigned_job_ids = {assignment.job_id for assignment in assigned_jobs if assignment.job_id}
+    job_submit_options = []
+    for assignment in assigned_jobs:
+        if not assignment.job:
+            continue
+        job_submit_options.append(
+            {
+                "value": f"assigned:{assignment.id}",
+                "job_id": assignment.job.job_id,
+                "label": f"{assignment.job.title} ({assignment.job.job_id})",
+                "source": "Assigned",
+            }
+        )
+    for job in posted_jobs:
+        if job.id in assigned_job_ids:
+            continue
+        job_submit_options.append(
+            {
+                "value": f"job:{job.id}",
+                "job_id": job.job_id,
+                "label": f"{job.title} ({job.job_id})",
+                "source": "Posted",
+            }
+        )
 
     return render(
         request,
@@ -3210,6 +3685,7 @@ def consultancy_candidate_pool_view(request):
             "consultancy": consultancy,
             "candidates": candidates,
             "assigned_jobs": assigned_jobs,
+            "job_submit_options": job_submit_options,
             "selected_job_id": selected_job_id,
         },
     )
@@ -3221,48 +3697,296 @@ def consultancy_applications_view(request):
     consultancy = Consultancy.objects.filter(id=consultancy_id).first()
     if not consultancy:
         return redirect("dashboard:login")
-
+    base_qs = Application.objects.filter(consultancy=consultancy)
     job_filter = (request.GET.get("job_id") or request.POST.get("job_id") or "").strip()
+    search = (request.GET.get("search") or "").strip()
+    status_filter = (request.GET.get("status") or "all").strip()
+
+    def _build_candidate_map(email_values):
+        normalized = []
+        seen = set()
+        for raw in email_values:
+            value = (raw or "").strip().lower()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+        if not normalized:
+            return {}
+        query = Q()
+        for email_value in normalized:
+            query |= Q(email__iexact=email_value)
+        rows = (
+            Candidate.objects.filter(query)
+            .prefetch_related("resumes")
+            .only(
+                "id",
+                "email",
+                "resume",
+                "phone",
+                "location",
+                "experience",
+                "current_company",
+                "notice_period",
+                "expected_salary",
+                "profile_image",
+            )
+        )
+        return {
+            (candidate.email or "").strip().lower(): candidate
+            for candidate in rows
+            if (candidate.email or "").strip()
+        }
+
+    def _resolve_resume(app, candidate_map):
+        if app.resume:
+            return app.resume
+        candidate = None
+        app_email = (app.candidate_email or "").strip().lower()
+        if app_email:
+            candidate = candidate_map.get(app_email)
+            if not candidate:
+                candidate = (
+                    Candidate.objects.filter(email__iexact=app.candidate_email)
+                    .prefetch_related("resumes")
+                    .first()
+                )
+                if candidate and candidate.email:
+                    candidate_map[candidate.email.strip().lower()] = candidate
+        return _resolve_candidate_resume_source(candidate)
 
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
+        next_url = request.POST.get("next") or request.get_full_path()
+
         if action == "update_status":
             application_id = request.POST.get("application_id")
-            new_status = request.POST.get("status")
+            new_status = (request.POST.get("status") or "").strip()
+            rejection_remark = (request.POST.get("rejection_remark") or "").strip()
             if application_id and new_status:
+                if new_status == "Rejected" and not rejection_remark:
+                    messages.error(request, "Please add rejection remark before marking candidate as Rejected.")
+                    return redirect(next_url)
                 app = Application.objects.filter(
                     application_id=application_id,
                     consultancy=consultancy,
                 ).first()
                 if app:
-                    placement_status = _sync_placement_status(new_status, app.placement_status)
-                    Application.objects.filter(pk=app.pk).update(
-                        status=new_status,
-                        placement_status=placement_status,
-                        updated_at=timezone.now(),
-                    )
-                messages.success(request, "Application status updated.")
-        if job_filter:
-            return redirect(f"{request.path}?job_id={job_filter}")
-        return redirect("dashboard:consultancy_applications")
+                    update_fields = {
+                        "status": new_status,
+                        "placement_status": _sync_placement_status(new_status, app.placement_status),
+                        "updated_at": timezone.now(),
+                    }
+                    if new_status == "Rejected":
+                        update_fields["notes"] = rejection_remark
+                    Application.objects.filter(pk=app.pk).update(**update_fields)
+                    messages.success(request, "Application status updated.")
+                else:
+                    messages.error(request, "Unable to update application status.")
 
-    applications = []
-    apps_qs = Application.objects.filter(consultancy=consultancy).order_by("-applied_date", "-created_at")
+        elif action == "schedule_interview":
+            application_id = request.POST.get("application_id")
+            interview_date = parse_date(request.POST.get("interview_date")) if request.POST.get("interview_date") else None
+            interview_time = (request.POST.get("interview_time") or "").strip()
+            interview_mode = (request.POST.get("interview_mode") or "Online").strip()
+            meeting_link = (request.POST.get("meeting_link") or "").strip()
+            meeting_address = (request.POST.get("meeting_address") or "").strip()
+            interviewer = (request.POST.get("interviewer") or "").strip()
+            interview_feedback = (request.POST.get("interview_feedback") or "").strip()
+
+            effective_meeting_value = meeting_link
+            if (interview_mode or "").strip().lower() == "offline" and meeting_address:
+                effective_meeting_value = meeting_address
+
+            app = Application.objects.filter(
+                application_id=application_id,
+                consultancy=consultancy,
+            ).first()
+            if not app:
+                messages.error(request, "Unable to schedule interview: application not found.")
+                return redirect(next_url)
+
+            Application.objects.filter(pk=app.pk).update(
+                interview_date=interview_date,
+                interview_time=interview_time,
+                interview_mode=interview_mode,
+                meeting_link=effective_meeting_value,
+                interviewer=interviewer,
+                interview_feedback=interview_feedback,
+                status="Interview Scheduled",
+                updated_at=timezone.now(),
+            )
+
+            existing = Interview.objects.filter(application=app).order_by("-created_at").first()
+            if existing:
+                existing.interview_date = interview_date
+                existing.interview_time = parse_time(interview_time) if interview_time else None
+                existing.mode = interview_mode or existing.mode
+                existing.meeting_link = meeting_link if interview_mode.lower() != "offline" else ""
+                existing.location = meeting_address if interview_mode.lower() == "offline" else ""
+                existing.interviewer = interviewer
+                existing.notes = interview_feedback
+                existing.status = "rescheduled" if existing.status in {"scheduled", "rescheduled"} else "scheduled"
+                existing.save(
+                    update_fields=[
+                        "interview_date",
+                        "interview_time",
+                        "mode",
+                        "meeting_link",
+                        "location",
+                        "interviewer",
+                        "notes",
+                        "status",
+                        "updated_at",
+                    ]
+                )
+            else:
+                interview = Interview.objects.create(
+                    application=app,
+                    candidate_name=app.candidate_name,
+                    candidate_email=app.candidate_email,
+                    job_title=app.job_title,
+                    company=app.company,
+                    interview_date=interview_date,
+                    interview_time=parse_time(interview_time) if interview_time else None,
+                    mode=interview_mode or "Online",
+                    meeting_link=meeting_link if interview_mode.lower() != "offline" else "",
+                    location=meeting_address if interview_mode.lower() == "offline" else "",
+                    interviewer=interviewer,
+                    notes=interview_feedback,
+                    status="scheduled",
+                )
+                if not interview.interview_id:
+                    interview.interview_id = _generate_prefixed_id("INT", 3001, Interview, "interview_id")
+                    interview.save(update_fields=["interview_id"])
+            messages.success(request, f"Interview schedule saved for {app.candidate_name}.")
+
+        elif action == "save_notes":
+            application_id = request.POST.get("application_id")
+            internal_notes = (request.POST.get("internal_notes") or "").strip()
+            interview_feedback = (request.POST.get("interview_feedback") or "").strip()
+            summary_notes = (request.POST.get("notes") or "").strip()
+            if application_id:
+                updated = Application.objects.filter(
+                    consultancy=consultancy,
+                    application_id=application_id,
+                ).update(
+                    internal_notes=internal_notes,
+                    interview_feedback=interview_feedback,
+                    notes=summary_notes,
+                    updated_at=timezone.now(),
+                )
+                if updated:
+                    messages.success(request, "Application notes saved successfully.")
+                else:
+                    messages.error(request, "Unable to save notes: application not found.")
+            else:
+                messages.error(request, "Unable to save notes: missing application id.")
+
+        return redirect(next_url)
+
+    applications = base_qs.order_by("-applied_date", "-created_at", "-id")
+    if search:
+        applications = applications.filter(
+            Q(candidate_name__icontains=search)
+            | Q(candidate_email__icontains=search)
+            | Q(job_title__icontains=search)
+            | Q(skills__icontains=search)
+            | Q(notes__icontains=search)
+            | Q(interview_feedback__icontains=search)
+        )
+
     if job_filter:
         job = Job.objects.filter(job_id=job_filter).first()
         if job:
-            apps_qs = apps_qs.filter(job=job)
-    for app in apps_qs[:80]:
-        applications.append(
-            {
-                "application_id": app.application_id,
-                "candidate": app.candidate_name,
-                "job": app.job_title,
-                "company": app.company,
-                "display_status": _consultancy_application_status(app.status),
-                "raw_status": app.status,
-            }
-        )
+            applications = applications.filter(job=job)
+        else:
+            applications = applications.filter(job_title__iexact=job_filter)
+
+    if status_filter and status_filter.lower() != "all":
+        if status_filter.lower() == "interview":
+            applications = applications.filter(status__in=INTERVIEW_STATUSES)
+        elif status_filter.lower() == "selected":
+            applications = applications.filter(status__in=SELECTED_STATUSES)
+        else:
+            applications = applications.filter(status__iexact=status_filter)
+
+    applications = list(applications)
+    interview_map = {}
+    app_ids = [app.id for app in applications if getattr(app, "id", None)]
+    if app_ids:
+        related_interviews = Interview.objects.filter(application_id__in=app_ids).order_by("-created_at")
+        for interview in related_interviews:
+            if interview.application_id and interview.application_id not in interview_map:
+                interview_map[interview.application_id] = interview
+
+    emails = [app.candidate_email for app in applications if app.candidate_email]
+    candidate_map = _build_candidate_map(emails)
+
+    def _split_skills(value):
+        return [item.strip() for item in (value or "").split(",") if item.strip()]
+
+    for app in applications:
+        normalized_email = (app.candidate_email or "").strip().lower()
+        candidate = candidate_map.get(normalized_email) if normalized_email else None
+        app.profile_image_url = candidate.profile_image.url if candidate and candidate.profile_image else ""
+        if candidate:
+            if not app.candidate_phone:
+                app.candidate_phone = candidate.phone or ""
+            if not app.candidate_location:
+                app.candidate_location = candidate.location or ""
+            if not app.experience:
+                app.experience = candidate.experience or ""
+            if not app.current_company:
+                app.current_company = candidate.current_company or ""
+            if not app.notice_period:
+                app.notice_period = candidate.notice_period or ""
+            if not app.expected_salary:
+                app.expected_salary = candidate.expected_salary or ""
+
+        linked_interview = interview_map.get(app.id)
+        app.interview_location = linked_interview.location if linked_interview else ""
+        if linked_interview:
+            if not app.interview_mode:
+                app.interview_mode = linked_interview.mode or ""
+            if not app.interviewer:
+                app.interviewer = linked_interview.interviewer or ""
+            if not app.interview_feedback:
+                app.interview_feedback = linked_interview.notes or ""
+        if not app.interview_location and (app.interview_mode or "").strip().lower() == "offline":
+            app.interview_location = app.meeting_link or ""
+
+        resume_file = _resolve_resume(app, candidate_map)
+        app.has_resume = bool(resume_file)
+        app.resume_filename = os.path.basename(resume_file.name) if resume_file else ""
+        if app.status == "Interview Scheduled":
+            app.display_status = "Interview"
+        elif app.status == "Offer Issued":
+            app.display_status = "Selected"
+        else:
+            app.display_status = app.status
+        app.rejection_remark = app.notes if app.status == "Rejected" else ""
+        app.skill_tags = _split_skills(app.skills)[:3]
+        app.all_skill_tags = _split_skills(app.skills)
+
+    total_applications = base_qs.count()
+    new_since = timezone.now() - timezone.timedelta(days=7)
+    new_applications = base_qs.filter(created_at__gte=new_since).count()
+    shortlisted_applications = base_qs.filter(status="Shortlisted").count()
+    interview_applications = base_qs.filter(status__in=INTERVIEW_STATUSES).count()
+    selected_applications = base_qs.filter(status__in=SELECTED_STATUSES).count()
+    job_options = []
+    seen_jobs = set()
+    for app_item in base_qs.select_related("job").order_by("job_title", "-id")[:300]:
+        label = (app_item.job_title or "").strip()
+        if not label:
+            continue
+        value = (app_item.job.job_id if app_item.job else "") or label
+        dedupe_key = value.lower()
+        if dedupe_key in seen_jobs:
+            continue
+        seen_jobs.add(dedupe_key)
+        job_options.append({"value": value, "label": label})
 
     return render(
         request,
@@ -3270,10 +3994,59 @@ def consultancy_applications_view(request):
         {
             "consultancy": consultancy,
             "applications": applications,
-            "status_choices": [choice[0] for choice in APPLICATION_STATUS_CHOICES],
-            "job_filter": job_filter,
+            "total_applications": total_applications,
+            "new_applications": new_applications,
+            "shortlisted_applications": shortlisted_applications,
+            "interview_applications": interview_applications,
+            "selected_applications": selected_applications,
+            "job_options": job_options,
+            "status_choices": PIPELINE_STATUSES,
+            "filters": {
+                "search": search,
+                "job_id": job_filter,
+                "status": status_filter or "all",
+            },
         },
     )
+
+
+@consultancy_login_required
+def consultancy_application_resume_view(request, application_id):
+    consultancy_id = request.session.get("consultancy_id")
+    consultancy = Consultancy.objects.filter(id=consultancy_id).first()
+    if not consultancy:
+        return redirect("dashboard:login")
+
+    app = get_object_or_404(
+        Application,
+        consultancy=consultancy,
+        application_id=application_id,
+    )
+    resume_file = app.resume
+    if not resume_file and app.candidate_email:
+        candidate = (
+            Candidate.objects.filter(email__iexact=app.candidate_email)
+            .prefetch_related("resumes")
+            .first()
+        )
+        resume_file = _resolve_candidate_resume_source(candidate)
+    if not resume_file:
+        return HttpResponse("Resume not available.", status=404)
+
+    download = request.GET.get("download") == "1"
+    content_type, _ = mimetypes.guess_type(resume_file.name)
+    try:
+        response = FileResponse(
+            resume_file.open("rb"),
+            as_attachment=download,
+            filename=os.path.basename(resume_file.name),
+        )
+    except OSError:
+        return HttpResponse("Resume file could not be opened.", status=404)
+    if content_type:
+        response["Content-Type"] = content_type
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @consultancy_login_required
@@ -3290,10 +4063,12 @@ def consultancy_shortlisted_view(request):
     ).order_by("-updated_at")[:60]:
         shortlisted.append(
             {
+                "application_id": app.application_id,
                 "candidate": app.candidate_name,
                 "job": app.job_title,
                 "company": app.company,
                 "stage": _consultancy_application_status(app.status),
+                "updated_at": app.updated_at,
             }
         )
 
@@ -3316,45 +4091,70 @@ def consultancy_interviews_view(request):
     if request.method == "POST":
         action = (request.POST.get("action") or "schedule_interview").strip()
         if action == "schedule_interview":
+            application_id = (request.POST.get("application_id") or "").strip()
             candidate_name = (request.POST.get("candidate") or "").strip()
             job_title = (request.POST.get("job_title") or "").strip()
             interview_date = parse_date(request.POST.get("interview_date")) if request.POST.get("interview_date") else None
             interview_time = parse_time(request.POST.get("interview_time")) if request.POST.get("interview_time") else None
             mode = (request.POST.get("mode") or "Online").strip()
             meeting_link = (request.POST.get("meeting_link") or "").strip()
+            location = (request.POST.get("location") or "").strip()
             interviewer = (request.POST.get("interviewer") or "").strip()
             round_name = (request.POST.get("round") or "").strip()
             notes = (request.POST.get("notes") or "").strip()
 
-            if not candidate_name or not job_title:
-                messages.error(request, "Candidate name and job title are required.")
-            else:
+            application = None
+            if application_id:
+                application = Application.objects.filter(
+                    consultancy=consultancy,
+                    application_id=application_id,
+                ).order_by("-updated_at").first()
+            if not application and candidate_name and job_title:
                 application = Application.objects.filter(
                     consultancy=consultancy,
                     candidate_name__iexact=candidate_name,
                     job_title__iexact=job_title,
                 ).order_by("-updated_at").first()
-                company_name = application.company if application else ""
-                candidate_email = application.candidate_email if application else ""
-                Interview.objects.create(
-                    interview_id=_generate_prefixed_id("INT", 1001, Interview, "interview_id"),
-                    application=application,
-                    candidate_name=candidate_name,
-                    candidate_email=candidate_email,
-                    job_title=job_title,
-                    company=company_name,
-                    interview_date=interview_date,
-                    interview_time=interview_time,
-                    mode=mode or "Online",
-                    meeting_link=meeting_link,
-                    interviewer=interviewer,
-                    round=round_name,
-                    notes=notes,
-                    status="scheduled",
-                )
-                if application:
-                    Application.objects.filter(pk=application.pk).update(status="Interview Scheduled")
-                messages.success(request, "Interview scheduled successfully.")
+
+            if not application:
+                messages.error(request, "Select a valid shortlisted candidate to schedule interview.")
+                return redirect(f"{request.path}?section={section}")
+
+            company_name = application.company or ""
+            candidate_email = application.candidate_email or ""
+            effective_mode = mode or "Online"
+            normalized_mode = effective_mode.strip().lower()
+            effective_link = meeting_link if normalized_mode != "offline" else ""
+            effective_location = location if normalized_mode == "offline" else ""
+
+            Interview.objects.create(
+                interview_id=_generate_prefixed_id("INT", 1001, Interview, "interview_id"),
+                application=application,
+                candidate_name=application.candidate_name,
+                candidate_email=candidate_email,
+                job_title=application.job_title,
+                company=company_name,
+                interview_date=interview_date,
+                interview_time=interview_time,
+                mode=effective_mode,
+                meeting_link=effective_link,
+                location=effective_location,
+                interviewer=interviewer,
+                round=round_name,
+                notes=notes,
+                status="scheduled",
+            )
+            Application.objects.filter(pk=application.pk).update(
+                status="Interview Scheduled",
+                interview_date=interview_date,
+                interview_time=interview_time.strftime("%H:%M") if interview_time else "",
+                interview_mode=effective_mode,
+                meeting_link=effective_location if normalized_mode == "offline" else effective_link,
+                interviewer=interviewer,
+                interview_feedback=notes,
+                updated_at=timezone.now(),
+            )
+            messages.success(request, "Interview scheduled successfully.")
             return redirect(f"{request.path}?section={section}")
 
         if action == "update_status":
@@ -3430,6 +4230,7 @@ def consultancy_interviews_view(request):
                 "mode": interview.mode,
                 "round": interview.round or "--",
                 "meeting_link": interview.meeting_link,
+                "location": interview.location or "",
                 "interviewer": interview.interviewer or "--",
                 "status": interview.get_status_display() if hasattr(interview, "get_status_display") else interview.status,
             }
@@ -3450,6 +4251,10 @@ def consultancy_interviews_view(request):
         }
         for interview in feedback_qs.order_by("-interview_date")[:20]
     ]
+    shortlisted_apps = Application.objects.filter(
+        consultancy=consultancy,
+        status__in=["Shortlisted", "Interview", "Interview Scheduled"],
+    ).order_by("-updated_at")[:120]
 
     return render(
         request,
@@ -3460,6 +4265,7 @@ def consultancy_interviews_view(request):
             "section": section,
             "interview_counts": interview_counts,
             "feedback_queue": feedback_queue,
+            "shortlisted_apps": shortlisted_apps,
         },
     )
 
@@ -3472,21 +4278,182 @@ def consultancy_placements_view(request):
         return redirect("dashboard:login")
 
     filter_status = (request.GET.get("status") or "active").strip().lower()
+    if filter_status not in {"active", "pending", "completed", "cancelled"}:
+        filter_status = "active"
+
+    placement_status_choices = [choice[0] for choice in PLACEMENT_STATUS_CHOICES]
+    placements_qs = Application.objects.filter(
+        consultancy=consultancy,
+        status__in=SELECTED_STATUSES + ["Rejected", "Archived"],
+    ).order_by("-updated_at")
+
+    def resolve_placement_status(app):
+        placement_status = (app.placement_status or "").strip()
+        if placement_status:
+            return placement_status
+        if app.status == "Offer Issued":
+            return "Pending Approval"
+        if app.status == "Selected":
+            return "Approved"
+        if app.status in {"Rejected", "Archived"}:
+            return "Cancelled"
+        return "Pending Approval"
 
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
-        if action == "update_placement_status":
-            application_id = request.POST.get("application_id")
+        application_id = (request.POST.get("application_id") or "").strip()
+        placement = placements_qs.filter(application_id=application_id).first() if application_id else None
+        redirect_url = f"{request.path}?status={filter_status}"
+
+        if action in {"update_placement", "update_placement_status"}:
             new_status = (request.POST.get("placement_status") or "").strip()
-            if application_id and new_status:
-                Application.objects.filter(
-                    application_id=application_id,
-                    consultancy=consultancy,
-                ).update(placement_status=new_status, updated_at=timezone.now())
-                messages.success(request, "Placement status updated.")
-            else:
+            if not placement:
+                messages.error(request, "Placement record not found.")
+                return redirect(redirect_url)
+            if new_status not in placement_status_choices:
                 messages.error(request, "Select a valid placement status.")
-        elif action == "update_commission_models":
+                return redirect(f"{redirect_url}&mode=edit&application_id={application_id}")
+
+            placement.placement_status = new_status
+            if action == "update_placement":
+                salary_value = (request.POST.get("offer_package") or "").strip()
+                joining_date_raw = (request.POST.get("joining_date") or "").strip()
+                joining_date = parse_date(joining_date_raw) if joining_date_raw else None
+                if joining_date_raw and not joining_date:
+                    messages.error(request, "Joining date format is invalid.")
+                    return redirect(f"{redirect_url}&mode=edit&application_id={application_id}")
+                placement.offer_package = salary_value
+                placement.joining_date = joining_date
+                placement.notes = (request.POST.get("placement_notes") or "").strip()
+                placement.save(
+                    update_fields=[
+                        "placement_status",
+                        "offer_package",
+                        "joining_date",
+                        "notes",
+                        "updated_at",
+                    ]
+                )
+            else:
+                placement.save(update_fields=["placement_status", "updated_at"])
+            messages.success(request, "Placement updated successfully.")
+            return redirect(f"{redirect_url}&mode=view&application_id={application_id}")
+
+        if action == "delete_placement":
+            if not placement:
+                messages.error(request, "Placement record not found.")
+            else:
+                placement.placement_status = "Cancelled"
+                placement.status = "Archived"
+                placement.save(update_fields=["placement_status", "status", "updated_at"])
+                messages.success(request, "Placement moved to cancelled.")
+            return redirect(redirect_url)
+
+        messages.error(request, "Invalid action.")
+        return redirect(redirect_url)
+
+    commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
+    assignment_map = {
+        assignment.job_id: assignment
+        for assignment in AssignedJob.objects.filter(consultancy=consultancy).select_related("job")
+    }
+    status_counts = {"active": 0, "pending": 0, "completed": 0, "cancelled": 0}
+    placements = []
+
+    for app in placements_qs:
+        placement_status = resolve_placement_status(app)
+        if placement_status == "Approved":
+            status_bucket = "active"
+        elif placement_status == "Pending Approval":
+            status_bucket = "pending"
+        elif placement_status == "Paid":
+            status_bucket = "completed"
+        else:
+            status_bucket = "cancelled"
+        status_counts[status_bucket] += 1
+        if filter_status != status_bucket:
+            continue
+
+        salary_value = app.offer_package or app.expected_salary or "--"
+        assignment = assignment_map.get(app.job_id) if app.job_id else None
+        commission_value = _calculate_commission(assignment, app)
+        placements.append(
+            {
+                "candidate": app.candidate_name,
+                "company": app.company,
+                "job": app.job_title,
+                "salary": salary_value,
+                "joining_date": app.joining_date.strftime("%d %b %Y") if app.joining_date else "--",
+                "commission": f"INR {commission_value:,}" if commission_value else f"INR {commission_rate:,}",
+                "status": placement_status,
+                "application_id": app.application_id,
+                "notes": app.notes or "",
+                "offer_package": app.offer_package or "",
+                "joining_date_input": app.joining_date.isoformat() if app.joining_date else "",
+                "last_updated": timezone.localtime(app.updated_at).strftime("%d %b %Y, %H:%M")
+                if app.updated_at
+                else "--",
+            }
+        )
+
+    focus_placement = None
+    focus_application_id = (request.GET.get("application_id") or "").strip()
+    focus_mode = (request.GET.get("mode") or "view").strip().lower()
+    if focus_mode not in {"view", "edit"}:
+        focus_mode = "view"
+    if focus_application_id:
+        for row in placements:
+            if row["application_id"] == focus_application_id:
+                focus_placement = row
+                break
+        if not focus_placement:
+            focus_app = placements_qs.filter(application_id=focus_application_id).first()
+            if focus_app:
+                focus_status = resolve_placement_status(focus_app)
+                focus_assignment = assignment_map.get(focus_app.job_id) if focus_app.job_id else None
+                focus_commission = _calculate_commission(focus_assignment, focus_app)
+                focus_placement = {
+                    "candidate": focus_app.candidate_name,
+                    "company": focus_app.company,
+                    "job": focus_app.job_title,
+                    "salary": focus_app.offer_package or focus_app.expected_salary or "--",
+                    "joining_date": focus_app.joining_date.strftime("%d %b %Y") if focus_app.joining_date else "--",
+                    "commission": f"INR {focus_commission:,}" if focus_commission else f"INR {commission_rate:,}",
+                    "status": focus_status,
+                    "application_id": focus_app.application_id,
+                    "notes": focus_app.notes or "",
+                    "offer_package": focus_app.offer_package or "",
+                    "joining_date_input": focus_app.joining_date.isoformat() if focus_app.joining_date else "",
+                    "last_updated": timezone.localtime(focus_app.updated_at).strftime("%d %b %Y, %H:%M")
+                    if focus_app.updated_at
+                    else "--",
+                }
+
+    return render(
+        request,
+        "dashboard/consultancy/consultancy_placements.html",
+        {
+            "consultancy": consultancy,
+            "placements": placements,
+            "filter_status": filter_status,
+            "placement_status_choices": placement_status_choices,
+            "status_counts": status_counts,
+            "focus_placement": focus_placement,
+            "focus_mode": focus_mode,
+        },
+    )
+
+
+@consultancy_login_required
+def consultancy_earnings_view(request):
+    consultancy_id = request.session.get("consultancy_id")
+    consultancy = Consultancy.objects.filter(id=consultancy_id).first()
+    if not consultancy:
+        return redirect("dashboard:login")
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "update_commission_models":
             fixed_fee_raw = (request.POST.get("commission_fixed_fee") or "").strip()
             percentage_raw = (request.POST.get("commission_percentage") or "").strip()
             milestone_notes = (
@@ -3513,7 +4480,6 @@ def consultancy_placements_view(request):
                 ]
             )
 
-            # Keep posted job descriptions aligned with the latest commission model settings.
             posted_jobs = _consultancy_posted_jobs_queryset(consultancy)
             for job in posted_jobs:
                 updated_description = _inject_consultancy_commission_in_description(job.description, consultancy)
@@ -3522,83 +4488,14 @@ def consultancy_placements_view(request):
                     job.save(update_fields=["description", "updated_at"])
 
             messages.success(request, "Commission model values updated.")
-        return redirect(f"{request.path}?status={filter_status}")
-
-    commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
-    placements = []
-    assignment_map = {
-        assignment.job_id: assignment
-        for assignment in AssignedJob.objects.filter(consultancy=consultancy).select_related("job")
-    }
-    placements_qs = Application.objects.filter(
-        consultancy=consultancy,
-        status__in=SELECTED_STATUSES + ["Rejected"],
-    ).order_by("-updated_at")
-
-    filtered_apps = []
-    for app in placements_qs:
-        placement_status = app.placement_status
-        if not placement_status:
-            if app.status == "Offer Issued":
-                placement_status = "Pending Approval"
-            elif app.status == "Selected":
-                placement_status = "Approved"
-            elif app.status == "Rejected":
-                placement_status = "Cancelled"
-            else:
-                placement_status = "Pending Approval"
-
-        if filter_status == "pending" and placement_status != "Pending Approval":
-            continue
-        if filter_status == "completed" and placement_status != "Paid":
-            continue
-        if filter_status == "cancelled" and placement_status != "Cancelled":
-            continue
-        if filter_status == "active" and placement_status not in ["Pending Approval", "Approved"]:
-            continue
-        filtered_apps.append((app, placement_status))
-
-    for app, placement_status in filtered_apps[:80]:
-        salary_value = app.offer_package or app.expected_salary or "--"
-        assignment = assignment_map.get(app.job_id) if app.job_id else None
-        commission_value = _calculate_commission(assignment, app)
-        placements.append(
-            {
-                "candidate": app.candidate_name,
-                "company": app.company,
-                "job": app.job_title,
-                "salary": salary_value,
-                "joining_date": app.joining_date.strftime("%d %b %Y") if app.joining_date else "--",
-                "commission": f"INR {commission_value:,}" if commission_value else f"INR {commission_rate:,}",
-                "status": placement_status,
-                "application_id": app.application_id,
-            }
-        )
-
-    return render(
-        request,
-        "dashboard/consultancy/consultancy_placements.html",
-        {
-            "consultancy": consultancy,
-            "placements": placements,
-            "filter_status": filter_status,
-            "placement_status_choices": [choice[0] for choice in PLACEMENT_STATUS_CHOICES],
-            "commission_defaults": _consultancy_commission_defaults(consultancy),
-        },
-    )
-
-
-@consultancy_login_required
-def consultancy_earnings_view(request):
-    consultancy_id = request.session.get("consultancy_id")
-    consultancy = Consultancy.objects.filter(id=consultancy_id).first()
-    if not consultancy:
-        return redirect("dashboard:login")
+        else:
+            messages.error(request, "Invalid action.")
+        return redirect(request.path)
 
     commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
     today = timezone.localdate()
     first_of_month = today.replace(day=1)
-    placements = Application.objects.filter(consultancy=consultancy, status__in=SELECTED_STATUSES)
+    placements = Application.objects.filter(consultancy=consultancy, status__in=SELECTED_STATUSES).order_by("-updated_at")
     assignment_map = {
         assignment.job_id: assignment
         for assignment in AssignedJob.objects.filter(consultancy=consultancy).select_related("job")
@@ -3655,11 +4552,39 @@ def consultancy_earnings_view(request):
         "paid_total": paid_total,
         "paid_this_month": monthly_amounts.get(current_label, 0),
     }
+    payout_history = []
+    for app in placements[:120]:
+        assignment = assignment_map.get(app.job_id) if app.job_id else None
+        commission_value = _calculate_commission(assignment, app) or commission_rate
+        placement_status = app.placement_status or "Pending Approval"
+        if placement_status == "Paid":
+            payment_mode = "Bank Transfer"
+        elif placement_status == "Approved":
+            payment_mode = "Queued for Transfer"
+        else:
+            payment_mode = "Processing"
+        payout_history.append(
+            {
+                "invoice_id": app.application_id or f"INV-{app.id}",
+                "candidate": app.candidate_name or "--",
+                "job": app.job_title or "--",
+                "amount": commission_value,
+                "status": placement_status,
+                "date": timezone.localtime(app.updated_at).strftime("%d %b %Y") if app.updated_at else "--",
+                "payment_mode": payment_mode,
+            }
+        )
 
     return render(
         request,
         "dashboard/consultancy/consultancy_earnings.html",
-        {"consultancy": consultancy, "earnings": earnings, "summary": summary},
+        {
+            "consultancy": consultancy,
+            "earnings": earnings,
+            "summary": summary,
+            "payout_history": payout_history,
+            "commission_defaults": _consultancy_commission_defaults(consultancy),
+        },
     )
 
 
@@ -3685,12 +4610,32 @@ def consultancy_messages_view(request):
         return redirect("dashboard:login")
 
     threads = (
-        MessageThread.objects.filter(consultancy=consultancy)
+        MessageThread.objects.filter(
+            consultancy=consultancy,
+            application__isnull=False,
+        )
         .select_related("job", "company", "candidate", "application")
         .order_by("-last_message_at", "-created_at")
     )
     active_thread = None
     thread_id = (request.GET.get("thread") or "").strip()
+    application_id = (request.GET.get("application_id") or "").strip()
+    if application_id:
+        application = Application.objects.filter(
+            consultancy=consultancy,
+            application_id=application_id,
+        ).first()
+        thread_from_application = _get_or_create_consultancy_candidate_thread(consultancy, application)
+        if thread_from_application:
+            active_thread = thread_from_application
+            threads = (
+                MessageThread.objects.filter(
+                    consultancy=consultancy,
+                    application__isnull=False,
+                )
+                .select_related("job", "company", "candidate", "application")
+                .order_by("-last_message_at", "-created_at")
+            )
     if thread_id:
         active_thread = threads.filter(id=thread_id).first()
     if not active_thread and threads:
@@ -3700,7 +4645,11 @@ def consultancy_messages_view(request):
         action = (request.POST.get("action") or "").strip()
         if action == "send_message":
             thread_id = (request.POST.get("thread_id") or "").strip()
-            thread = MessageThread.objects.filter(id=thread_id, consultancy=consultancy).first()
+            thread = MessageThread.objects.filter(
+                id=thread_id,
+                consultancy=consultancy,
+                application__isnull=False,
+            ).first()
             body = (request.POST.get("message_body") or "").strip()
             attachment = request.FILES.get("attachment")
             if not thread:
@@ -3717,6 +4666,7 @@ def consultancy_messages_view(request):
                 )
                 thread.last_message_at = timezone.now()
                 thread.save(update_fields=["last_message_at"])
+                messages.success(request, "Message sent successfully.")
                 return redirect(f"{request.path}?thread={thread.id}")
 
     thread_messages = []
@@ -3745,6 +4695,8 @@ def consultancy_messages_view(request):
             "active_thread": active_thread,
             "thread_messages": thread_messages,
             "current_role": "consultancy",
+            "thread_messages_api": reverse("dashboard:api_thread_messages", args=[active_thread.id]) if active_thread else "",
+            "thread_send_api": reverse("dashboard:api_thread_send_message", args=[active_thread.id]) if active_thread else "",
         },
     )
 
@@ -3831,6 +4783,8 @@ def consultancy_profile_settings_view(request):
     consultancy = Consultancy.objects.filter(id=consultancy_id).first()
     if not consultancy:
         return redirect("dashboard:login")
+    registered_mobile = (consultancy.phone or "").strip()
+    registered_email = (consultancy.email or "").strip()
 
     if request.method == "POST":
         action = (request.POST.get("action") or "update_profile").strip()
@@ -3877,6 +4831,99 @@ def consultancy_profile_settings_view(request):
                 consultancy.save(update_fields=["profile_image"])
                 messages.success(request, "Profile photo removed.")
             return redirect("dashboard:consultancy_profile_settings")
+        if action == "send_delete_otp":
+            otp_channel = (request.POST.get("otp_channel") or "phone").strip().lower()
+            if otp_channel == "email":
+                if not registered_email:
+                    messages.error(request, "Registered email not found.")
+                else:
+                    otp_value, otp_error = _issue_email_session_otp(
+                        request,
+                        CONSULTANCY_DELETE_OTP_SESSION_KEY,
+                        registered_email,
+                        {
+                            "consultancy_id": str(consultancy.id),
+                            "channel": "email",
+                        },
+                    )
+                    if otp_error:
+                        messages.error(request, otp_error)
+                    else:
+                        messages.success(request, f"Delete OTP sent to {registered_email}.")
+                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False):
+                            messages.info(
+                                request,
+                                f"Test OTP: {otp_value} (shown because debug OTP mode is enabled).",
+                            )
+            else:
+                if not registered_mobile:
+                    messages.error(request, "Registered mobile not found.")
+                else:
+                    otp_value, otp_error = _issue_session_otp(
+                        request,
+                        CONSULTANCY_DELETE_OTP_SESSION_KEY,
+                        registered_mobile,
+                        {
+                            "consultancy_id": str(consultancy.id),
+                            "channel": "phone",
+                        },
+                    )
+                    if otp_error:
+                        messages.error(request, otp_error)
+                    else:
+                        messages.success(
+                            request,
+                            f"Delete OTP sent to mobile ending {_mask_phone_number(registered_mobile)}.",
+                        )
+                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False):
+                            messages.info(
+                                request,
+                                f"Test OTP: {otp_value} (shown because debug OTP mode is enabled).",
+                            )
+            return redirect("dashboard:consultancy_profile_settings")
+        if action == "delete_account":
+            entered_otp = (request.POST.get("delete_otp") or "").strip()
+            payload = request.session.get(CONSULTANCY_DELETE_OTP_SESSION_KEY) or {}
+            if str(payload.get("consultancy_id") or "") != str(consultancy.id):
+                messages.error(request, "Please request OTP first.")
+                return redirect("dashboard:consultancy_profile_settings")
+            if not entered_otp:
+                messages.error(request, "Enter OTP to confirm account deletion.")
+                return redirect("dashboard:consultancy_profile_settings")
+
+            channel = (payload.get("channel") or "phone").strip().lower()
+            is_valid = False
+            if channel == "email":
+                is_valid = _validate_email_session_otp(
+                    request,
+                    CONSULTANCY_DELETE_OTP_SESSION_KEY,
+                    registered_email,
+                    entered_otp,
+                )
+            else:
+                is_valid = _validate_session_otp(
+                    request,
+                    CONSULTANCY_DELETE_OTP_SESSION_KEY,
+                    registered_mobile,
+                    entered_otp,
+                )
+            if not is_valid:
+                messages.error(request, "Invalid or expired OTP. Request new OTP.")
+                return redirect("dashboard:consultancy_profile_settings")
+
+            _clear_session_otp(request, CONSULTANCY_DELETE_OTP_SESSION_KEY)
+            consultancy_email = (consultancy.email or "").strip()
+            MessageThread.objects.filter(consultancy=consultancy).delete()
+            AssignedJob.objects.filter(consultancy=consultancy).delete()
+            Subscription.objects.filter(
+                account_type__iexact="Consultancy",
+                contact__iexact=consultancy_email,
+            ).delete()
+            consultancy.delete()
+            request.session.pop("consultancy_id", None)
+            request.session.pop("consultancy_name", None)
+            messages.success(request, "Consultancy account deleted successfully.")
+            return redirect("dashboard:login")
 
         consultancy.name = (request.POST.get("name") or consultancy.name).strip()
         consultancy.email = (request.POST.get("email") or consultancy.email).strip()
@@ -3894,7 +4941,12 @@ def consultancy_profile_settings_view(request):
     return render(
         request,
         "dashboard/consultancy/consultancy_profile_settings.html",
-        {"consultancy": consultancy, "kyc_documents": kyc_documents},
+        {
+            "consultancy": consultancy,
+            "kyc_documents": kyc_documents,
+            "registered_mobile": registered_mobile or "Not available",
+            "registered_email": registered_email or "Not available",
+        },
     )
 
 
@@ -3919,12 +4971,14 @@ def consultancy_support_view(request, section="create", ticket_id=None):
     if not consultancy:
         return redirect("dashboard:login")
 
+    if section == "knowledge":
+        return redirect("dashboard:consultancy_support_create")
+
     section_map = {
         "create": ("Create Ticket", "Raise a new support ticket for any issue."),
         "my-tickets": ("My Tickets", "Track all support tickets submitted by your consultancy."),
         "open": ("Open Tickets", "Tickets that are open or waiting for response."),
         "closed": ("Closed Tickets", "Resolved and closed support requests."),
-        "knowledge": ("Knowledge Base", "Self-help guides and FAQs."),
         "chat": ("Live Chat", "Real-time support chat with our team."),
         "details": ("Ticket Details", "Conversation, attachments, and timeline."),
     }
@@ -3951,16 +5005,71 @@ def consultancy_support_view(request, section="create", ticket_id=None):
                 support_thread.last_message_at = timezone.now()
                 support_thread.save(update_fields=["last_message_at"])
                 messages.success(request, "Message sent to support.")
+        elif action == "create_ticket" and support_thread:
+            subject = (request.POST.get("subject") or "").strip()
+            category = (request.POST.get("category") or "general").strip()
+            priority = (request.POST.get("priority") or "medium").strip()
+            description = (request.POST.get("description") or "").strip()
+            attachment = request.FILES.get("attachment")
+            if not subject or not description:
+                messages.error(request, "Subject and description are required to create ticket.")
+            else:
+                Message.objects.create(
+                    thread=support_thread,
+                    sender_role="consultancy",
+                    sender_name=consultancy.name,
+                    body=_compose_ticket_body(category, priority, subject, description),
+                    attachment=attachment,
+                )
+                support_thread.last_message_at = timezone.now()
+                support_thread.save(update_fields=["last_message_at"])
+                messages.success(request, "Ticket created successfully.")
+                return redirect("dashboard:consultancy_support_tickets")
+        elif action in {"close_ticket", "reopen_ticket"} and support_thread:
+            target_ticket_id = (request.POST.get("ticket_id") or "").strip()
+            if not target_ticket_id:
+                messages.error(request, "Ticket id missing for status update.")
+            else:
+                next_status = "Resolved" if action == "close_ticket" else "Open"
+                Message.objects.create(
+                    thread=support_thread,
+                    sender_role="consultancy",
+                    sender_name=consultancy.name,
+                    body=_compose_ticket_status_update(
+                        target_ticket_id,
+                        next_status,
+                        "Status updated by consultancy.",
+                    ),
+                )
+                support_thread.last_message_at = timezone.now()
+                support_thread.save(update_fields=["last_message_at"])
+                messages.success(request, f"Ticket marked as {next_status}.")
         return redirect(request.path)
 
     support_messages = []
     if support_thread:
-        support_messages = list(support_thread.messages.order_by("created_at")[:150])
+        support_messages = list(support_thread.messages.order_by("created_at")[:300])
         Message.objects.filter(thread=support_thread, is_read=False).exclude(
             sender_role="consultancy"
         ).update(is_read=True)
-
-    resolved_ticket_id = ticket_id or f"SUP-C{consultancy.id:04d}"
+    tickets = _extract_support_tickets(support_messages, "consultancy")
+    open_tickets = [
+        item
+        for item in tickets
+        if item["status"] in {"Open", "In Progress", "Waiting", "Awaiting Response"}
+    ]
+    closed_tickets = [
+        item
+        for item in tickets
+        if item["status"] in {"Resolved", "Closed"}
+    ]
+    in_progress_tickets = [item for item in tickets if item["status"] == "In Progress"]
+    selected_ticket = None
+    if ticket_id:
+        selected_ticket = next((item for item in tickets if item["id"] == ticket_id), None)
+    if not selected_ticket and tickets:
+        selected_ticket = tickets[0]
+    resolved_ticket_id = selected_ticket["id"] if selected_ticket else (ticket_id or f"SUP-C{consultancy.id:04d}")
 
     return render(
         request,
@@ -3971,6 +5080,15 @@ def consultancy_support_view(request, section="create", ticket_id=None):
             "page_title": page_title,
             "page_subtitle": page_subtitle,
             "ticket_id": resolved_ticket_id,
+            "selected_ticket": selected_ticket,
+            "tickets": tickets,
+            "open_tickets": open_tickets,
+            "closed_tickets": closed_tickets,
+            "ticket_counts": {
+                "open": len(open_tickets),
+                "in_progress": len(in_progress_tickets),
+                "resolved": len(closed_tickets),
+            },
             "support_thread": support_thread,
             "support_messages": support_messages,
             "support_thread_messages_api": reverse(
@@ -6023,6 +7141,23 @@ def candidate_job_detail_view(request, job_id):
 
     job = get_object_or_404(Job, job_id=job_id, status="Approved")
     company = Company.objects.filter(name__iexact=job.company).first()
+    if not company and job.recruiter_email:
+        company = Company.objects.filter(email__iexact=job.recruiter_email).first()
+    if not company and job.recruiter_name:
+        company = Company.objects.filter(name__iexact=job.recruiter_name).first()
+    if not company:
+        linked_app = (
+            Application.objects.filter(job=job)
+            .exclude(company__exact="")
+            .order_by("-created_at")
+            .first()
+        )
+        if linked_app:
+            company = Company.objects.filter(name__iexact=linked_app.company).first()
+    if not company and job.company:
+        normalized_company = re.sub(r"\s+", " ", (job.company or "").strip())
+        if normalized_company:
+            company = Company.objects.filter(name__icontains=normalized_company).order_by("-id").first()
     current_job_match = _recommend_jobs_for_candidate(
         candidate,
         jobs_queryset=Job.objects.filter(pk=job.pk),
@@ -6305,6 +7440,7 @@ def candidate_messages_view(request):
                 )
                 thread.last_message_at = timezone.now()
                 thread.save(update_fields=["last_message_at"])
+                messages.success(request, "Message sent successfully.")
                 return redirect(f"{request.path}?thread={thread.id}")
 
     thread_messages = []
@@ -6333,6 +7469,8 @@ def candidate_messages_view(request):
             "active_thread": active_thread,
             "thread_messages": thread_messages,
             "current_role": "candidate",
+            "thread_messages_api": reverse("dashboard:api_thread_messages", args=[active_thread.id]) if active_thread else "",
+            "thread_send_api": reverse("dashboard:api_thread_send_message", args=[active_thread.id]) if active_thread else "",
         },
     )
 
@@ -6970,6 +8108,7 @@ def company_jobs_view(request):
         "active": "Approved",
         "draft": "Pending",
         "paused": "Pending",
+        "rejected": "Rejected",
         "closed": "Rejected",
         "expired": "Rejected",
         "archived": "Reported",
@@ -7167,8 +8306,12 @@ def company_applications_view(request):
             interview_time = (request.POST.get("interview_time") or "").strip()
             interview_mode = (request.POST.get("interview_mode") or "").strip()
             meeting_link = (request.POST.get("meeting_link") or "").strip()
+            meeting_address = (request.POST.get("meeting_address") or "").strip()
             interviewer = (request.POST.get("interviewer") or "").strip()
             feedback = (request.POST.get("interview_feedback") or "").strip()
+            effective_meeting_value = meeting_link
+            if (interview_mode or "").strip().lower() == "offline" and meeting_address:
+                effective_meeting_value = meeting_address
             if application_id:
                 Application.objects.filter(
                     company__iexact=company_name,
@@ -7177,7 +8320,7 @@ def company_applications_view(request):
                     interview_date=interview_date,
                     interview_time=interview_time,
                     interview_mode=interview_mode,
-                    meeting_link=meeting_link,
+                    meeting_link=effective_meeting_value,
                     interviewer=interviewer,
                     interview_feedback=feedback,
                     status="Interview",
@@ -7194,6 +8337,7 @@ def company_applications_view(request):
                         existing.interview_time = parse_time(interview_time) if interview_time else None
                         existing.mode = interview_mode or existing.mode
                         existing.meeting_link = meeting_link
+                        existing.location = meeting_address
                         existing.interviewer = interviewer
                         existing.notes = feedback
                         existing.status = "rescheduled" if existing.status in ["scheduled", "rescheduled"] else "scheduled"
@@ -7202,6 +8346,7 @@ def company_applications_view(request):
                             "interview_time",
                             "mode",
                             "meeting_link",
+                            "location",
                             "interviewer",
                             "notes",
                             "status",
@@ -7218,6 +8363,7 @@ def company_applications_view(request):
                             interview_time=parse_time(interview_time) if interview_time else None,
                             mode=interview_mode or "Online",
                             meeting_link=meeting_link,
+                            location=meeting_address,
                             interviewer=interviewer,
                             notes=feedback,
                             status="scheduled",
@@ -7355,6 +8501,17 @@ def company_applications_view(request):
             app for app in applications if experience_in_range(app.experience, experience_filter)
         ]
 
+    interview_map = {}
+    application_pk_ids = [app.id for app in applications if getattr(app, "id", None)]
+    if application_pk_ids:
+        related_interviews = (
+            Interview.objects.filter(application_id__in=application_pk_ids)
+            .order_by("-created_at")
+        )
+        for interview in related_interviews:
+            if interview.application_id and interview.application_id not in interview_map:
+                interview_map[interview.application_id] = interview
+
     emails = [app.candidate_email for app in applications if app.candidate_email]
     candidate_map = build_candidate_map(emails)
     job_map = {
@@ -7367,7 +8524,8 @@ def company_applications_view(request):
         return [item.strip() for item in (value or "").split(",") if item.strip()]
 
     for app in applications:
-        candidate = candidate_map.get(app.candidate_email.lower()) if app.candidate_email else None
+        normalized_email = (app.candidate_email or "").strip().lower()
+        candidate = candidate_map.get(normalized_email) if normalized_email else None
         app.profile_image_url = candidate.profile_image.url if candidate and candidate.profile_image else ""
         if candidate:
             if not app.candidate_phone:
@@ -7382,6 +8540,18 @@ def company_applications_view(request):
                 app.notice_period = candidate.notice_period or ""
             if not app.expected_salary:
                 app.expected_salary = candidate.expected_salary or ""
+
+        linked_interview = interview_map.get(app.id)
+        app.interview_location = linked_interview.location if linked_interview else ""
+        if linked_interview:
+            if not app.interview_mode:
+                app.interview_mode = linked_interview.mode or ""
+            if not app.interviewer:
+                app.interviewer = linked_interview.interviewer or ""
+            if not app.interview_feedback:
+                app.interview_feedback = linked_interview.notes or ""
+        if not app.interview_location and (app.interview_mode or "").strip().lower() == "offline":
+            app.interview_location = app.meeting_link or ""
 
         resume_file = resolve_resume(app, candidate_map)
         app.has_resume = bool(resume_file)
@@ -7586,6 +8756,21 @@ def api_company_application_thread(request, application_id):
     )
 
 
+def _company_comm_session_key(company_id, suffix):
+    return f"company_comm_{suffix}_{company_id}"
+
+
+def _company_comm_load(request, company_id, suffix):
+    key = _company_comm_session_key(company_id, suffix)
+    payload = request.session.get(key) or []
+    return payload if isinstance(payload, list) else []
+
+
+def _company_comm_store(request, company_id, suffix, value):
+    key = _company_comm_session_key(company_id, suffix)
+    request.session[key] = value
+
+
 @company_login_required
 def company_communication_view(request, section="bulk-email"):
     company_id = request.session.get("company_id")
@@ -7605,6 +8790,121 @@ def company_communication_view(request, section="bulk-email"):
     page_title, page_subtitle = section_map.get(
         section, ("Communication Center", "Bulk messaging tools for candidates.")
     )
+    channel_map = {
+        "bulk-email": "Email",
+        "bulk-sms": "SMS",
+        "whatsapp": "WhatsApp",
+        "notifications": "Notification",
+    }
+    default_channel = channel_map.get(section, "Email")
+
+    sent_history = _company_comm_load(request, company.id, "sent")
+    scheduled_messages = _company_comm_load(request, company.id, "scheduled")
+    template_history = _company_comm_load(request, company.id, "templates")
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip().lower()
+        now = timezone.localtime(timezone.now())
+        now_display = now.strftime("%d %b %Y, %I:%M %p")
+
+        if action == "cancel_scheduled":
+            scheduled_id = (request.POST.get("scheduled_id") or "").strip()
+            if not scheduled_id:
+                messages.error(request, "Scheduled message id missing.")
+            else:
+                before_count = len(scheduled_messages)
+                scheduled_messages = [
+                    item
+                    for item in scheduled_messages
+                    if str(item.get("id")) != scheduled_id
+                ]
+                if len(scheduled_messages) == before_count:
+                    messages.error(request, "Scheduled message not found.")
+                else:
+                    _company_comm_store(request, company.id, "scheduled", scheduled_messages)
+                    messages.success(request, "Scheduled message cancelled.")
+            return redirect(request.path)
+
+        channel = (request.POST.get("channel") or default_channel).strip() or default_channel
+        subject = (
+            (request.POST.get("subject") or "").strip()
+            or (request.POST.get("template_name") or "").strip()
+            or f"{channel} update"
+        )
+        message_text = (request.POST.get("message") or "").strip()
+        audience = (request.POST.get("audience") or "All Applicants").strip() or "All Applicants"
+        schedule_at = (request.POST.get("schedule_at") or "").strip()
+        entry_id = f"{int(timezone.now().timestamp() * 1000)}"
+
+        if action == "save_template":
+            template_entry = {
+                "id": entry_id,
+                "channel": channel,
+                "title": subject,
+                "body": message_text,
+                "saved_on": now_display,
+            }
+            template_history = [template_entry] + template_history[:49]
+            _company_comm_store(request, company.id, "templates", template_history)
+            messages.success(request, "Template saved successfully.")
+            return redirect(request.path)
+
+        if action not in {"send_now", "schedule_later"}:
+            messages.error(request, "Unsupported communication action.")
+            return redirect(request.path)
+
+        if not message_text and section != "whatsapp":
+            messages.error(request, "Please enter a message before sending.")
+            return redirect(request.path)
+
+        if action == "schedule_later":
+            if not schedule_at:
+                messages.error(request, "Please select date and time for scheduling.")
+                return redirect(request.path)
+            scheduled_for = schedule_at.replace("T", " ")
+            scheduled_entry = {
+                "id": entry_id,
+                "channel": channel,
+                "title": subject,
+                "audience": audience,
+                "scheduled_for": scheduled_for,
+                "created_on": now_display,
+            }
+            scheduled_messages = [scheduled_entry] + scheduled_messages[:99]
+            _company_comm_store(request, company.id, "scheduled", scheduled_messages)
+            sent_entry = {
+                "id": entry_id,
+                "channel": channel,
+                "title": subject,
+                "audience": audience,
+                "date_time": now_display,
+                "recipients": 1,
+                "delivered": 0,
+                "failed": 0,
+                "status": "Scheduled",
+                "open_rate": "-",
+            }
+            sent_history = [sent_entry] + sent_history[:199]
+            _company_comm_store(request, company.id, "sent", sent_history)
+            messages.success(request, f"{channel} message scheduled successfully.")
+            return redirect(request.path)
+
+        sent_entry = {
+            "id": entry_id,
+            "channel": channel,
+            "title": subject,
+            "audience": audience,
+            "date_time": now_display,
+            "recipients": 1,
+            "delivered": 1,
+            "failed": 0,
+            "status": "Delivered",
+            "open_rate": "35%" if channel.lower() == "email" else "-",
+        }
+        sent_history = [sent_entry] + sent_history[:199]
+        _company_comm_store(request, company.id, "sent", sent_history)
+        messages.success(request, f"{channel} sent successfully.")
+        return redirect(request.path)
 
     return render(
         request,
@@ -7615,6 +8915,9 @@ def company_communication_view(request, section="bulk-email"):
             "page_title": page_title,
             "page_subtitle": page_subtitle,
             "communication_candidates": _communication_candidate_options(),
+            "sent_history_items": sent_history,
+            "scheduled_message_items": scheduled_messages,
+            "template_history_items": template_history,
         },
     )
 
@@ -7911,8 +9214,45 @@ def company_grievance_view(request):
     company = Company.objects.filter(id=company_id).first()
     if not company:
         return redirect("dashboard:login")
-    
-    return render(request, "dashboard/company/company_grievance.html", {"company": company})
+
+    support_thread = _get_or_create_company_support_thread(company)
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip().lower()
+        if action == "submit_grievance" and support_thread:
+            raw_category = (request.POST.get("category") or "").strip().lower()
+            other_category = (request.POST.get("category_other") or "").strip()
+            category = other_category if raw_category == "other" and other_category else raw_category
+            subject = (request.POST.get("subject") or "").strip()
+            description = (request.POST.get("description") or "").strip()
+            if not category:
+                messages.error(request, "Please select grievance category.")
+            elif not subject or not description:
+                messages.error(request, "Subject and description are required.")
+            else:
+                Message.objects.create(
+                    thread=support_thread,
+                    sender_role="company",
+                    sender_name=company.name,
+                    body=_compose_grievance_body(category, subject, description),
+                )
+                support_thread.last_message_at = timezone.now()
+                support_thread.save(update_fields=["last_message_at"])
+                messages.success(request, "Grievance submitted successfully.")
+        return redirect("dashboard:company_grievance")
+
+    grievance_messages = []
+    if support_thread:
+        grievance_messages = list(support_thread.messages.order_by("created_at")[:300])
+    grievances = _extract_grievances(grievance_messages, "company")
+
+    return render(
+        request,
+        "dashboard/company/company_grievance.html",
+        {
+            "company": company,
+            "grievances": grievances,
+        },
+    )
 
 
 @company_login_required
@@ -7921,6 +9261,8 @@ def company_settings_view(request):
     company = Company.objects.filter(id=company_id).first()
     if not company:
         return redirect("dashboard:login")
+    registered_mobile = (company.phone or "").strip()
+    registered_email = (company.email or "").strip()
 
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
@@ -7945,9 +9287,112 @@ def company_settings_view(request):
                 company.password = _hash_password(new_password)
                 company.save(update_fields=["password"])
                 messages.success(request, "Password updated successfully.")
+        elif action == "send_delete_otp":
+            otp_channel = (request.POST.get("otp_channel") or "phone").strip().lower()
+            if otp_channel == "email":
+                if not registered_email:
+                    messages.error(request, "Registered email not found. Update settings first.")
+                else:
+                    otp_value, otp_error = _issue_email_session_otp(
+                        request,
+                        COMPANY_DELETE_OTP_SESSION_KEY,
+                        registered_email,
+                        {
+                            "company_id": str(company.id),
+                            "channel": "email",
+                        },
+                    )
+                    if otp_error:
+                        messages.error(request, otp_error)
+                    else:
+                        messages.success(request, f"Delete OTP sent to {registered_email}.")
+                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False):
+                            messages.info(
+                                request,
+                                f"Test OTP: {otp_value} (shown because debug OTP mode is enabled).",
+                            )
+            else:
+                if not registered_mobile:
+                    messages.error(request, "Registered mobile not found. Update settings first.")
+                else:
+                    otp_value, otp_error = _issue_session_otp(
+                        request,
+                        COMPANY_DELETE_OTP_SESSION_KEY,
+                        registered_mobile,
+                        {
+                            "company_id": str(company.id),
+                            "channel": "phone",
+                        },
+                    )
+                    if otp_error:
+                        messages.error(request, otp_error)
+                    else:
+                        messages.success(
+                            request,
+                            f"Delete OTP sent to mobile ending {_mask_phone_number(registered_mobile)}.",
+                        )
+                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False):
+                            messages.info(
+                                request,
+                                f"Test OTP: {otp_value} (shown because debug OTP mode is enabled).",
+                            )
+        elif action == "delete_account":
+            entered_otp = (request.POST.get("delete_otp") or "").strip()
+            payload = request.session.get(COMPANY_DELETE_OTP_SESSION_KEY) or {}
+            if str(payload.get("company_id") or "") != str(company.id):
+                messages.error(request, "Please request OTP first.")
+                return redirect("dashboard:company_settings")
+            if not entered_otp:
+                messages.error(request, "Enter OTP to confirm account deletion.")
+                return redirect("dashboard:company_settings")
+
+            channel = (payload.get("channel") or "phone").strip().lower()
+            is_valid = False
+            if channel == "email":
+                is_valid = _validate_email_session_otp(
+                    request,
+                    COMPANY_DELETE_OTP_SESSION_KEY,
+                    registered_email,
+                    entered_otp,
+                )
+            else:
+                is_valid = _validate_session_otp(
+                    request,
+                    COMPANY_DELETE_OTP_SESSION_KEY,
+                    registered_mobile,
+                    entered_otp,
+                )
+            if not is_valid:
+                messages.error(request, "Invalid or expired OTP. Request a new OTP.")
+                return redirect("dashboard:company_settings")
+
+            _clear_session_otp(request, COMPANY_DELETE_OTP_SESSION_KEY)
+            company_name = (company.name or "").strip()
+            company_email = (company.email or "").strip()
+            Application.objects.filter(company__iexact=company_name).delete()
+            Interview.objects.filter(company__iexact=company_name).delete()
+            Job.objects.filter(company__iexact=company_name).delete()
+            MessageThread.objects.filter(company=company).delete()
+            Subscription.objects.filter(
+                account_type__iexact="Company",
+                contact__iexact=company_email,
+            ).delete()
+            company.delete()
+            request.session.pop("company_id", None)
+            request.session.pop("company_name", None)
+            messages.success(request, "Company account deleted successfully.")
+            return redirect("dashboard:login")
         return redirect("dashboard:company_settings")
-    
-    return render(request, "dashboard/company/company_settings.html", {"company": company})
+
+    return render(
+        request,
+        "dashboard/company/company_settings.html",
+        {
+            "company": company,
+            "registered_mobile": registered_mobile or "Not available",
+            "registered_email": registered_email or "Not available",
+        },
+    )
 
 
 @company_login_required
@@ -8002,12 +9447,14 @@ def company_support_view(request, section="create", ticket_id=None):
     if not company:
         return redirect("dashboard:login")
 
+    if section == "knowledge":
+        return redirect("dashboard:company_support_create")
+
     section_map = {
         "create": ("Create Ticket", "Raise a new support ticket for any issue."),
         "my-tickets": ("My Tickets", "Track all support tickets submitted by your company."),
         "open": ("Open Tickets", "Tickets that are open or waiting for response."),
         "closed": ("Closed Tickets", "Resolved and closed support requests."),
-        "knowledge": ("Knowledge Base", "Self-help guides and FAQs."),
         "chat": ("Live Chat", "Real-time support chat with our team."),
         "details": ("Ticket Details", "Conversation, attachments, and timeline."),
     }
@@ -8034,16 +9481,73 @@ def company_support_view(request, section="create", ticket_id=None):
                 support_thread.last_message_at = timezone.now()
                 support_thread.save(update_fields=["last_message_at"])
                 messages.success(request, "Message sent to support.")
+        elif action == "create_ticket" and support_thread:
+            subject = (request.POST.get("subject") or "").strip()
+            category = (request.POST.get("category") or "general").strip()
+            priority = (request.POST.get("priority") or "medium").strip()
+            description = (request.POST.get("description") or "").strip()
+            attachment = request.FILES.get("attachment")
+            if not subject or not description:
+                messages.error(request, "Subject and description are required to create ticket.")
+            else:
+                Message.objects.create(
+                    thread=support_thread,
+                    sender_role="company",
+                    sender_name=company.name,
+                    body=_compose_ticket_body(category, priority, subject, description),
+                    attachment=attachment,
+                )
+                support_thread.last_message_at = timezone.now()
+                support_thread.save(update_fields=["last_message_at"])
+                messages.success(request, "Ticket created successfully.")
+                return redirect("dashboard:company_support_tickets")
+        elif action in {"close_ticket", "reopen_ticket"} and support_thread:
+            target_ticket_id = (request.POST.get("ticket_id") or "").strip()
+            if not target_ticket_id:
+                messages.error(request, "Ticket id missing for status update.")
+            else:
+                next_status = "Resolved" if action == "close_ticket" else "Open"
+                Message.objects.create(
+                    thread=support_thread,
+                    sender_role="company",
+                    sender_name=company.name,
+                    body=_compose_ticket_status_update(
+                        target_ticket_id,
+                        next_status,
+                        "Status updated by company.",
+                    ),
+                )
+                support_thread.last_message_at = timezone.now()
+                support_thread.save(update_fields=["last_message_at"])
+                messages.success(request, f"Ticket marked as {next_status}.")
         return redirect(request.path)
 
     support_messages = []
     if support_thread:
-        support_messages = list(support_thread.messages.order_by("created_at")[:150])
+        support_messages = list(support_thread.messages.order_by("created_at")[:300])
         Message.objects.filter(thread=support_thread, is_read=False).exclude(
             sender_role="company"
         ).update(is_read=True)
 
-    resolved_ticket_id = ticket_id or f"SUP-{company.id:04d}"
+    tickets = _extract_support_tickets(support_messages, "company")
+    open_tickets = [
+        item
+        for item in tickets
+        if item["status"] in {"Open", "In Progress", "Waiting", "Awaiting Response"}
+    ]
+    closed_tickets = [
+        item
+        for item in tickets
+        if item["status"] in {"Resolved", "Closed"}
+    ]
+    in_progress_tickets = [item for item in tickets if item["status"] == "In Progress"]
+
+    selected_ticket = None
+    if ticket_id:
+        selected_ticket = next((item for item in tickets if item["id"] == ticket_id), None)
+    if not selected_ticket and tickets:
+        selected_ticket = tickets[0]
+    resolved_ticket_id = selected_ticket["id"] if selected_ticket else (ticket_id or f"SUP-{company.id:04d}")
 
     return render(
         request,
@@ -8054,6 +9558,15 @@ def company_support_view(request, section="create", ticket_id=None):
             "page_title": page_title,
             "page_subtitle": page_subtitle,
             "ticket_id": resolved_ticket_id,
+            "selected_ticket": selected_ticket,
+            "tickets": tickets,
+            "open_tickets": open_tickets,
+            "closed_tickets": closed_tickets,
+            "ticket_counts": {
+                "open": len(open_tickets),
+                "in_progress": len(in_progress_tickets),
+                "resolved": len(closed_tickets),
+            },
             "support_thread": support_thread,
             "support_messages": support_messages,
             "support_thread_messages_api": reverse(

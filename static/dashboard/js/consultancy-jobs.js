@@ -9,8 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
     Draft: 'Pending',
     Active: 'Approved',
     Paused: 'Pending',
-    Closed: 'Rejected',
-    Expired: 'Rejected',
+    Closed: 'Approved',
+    Expired: 'Approved',
     Archived: 'Reported',
   };
 

@@ -50,7 +50,7 @@
   <div class="card-header">
     <div>
       <h3>Schedule Interview</h3>
-      <p class="muted">Auto-fill from shortlisted candidates or add manually.</p>
+      <p class="muted">Auto-fill from shortlisted candidates and edit details if needed.</p>
     </div>
   </div>
   <form class="interview-form" method="post">
@@ -61,7 +61,7 @@
       <div class="form-group">
         <label>Shortlisted Candidate</label>
         <select id="shortlistedSelect" name="application_id">
-          <option value="">Manual entry</option>
+          <option value="">Select shortlisted candidate</option>
           {% for app in shortlisted_apps %}
             <option value="{{ app.application_id }}" data-name="{{ app.candidate_name }}" data-email="{{ app.candidate_email }}" data-job="{{ app.job_title }}">
               {{ app.candidate_name }} - {{ app.job_title }}
@@ -99,16 +99,16 @@
       </div>
       <div class="form-group">
         <label>Interview Type</label>
-        <select name="mode">
+        <select name="mode" id="interviewModeSelect">
           <option value="Online">Online</option>
           <option value="Offline">Offline</option>
         </select>
       </div>
-      <div class="form-group">
+      <div class="form-group" id="interviewMeetingLinkGroup">
         <label>Meeting Link</label>
         <input type="url" name="meeting_link" placeholder="https://meet.google.com/..." />
       </div>
-      <div class="form-group">
+      <div class="form-group" id="interviewLocationGroup" style="display:none;">
         <label>Location (if offline)</label>
         <input type="text" name="location" placeholder="Office address" />
       </div>

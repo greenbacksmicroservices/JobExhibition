@@ -126,6 +126,23 @@
     }
   };
 
+  const syncScheduleModeUI = () => {
+    const modeSelect = document.getElementById('scheduleMode');
+    const linkInput = document.getElementById('scheduleLink');
+    const addressGroup = document.getElementById('scheduleAddressGroup');
+    const addressInput = document.getElementById('scheduleAddress');
+    if (!modeSelect || !linkInput || !addressGroup || !addressInput) return;
+
+    const isOffline = (modeSelect.value || '').trim().toLowerCase() === 'offline';
+    addressGroup.style.display = isOffline ? 'block' : 'none';
+    addressInput.required = isOffline;
+    linkInput.required = !isOffline;
+
+    if (isOffline && !addressInput.value.trim() && linkInput.value.trim()) {
+      addressInput.value = linkInput.value.trim();
+    }
+  };
+
   const updateSkills = (containerId, skillsRaw) => {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -267,8 +284,10 @@
     setValue('scheduleTime', data.interviewTime);
     setValue('scheduleMode', data.interviewMode || 'Online');
     setValue('scheduleLink', data.meetingLink);
+    setValue('scheduleAddress', data.meetingAddress || '');
     setValue('scheduleInterviewer', data.interviewer);
     setValue('scheduleFeedback', normalizeText(data.interviewFeedback));
+    syncScheduleModeUI();
 
     scheduleModal.show();
   };
@@ -488,6 +507,12 @@
         if (chatSendBtn) chatSendBtn.disabled = false;
       }
     });
+  }
+
+  const scheduleModeSelect = document.getElementById('scheduleMode');
+  if (scheduleModeSelect) {
+    scheduleModeSelect.addEventListener('change', syncScheduleModeUI);
+    syncScheduleModeUI();
   }
 
   document.addEventListener('click', (event) => {

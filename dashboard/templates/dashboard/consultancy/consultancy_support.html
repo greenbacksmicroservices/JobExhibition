@@ -13,18 +13,18 @@
   <div class="hero-badges">
     <div class="hero-badge">
       <span>Open Tickets</span>
-      <strong>12</strong>
+      <strong>{{ ticket_counts.open|default:0 }}</strong>
       <small>Awaiting response</small>
     </div>
     <div class="hero-badge">
       <span>In Progress</span>
-      <strong>5</strong>
+      <strong>{{ ticket_counts.in_progress|default:0 }}</strong>
       <small>Assigned to agents</small>
     </div>
     <div class="hero-badge">
       <span>Resolved</span>
-      <strong>38</strong>
-      <small>Last 30 days</small>
+      <strong>{{ ticket_counts.resolved|default:0 }}</strong>
+      <small>Closed tickets</small>
     </div>
   </div>
 </section>
@@ -34,46 +34,48 @@
   <div class="card-header">
     <div>
       <h3>Create Ticket</h3>
-      <p class="muted">Tell us the issue and our team will respond quickly.</p>
+      <p class="muted">Raise a support ticket and track it in realtime.</p>
     </div>
     <div class="header-badges">
       <span class="badge info">Email Notification Enabled</span>
       <span class="badge warning">Max File Size: 10 MB</span>
     </div>
   </div>
-  <form class="support-form">
+  <form class="support-form" method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create_ticket" />
     <div class="form-grid">
       <div class="form-group">
         <label>Subject</label>
-        <input type="text" placeholder="Short summary of the issue" />
+        <input type="text" name="subject" placeholder="Short summary of the issue" required />
       </div>
       <div class="form-group">
         <label>Category</label>
-        <select>
-          <option>Technical Issue</option>
-          <option>Billing</option>
-          <option>Job Posting Problem</option>
-          <option>Candidate Issue</option>
-          <option>Account Verification</option>
-          <option>Feature Request</option>
-          <option>Other</option>
+        <select name="category" required>
+          <option value="technical">Technical Issue</option>
+          <option value="billing">Billing</option>
+          <option value="job-posting">Job Posting Problem</option>
+          <option value="candidate">Candidate Issue</option>
+          <option value="account-verification">Account Verification</option>
+          <option value="feature-request">Feature Request</option>
+          <option value="other">Other</option>
         </select>
       </div>
       <div class="form-group">
         <label>Priority</label>
-        <select>
-          <option>Low</option>
-          <option selected>Medium</option>
-          <option>High</option>
+        <select name="priority">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
         </select>
       </div>
       <div class="form-group" style="grid-column: 1 / -1;">
         <label>Description</label>
-        <textarea rows="6" placeholder="Describe the problem with details, dates, and job IDs."></textarea>
+        <textarea name="description" rows="6" placeholder="Describe the problem with details, dates, and job IDs." required></textarea>
       </div>
       <div class="form-group">
         <label>Attachment</label>
-        <input type="file" />
+        <input type="file" name="attachment" />
         <p class="muted">Upload screenshots or documents.</p>
       </div>
     </div>
@@ -83,56 +85,6 @@
     </div>
   </form>
 </section>
-
-<section class="card support-card">
-  <div class="card-header">
-    <div>
-      <h3>After You Submit</h3>
-      <p class="muted">Ticket ID and confirmations.</p>
-    </div>
-  </div>
-  <div class="support-steps">
-    <div class="support-step">
-      <strong>Ticket ID Generated</strong>
-      <p class="muted">Example: #{{ ticket_id }}</p>
-    </div>
-    <div class="support-step">
-      <strong>Email Confirmation</strong>
-      <p class="muted">We send a confirmation email instantly.</p>
-    </div>
-    <div class="support-step">
-      <strong>Workflow</strong>
-      <p class="muted">Create ticket -> Support reply -> Resolution -> Close</p>
-    </div>
-  </div>
-</section>
-
-<section class="card support-card">
-  <div class="card-header">
-    <div>
-      <h3>Notification Rules</h3>
-      <p class="muted">What updates you will receive.</p>
-    </div>
-  </div>
-  <div class="support-notes">
-    <div class="note-card">
-      <strong>Email Alerts</strong>
-      <p class="muted">Ticket created, support reply, and resolution updates.</p>
-    </div>
-    <div class="note-card">
-      <strong>Dashboard Notifications</strong>
-      <p class="muted">Unread message indicator in the top bar.</p>
-    </div>
-    <div class="note-card">
-      <strong>SMS Alerts (Optional)</strong>
-      <p class="muted">Enable SMS reminders for critical tickets.</p>
-    </div>
-    <div class="note-card">
-      <strong>Security Rules</strong>
-      <p class="muted">Consultancy can view only its tickets. Logs are immutable.</p>
-    </div>
-  </div>
-</section>
 {% endif %}
 
 {% if support_section == "my-tickets" %}
@@ -141,9 +93,6 @@
     <div>
       <h3>My Tickets</h3>
       <p class="muted">All tickets created by your consultancy.</p>
-    </div>
-    <div class="header-actions">
-      <input type="search" placeholder="Search ticket ID or subject" />
     </div>
   </div>
   <div class="table-wrap">
@@ -160,42 +109,42 @@
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td>#SUP-1023</td>
-          <td>Cannot post job</td>
-          <td>Job Posting Problem</td>
-          <td><span class="badge warning">High</span></td>
-          <td><span class="badge info">In Progress</span></td>
-          <td>2026-02-15</td>
-          <td><a class="action-link" href="{% url 'dashboard:consultancy_support_detail' 'SUP-1023' %}">View</a></td>
-        </tr>
-        <tr>
-          <td>#SUP-1017</td>
-          <td>Payment failed</td>
-          <td>Billing</td>
-          <td><span class="badge neutral">Medium</span></td>
-          <td><span class="badge warning">Waiting</span></td>
-          <td>2026-02-13</td>
-          <td><a class="action-link" href="{% url 'dashboard:consultancy_support_detail' 'SUP-1017' %}">View</a></td>
-        </tr>
-        <tr>
-          <td>#SUP-1012</td>
-          <td>Feature request: auto shortlist</td>
-          <td>Feature Request</td>
-          <td><span class="badge success">Low</span></td>
-          <td><span class="badge info">Open</span></td>
-          <td>2026-02-11</td>
-          <td><a class="action-link" href="{% url 'dashboard:consultancy_support_detail' 'SUP-1012' %}">View</a></td>
-        </tr>
-        <tr>
-          <td>#SUP-1009</td>
-          <td>Account verification issue</td>
-          <td>Account Verification</td>
-          <td><span class="badge success">Low</span></td>
-          <td><span class="badge success">Resolved</span></td>
-          <td>2026-02-10</td>
-          <td><a class="action-link" href="{% url 'dashboard:consultancy_support_detail' 'SUP-1009' %}">View</a></td>
-        </tr>
+        {% if tickets %}
+          {% for ticket in tickets %}
+          <tr>
+            <td><strong>#{{ ticket.id }}</strong></td>
+            <td>{{ ticket.subject }}</td>
+            <td>{{ ticket.category }}</td>
+            <td><span class="badge warning">{{ ticket.priority }}</span></td>
+            <td><span class="badge {{ ticket.status_class }}">{{ ticket.status }}</span></td>
+            <td>{{ ticket.created_display }}</td>
+            <td>
+              <div class="table-actions">
+                <a class="action-link" href="{% url 'dashboard:consultancy_support_detail' ticket.id %}">View</a>
+                {% if ticket.status == "Resolved" or ticket.status == "Closed" %}
+                <form method="post" class="inline-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="reopen_ticket" />
+                  <input type="hidden" name="ticket_id" value="{{ ticket.id }}" />
+                  <button class="action-btn" type="submit">Reopen</button>
+                </form>
+                {% else %}
+                <form method="post" class="inline-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="close_ticket" />
+                  <input type="hidden" name="ticket_id" value="{{ ticket.id }}" />
+                  <button class="action-btn danger" type="submit">Resolve</button>
+                </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="7" class="muted" style="text-align:center; padding: 16px;">No tickets created yet.</td>
+          </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
@@ -207,7 +156,7 @@
   <div class="card-header">
     <div>
       <h3>Open Tickets</h3>
-      <p class="muted">Open and waiting-for-response tickets.</p>
+      <p class="muted">Open and in-progress tickets.</p>
     </div>
   </div>
   <div class="table-wrap">
@@ -223,22 +172,22 @@
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td>#SUP-1023</td>
-          <td>Cannot post job</td>
-          <td><span class="badge warning">High</span></td>
-          <td><span class="badge info">In Progress</span></td>
-          <td>2 hours ago</td>
-          <td><a class="action-link" href="{% url 'dashboard:consultancy_support_detail' 'SUP-1023' %}">View</a></td>
-        </tr>
-        <tr>
-          <td>#SUP-1017</td>
-          <td>Payment failed</td>
-          <td><span class="badge neutral">Medium</span></td>
-          <td><span class="badge warning">Waiting</span></td>
-          <td>1 day ago</td>
-          <td><a class="action-link" href="{% url 'dashboard:consultancy_support_detail' 'SUP-1017' %}">View</a></td>
-        </tr>
+        {% if open_tickets %}
+          {% for ticket in open_tickets %}
+          <tr>
+            <td><strong>#{{ ticket.id }}</strong></td>
+            <td>{{ ticket.subject }}</td>
+            <td><span class="badge warning">{{ ticket.priority }}</span></td>
+            <td><span class="badge {{ ticket.status_class }}">{{ ticket.status }}</span></td>
+            <td>{{ ticket.updated_display }}</td>
+            <td><a class="action-link" href="{% url 'dashboard:consultancy_support_detail' ticket.id %}">View</a></td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="6" class="muted" style="text-align:center; padding: 16px;">No open tickets.</td>
+          </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
@@ -261,24 +210,23 @@
           <th>Subject</th>
           <th>Status</th>
           <th>Closed On</th>
-          <th>Feedback</th>
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td>#SUP-1009</td>
-          <td>Account verification issue</td>
-          <td><span class="badge success">Closed</span></td>
-          <td>2026-02-12</td>
-          <td>4.5 / 5</td>
-        </tr>
-        <tr>
-          <td>#SUP-1002</td>
-          <td>Candidate complaint</td>
-          <td><span class="badge success">Closed</span></td>
-          <td>2026-02-08</td>
-          <td>5 / 5</td>
-        </tr>
+        {% if closed_tickets %}
+          {% for ticket in closed_tickets %}
+          <tr>
+            <td><strong>#{{ ticket.id }}</strong></td>
+            <td>{{ ticket.subject }}</td>
+            <td><span class="badge {{ ticket.status_class }}">{{ ticket.status }}</span></td>
+            <td>{{ ticket.updated_display }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="4" class="muted" style="text-align:center; padding: 16px;">No closed tickets.</td>
+          </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
@@ -300,22 +248,26 @@
     </div>
     <div class="header-badges">
       <span class="badge info" data-thread-status>Syncing...</span>
-      <span class="badge neutral">Thread {{ support_thread.id|default:"--" }}</span>
+      <a class="action-btn" href="{% url 'dashboard:consultancy_support_chat' %}">Open Live Chat</a>
     </div>
   </div>
   <div class="ticket-detail">
     <div class="ticket-summary">
       <div>
-        <strong>Support Ticket</strong>
-        <p class="muted">{{ ticket_id }}</p>
+        <strong>Subject</strong>
+        <p class="muted">{{ selected_ticket.subject|default:"Support Ticket" }}</p>
+      </div>
+      <div>
+        <strong>Status</strong>
+        {% if selected_ticket %}
+        <p class="muted"><span class="badge {{ selected_ticket.status_class }}">{{ selected_ticket.status }}</span></p>
+        {% else %}
+        <p class="muted">--</p>
+        {% endif %}
       </div>
       <div>
         <strong>Created</strong>
-        <p class="muted">{{ support_thread.created_at|date:"d M Y, h:i A"|default:"--" }}</p>
-      </div>
-      <div>
-        <strong>Last Update</strong>
-        <p class="muted">{{ support_thread.last_message_at|date:"d M Y, h:i A"|default:"--" }}</p>
+        <p class="muted">{{ selected_ticket.created_display|default:"--" }}</p>
       </div>
     </div>
   </div>
@@ -360,47 +312,6 @@
     </div>
     <p class="muted" data-thread-sync>Last sync: --</p>
   </form>
-</section>
-{% endif %}
-
-{% if support_section == "knowledge" %}
-<section class="card support-card">
-  <div class="card-header">
-    <div>
-      <h3>Knowledge Base</h3>
-      <p class="muted">Search guides and FAQs.</p>
-    </div>
-    <div class="header-actions">
-      <input type="search" placeholder="Search articles" />
-    </div>
-  </div>
-  <div class="kb-grid">
-    <article class="kb-card">
-      <h4>How to post a job</h4>
-      <p class="muted">Step-by-step job creation and approval workflow.</p>
-      <button class="action-btn">Read Article</button>
-    </article>
-    <article class="kb-card">
-      <h4>How to shortlist candidates</h4>
-      <p class="muted">Use filters, rating, and bulk actions to shortlist.</p>
-      <button class="action-btn">Read Article</button>
-    </article>
-    <article class="kb-card">
-      <h4>Payment FAQs</h4>
-      <p class="muted">Common billing issues and invoice downloads.</p>
-      <button class="action-btn">Read Article</button>
-    </article>
-    <article class="kb-card">
-      <h4>Subscription plans</h4>
-      <p class="muted">Compare plan limits and upgrade steps.</p>
-      <button class="action-btn">Read Article</button>
-    </article>
-    <article class="kb-card">
-      <h4>Account verification</h4>
-      <p class="muted">KYC and verification checklist.</p>
-      <button class="action-btn">Read Article</button>
-    </article>
-  </div>
 </section>
 {% endif %}
 

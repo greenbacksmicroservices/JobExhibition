@@ -155,7 +155,20 @@
         </div>
       </div>
       {% else %}
-      <p class="muted">Company details are not available.</p>
+      <div class="info-grid">
+        <div class="info-row">
+          <span class="label">Company</span>
+          <strong>{{ job.company|default:"--" }}</strong>
+        </div>
+        <div class="info-row">
+          <span class="label">Location</span>
+          <strong>{{ job.location|default:"--" }}</strong>
+        </div>
+        <div class="info-row">
+          <span class="label">Contact</span>
+          <strong>{{ job.recruiter_email|default:"--" }}</strong>
+        </div>
+      </div>
       {% endif %}
     </section>
 

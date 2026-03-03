@@ -7,8 +7,8 @@
 <section class="page-hero">
   <div>
     <p class="eyebrow">Messages</p>
-    <h2>Consultancy Inbox</h2>
-    <p class="muted">Chat is enabled for assigned jobs and submitted candidates only.</p>
+    <h2>Applied Candidate Chat</h2>
+    <p class="muted">Chat directly with candidates submitted from your consultancy.</p>
   </div>
 </section>
 
@@ -17,14 +17,22 @@
     <div class="chat-panel-header">
       <div>
         <h3>Conversations</h3>
-        <p class="muted">Candidate and company threads.</p>
+        <p class="muted">Application-based candidate threads.</p>
       </div>
     </div>
     <div class="chat-thread-list">
       {% if thread_cards %}
         {% for card in thread_cards %}
         <a class="chat-thread {% if active_thread and card.thread.id == active_thread.id %}active{% endif %}" href="?thread={{ card.thread.id }}">
-          <div class="thread-avatar">{{ card.partner_name|default:"?"|first|upper }}</div>
+          <div class="thread-avatar">
+            {% if card.thread.candidate and card.thread.candidate.profile_image %}
+            <img src="{{ card.thread.candidate.profile_image.url }}" alt="{{ card.partner_name|default:'Candidate' }}" />
+            {% elif card.thread.company and card.thread.company.profile_image %}
+            <img src="{{ card.thread.company.profile_image.url }}" alt="{{ card.partner_name|default:'Company' }}" />
+            {% else %}
+            {{ card.partner_name|default:"?"|first|upper }}
+            {% endif %}
+          </div>
           <div class="thread-meta">
             <strong>{{ card.partner_name }}</strong>
             <span class="muted">{{ card.job_title }}</span>
@@ -41,22 +49,28 @@
       {% else %}
         <div class="analysis-card">
           <strong>No conversations yet</strong>
-          <p class="muted">Submit a candidate to unlock chat.</p>
+          <p class="muted">Submit a candidate from Candidate Pool to unlock chat.</p>
         </div>
       {% endif %}
     </div>
   </aside>
 
-  <div class="chat-window chat-threaded-window">
-    {% if active_thread %}
+  {% if active_thread %}
+  <div
+    class="chat-window chat-threaded-window"
+    data-thread-live="1"
+    data-thread-mode="chat"
+    data-messages-endpoint="{{ thread_messages_api }}"
+    data-send-endpoint="{{ thread_send_api }}"
+  >
     <div class="chat-header">
       <div>
         <h3>{{ active_card.partner_name|default:"Conversation" }}</h3>
         <p class="muted">{{ active_card.partner_role }} - {{ active_card.job_title }}</p>
       </div>
-      <span class="badge info">Application {{ active_card.application_id|default:"--" }}</span>
+      <span class="badge info" data-thread-status>Syncing...</span>
     </div>
-    <div class="chat-messages">
+    <div class="chat-messages" data-thread-messages>
       {% if thread_messages %}
         {% for msg in thread_messages %}
         <div class="chat-message {% if msg.sender_role == current_role %}company{% else %}support{% endif %}">
@@ -81,7 +95,7 @@
         </div>
       {% endif %}
     </div>
-    <form class="chat-input" method="post" enctype="multipart/form-data">
+    <form class="chat-input" data-thread-form method="post" enctype="multipart/form-data">
       {% csrf_token %}
       <input type="hidden" name="action" value="send_message" />
       <input type="hidden" name="thread_id" value="{{ active_thread.id }}" />
@@ -91,15 +105,22 @@
           <input type="file" name="attachment" />
           Attach
         </label>
-        <button class="btn primary" type="submit">Send</button>
+        <button class="btn primary" type="submit" data-thread-submit>Send</button>
       </div>
+      <p class="muted" data-thread-sync>Last sync: --</p>
     </form>
-    {% else %}
+  </div>
+  {% else %}
+  <div class="chat-window chat-threaded-window">
     <div class="analysis-card">
       <strong>Select a conversation</strong>
-      <p class="muted">Open a submission thread to start messaging.</p>
+      <p class="muted">Open a candidate thread from Applications to start messaging.</p>
     </div>
-    {% endif %}
   </div>
+  {% endif %}
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/thread-realtime.js' %}?v={{ static_asset_version }}"></script>
 {% endblock %}

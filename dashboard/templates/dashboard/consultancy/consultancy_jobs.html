@@ -4,49 +4,42 @@
 {% block title %}Job Management{% endblock %}
 
 {% block content %}
+{% if form_mode == "view" and edit_job %}
+<section class="page-hero company-hero" data-job-metrics-endpoint="{{ metrics_api_url }}">
+  <div>
+    <p class="eyebrow">Consultancy Panel</p>
+    <h2>{{ edit_job.title }} - Performance</h2>
+    <p class="muted">Real-time job analytics for this posted role.</p>
+  </div>
+  <div class="hero-badges">
+    <div class="hero-badge">
+      <span>Total Views</span>
+      <strong data-job-metric="total_views">{{ overview_metrics.total_views|default:0 }}</strong>
+    </div>
+    <div class="hero-badge">
+      <span>Total Clicks</span>
+      <strong data-job-metric="total_clicks">{{ overview_metrics.total_clicks|default:0 }}</strong>
+    </div>
+    <div class="hero-badge">
+      <span>Total Impressions</span>
+      <strong data-job-metric="total_impressions">{{ overview_metrics.total_impressions|default:0 }}</strong>
+    </div>
+    <div class="hero-badge">
+      <span>Applications</span>
+      <strong data-job-metric="total_applications">{{ overview_metrics.total_applications|default:0 }}</strong>
+    </div>
+  </div>
+</section>
+<p class="muted" data-job-metrics-updated>Realtime sync: --</p>
+{% else %}
 <section class="page-hero company-hero">
   <div>
     <p class="eyebrow">Consultancy Panel</p>
     <h2>Post & Manage Jobs</h2>
-    <p class="muted">Create job posts, track applications, and control visibility status.</p>
-  </div>
-  <div class="hero-badges">
-    <div class="hero-badge">
-      <span>Total Posted</span>
-      <strong>{{ status_counts.all }}</strong>
-    </div>
-    <div class="hero-badge">
-      <span>Active</span>
-      <strong>{{ status_counts.active }}</strong>
-    </div>
-    <div class="hero-badge">
-      <span>Total Applied</span>
-      <strong>{{ total_applications }}</strong>
-    </div>
+    <p class="muted">Manage jobs from the table below. Open View for real-time performance.</p>
   </div>
 </section>
-
-<section class="card section-block">
-  <div class="card-header">
-    <div>
-      <h3>Quick Filters</h3>
-      <p class="muted">Filter your posted jobs by lifecycle status.</p>
-    </div>
-    <div class="table-actions">
-      <a class="action-btn" href="{% url 'dashboard:consultancy_assigned_jobs' %}">Assigned Jobs ({{ assigned_jobs_count }})</a>
-      <a class="action-btn" href="{% url 'dashboard:consultancy_jobs' %}?action=new#post-new-job">Post New Job</a>
-    </div>
-  </div>
-  <div class="summary-tags">
-    <a class="badge {% if not filter_status %}info{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}">All ({{ status_counts.all }})</a>
-    <a class="badge {% if filter_status == 'draft' %}neutral{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=draft">Draft ({{ status_counts.draft }})</a>
-    <a class="badge {% if filter_status == 'active' %}success{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=active">Active ({{ status_counts.active }})</a>
-    <a class="badge {% if filter_status == 'paused' %}warning{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=paused">Paused ({{ status_counts.paused }})</a>
-    <a class="badge {% if filter_status == 'closed' %}info{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=closed">Closed ({{ status_counts.closed }})</a>
-    <a class="badge {% if filter_status == 'expired' %}danger{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=expired">Expired ({{ status_counts.expired }})</a>
-    <a class="badge {% if filter_status == 'archived' %}neutral{% else %}neutral{% endif %}" href="{% url 'dashboard:consultancy_jobs' %}?status=archived">Archived ({{ status_counts.archived }})</a>
-  </div>
-</section>
+{% endif %}
 
 {% if form_mode != "list" %}
 <section class="card section-block" id="post-new-job">
@@ -54,6 +47,9 @@
     <div>
       <h3>{{ section_title }}</h3>
       <p class="muted">{% if form_mode == "view" %}Review job details.{% elif form_mode == "edit" %}Update and save the job post.{% else %}Fill full details to post a new job.{% endif %}</p>
+    </div>
+    <div class="table-actions">
+      <a class="action-btn" href="{% url 'dashboard:consultancy_jobs' %}">All Jobs</a>
     </div>
   </div>
   <form class="company-form-grid" method="post">
@@ -121,6 +117,9 @@
         {% endwith %}
       </select>
       <span class="muted">Draft: saved only, Active: live for candidates, Archived: hidden but saved.</span>
+      {% if edit_job and edit_job.status == "Rejected" %}
+      <span class="badge danger" style="margin-top: 8px; display:inline-flex;">Moderation Status: Rejected</span>
+      {% endif %}
     </div>
     <div class="company-form-group company-form-full">
       <label>Summary</label>
@@ -151,15 +150,28 @@
 </section>
 {% endif %}
 
+{% if form_mode == "list" %}
 <section class="card">
   <div class="card-header">
     <div>
-      <h3>{{ section_title }}</h3>
+      <h3>All Posted Jobs</h3>
       <p class="muted">Each row shows full posted job details and applied count.</p>
     </div>
-    {% if form_mode == "list" %}
-    <a class="btn primary" href="{% url 'dashboard:consultancy_jobs' %}?action=new#post-new-job">Post New Job</a>
-    {% endif %}
+    <div class="table-actions">
+      <form method="get" style="display:flex; gap:8px; align-items:center;">
+        {% if filter_status %}
+        <input type="hidden" name="status" value="{{ filter_status }}" />
+        {% endif %}
+        <input type="text" name="q" value="{{ search_query|default:'' }}" placeholder="Filter table by title, company, category..." />
+        <button class="action-btn" type="submit">Filter</button>
+        {% if search_query %}
+        <a class="action-btn" href="{% url 'dashboard:consultancy_jobs' %}{% if filter_status %}?status={{ filter_status }}{% endif %}">Clear</a>
+        {% endif %}
+      </form>
+      {% if form_mode == "list" %}
+      <a class="btn primary" href="{% url 'dashboard:consultancy_jobs' %}?action=new#post-new-job">Post New Job</a>
+      {% endif %}
+    </div>
   </div>
   <div class="table-wrap">
     <table class="table">
@@ -189,7 +201,7 @@
             <td>{{ job.applicants }}</td>
             <td>{{ job.posted_date|date:"d M Y"|default:"--" }}</td>
             <td>
-              <span class="badge {% if job.status == 'Active' %}success{% elif job.status == 'Paused' %}warning{% elif job.status == 'Closed' %}info{% elif job.status == 'Expired' %}danger{% else %}neutral{% endif %}">
+              <span class="badge {% if job.status == 'Active' %}success{% elif job.status == 'Paused' %}warning{% elif job.status == 'Closed' %}info{% elif job.status == 'Rejected' %}danger{% elif job.status == 'Expired' %}danger{% else %}neutral{% endif %}">
                 {{ job.status }}
               </span>
             </td>
@@ -217,53 +229,55 @@
     </table>
   </div>
 </section>
-
-<section class="card section-block">
-  <div class="card-header">
-    <div>
-      <h3>Job Status System</h3>
-      <p class="muted">Status meaning as per consultancy workflow.</p>
-    </div>
-  </div>
-  <div class="table-wrap">
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Status</th>
-          <th>Meaning</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><span class="badge neutral">Draft</span></td>
-          <td>Saved but not published</td>
-        </tr>
-        <tr>
-          <td><span class="badge success">Active</span></td>
-          <td>Live and visible</td>
-        </tr>
-        <tr>
-          <td><span class="badge warning">Paused</span></td>
-          <td>Temporarily stopped</td>
-        </tr>
-        <tr>
-          <td><span class="badge info">Closed</span></td>
-          <td>Hiring completed</td>
-        </tr>
-        <tr>
-          <td><span class="badge danger">Expired</span></td>
-          <td>Last date over</td>
-        </tr>
-        <tr>
-          <td><span class="badge neutral">Archived</span></td>
-          <td>Hidden but saved</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</section>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
 <script src="{% static 'dashboard/js/consultancy-jobs.js' %}?v={{ static_asset_version }}"></script>
+<script>
+  (function () {
+    const mode = "{{ form_mode }}";
+    const metricsHost = document.querySelector("[data-job-metrics-endpoint]");
+    if (metricsHost) {
+      const endpoint = metricsHost.dataset.jobMetricsEndpoint;
+      const updatedNode = document.querySelector("[data-job-metrics-updated]");
+      const metricNodes = {
+        total_views: document.querySelector("[data-job-metric='total_views']"),
+        total_clicks: document.querySelector("[data-job-metric='total_clicks']"),
+        total_impressions: document.querySelector("[data-job-metric='total_impressions']"),
+        total_applications: document.querySelector("[data-job-metric='total_applications']"),
+      };
+      const sync = function () {
+        fetch(endpoint, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+          .then(function (response) {
+            return response.ok ? response.json() : null;
+          })
+          .then(function (payload) {
+            if (!payload || !payload.metrics) return;
+            Object.keys(metricNodes).forEach(function (key) {
+              if (metricNodes[key]) metricNodes[key].textContent = payload.metrics[key] || 0;
+            });
+            if (updatedNode) {
+              updatedNode.textContent = "Realtime sync: " + new Date().toLocaleTimeString();
+            }
+          })
+          .catch(function () {
+            if (updatedNode) updatedNode.textContent = "Realtime sync: waiting...";
+          });
+      };
+      sync();
+      setInterval(function () {
+        if (document.hidden) return;
+        sync();
+      }, 20000);
+      return;
+    }
+    if (mode === "list") {
+      setInterval(function () {
+        if (document.hidden) return;
+        window.location.reload();
+      }, 60000);
+    }
+  })();
+</script>
 {% endblock %}

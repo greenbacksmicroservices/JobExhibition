@@ -75,5 +75,40 @@
       <button type="submit" class="btn primary">Update Password</button>
     </form>
   </div>
+
+  <div class="card" style="margin-top: 20px;">
+    <div class="card-header">
+      <h3>Delete My Account</h3>
+    </div>
+    <form method="post" style="padding: 20px; display: grid; gap: 18px;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="send_delete_otp" />
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">OTP Verification Mode</label>
+        <select name="otp_channel" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+          <option value="phone">Phone OTP (Recommended)</option>
+          <option value="email">Email OTP</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Registered Phone</label>
+        <input type="text" value="{{ registered_mobile }}" readonly style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; background: #f9fafb;">
+      </div>
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Registered Email</label>
+        <input type="text" value="{{ registered_email }}" readonly style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; background: #f9fafb;">
+      </div>
+      <button type="submit" class="btn ghost">Send OTP</button>
+    </form>
+    <form method="post" style="padding: 0 20px 20px; display: grid; gap: 18px;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="delete_account" />
+      <div>
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Enter OTP</label>
+        <input type="text" name="delete_otp" maxlength="6" placeholder="6-digit OTP" required style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+      </div>
+      <button type="submit" class="btn danger">Delete Account</button>
+    </form>
+  </div>
 </div>
 {% endblock %}

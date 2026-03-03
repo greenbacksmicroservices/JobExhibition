@@ -8,7 +8,7 @@
   <div>
     <p class="eyebrow">Support</p>
     <h2>Grievance Management</h2>
-    <p class="muted">Report and track grievances or issues.</p>
+    <p class="muted">Report and track grievance requests in one place.</p>
   </div>
 </section>
 
@@ -17,24 +17,30 @@
     <div class="card-header">
       <h3>Report a Grievance</h3>
     </div>
-    <form style="padding: 20px; display: grid; gap: 16px;">
+    <form method="post" style="padding: 20px; display: grid; gap: 16px;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="submit_grievance" />
       <div>
         <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Category</label>
-        <select style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
-          <option>Select category</option>
-          <option>Technical Issue</option>
-          <option>Payment Issue</option>
-          <option>Candidate Issue</option>
-          <option>Other</option>
+        <select id="grievanceCategory" name="category" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;" required>
+          <option value="">Select category</option>
+          <option value="technical">Technical Issue</option>
+          <option value="payment">Payment Issue</option>
+          <option value="candidate">Candidate Issue</option>
+          <option value="other">Other</option>
         </select>
+      </div>
+      <div id="grievanceOtherWrap" style="display:none;">
+        <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Other Category</label>
+        <input type="text" id="grievanceOtherInput" name="category_other" placeholder="Type custom category" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
       </div>
       <div>
         <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Subject</label>
-        <input type="text" placeholder="Subject of grievance" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+        <input type="text" name="subject" placeholder="Subject of grievance" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;" required>
       </div>
       <div>
         <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Description</label>
-        <textarea rows="4" placeholder="Describe your grievance in detail..." style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; resize: vertical;"></textarea>
+        <textarea rows="4" name="description" placeholder="Describe your grievance in detail..." style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; resize: vertical;" required></textarea>
       </div>
       <button type="submit" class="btn primary">Submit Grievance</button>
     </form>
@@ -43,24 +49,61 @@
   <div class="card">
     <div class="card-header">
       <h3>Your Grievances</h3>
-      <p class="muted">All submitted grievances</p>
+      <p class="muted">Submission history with current status</p>
     </div>
-    <div class="activity-list" style="padding: 20px;">
-      <div class="activity-item">
-        <div>
-          <strong>Payment not received</strong>
-          <span class="muted">Submitted: 5 days ago</span>
-        </div>
-        <span class="badge success">Resolved</span>
-      </div>
-      <div class="activity-item">
-        <div>
-          <strong>Job posting issue</strong>
-          <span class="muted">Submitted: 12 days ago</span>
-        </div>
-        <span class="badge info">In Review</span>
-      </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Category</th>
+            <th>Subject</th>
+            <th>Status</th>
+            <th>Submitted</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if grievances %}
+            {% for grievance in grievances %}
+            <tr>
+              <td><strong>{{ grievance.id }}</strong></td>
+              <td>{{ grievance.category }}</td>
+              <td>{{ grievance.subject }}</td>
+              <td><span class="badge {{ grievance.status_class }}">{{ grievance.status }}</span></td>
+              <td>{{ grievance.submitted_display }}</td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="5" class="muted" style="text-align:center; padding: 16px;">No grievances submitted yet.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(() => {
+  const categorySelect = document.getElementById('grievanceCategory');
+  const otherWrap = document.getElementById('grievanceOtherWrap');
+  const otherInput = document.getElementById('grievanceOtherInput');
+  if (!categorySelect || !otherWrap || !otherInput) return;
+
+  const syncOtherCategory = () => {
+    const isOther = (categorySelect.value || '').toLowerCase() === 'other';
+    otherWrap.style.display = isOther ? 'block' : 'none';
+    otherInput.required = isOther;
+    if (!isOther) {
+      otherInput.value = '';
+    }
+  };
+
+  categorySelect.addEventListener('change', syncOtherCategory);
+  syncOtherCategory();
+})();
+</script>
 {% endblock %}

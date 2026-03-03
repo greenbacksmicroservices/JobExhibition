@@ -23,28 +23,38 @@
     <table class="table">
       <thead>
         <tr>
+          <th>Application ID</th>
           <th>Candidate</th>
           <th>Job</th>
           <th>Company</th>
           <th>Stage</th>
+          <th>Updated</th>
           <th>Action</th>
         </tr>
       </thead>
       <tbody>
+        {% if shortlisted %}
         {% for item in shortlisted %}
         <tr>
+          <td><strong>{{ item.application_id }}</strong></td>
           <td><strong>{{ item.candidate }}</strong></td>
           <td>{{ item.job }}</td>
           <td>{{ item.company }}</td>
           <td><span class="badge info">{{ item.stage }}</span></td>
+          <td>{{ item.updated_at|date:"d M Y, h:i A" }}</td>
           <td>
             <div class="table-actions">
               <a class="action-btn" href="{% url 'dashboard:consultancy_interviews' %}#schedule-interview">Schedule Interview</a>
-              <a class="action-btn" href="{% url 'dashboard:consultancy_applications' %}">View</a>
+              <a class="action-btn" href="{% url 'dashboard:consultancy_applications' %}?search={{ item.candidate|urlencode }}">View</a>
             </div>
           </td>
         </tr>
         {% endfor %}
+        {% else %}
+        <tr>
+          <td colspan="7" class="muted" style="text-align:center; padding: 16px;">No shortlisted candidates yet.</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>

@@ -4,56 +4,57 @@
 {% block title %}Consultancy Dashboard{% endblock %}
 
 {% block content %}
+<div id="consultancyMetricsEndpoint" data-endpoint="{% url 'dashboard:consultancy_api_metrics' %}"></div>
 
 <section class="pill-grid">
-  <article class="pill-card gradient-1">
+  <a class="pill-card gradient-1 dashboard-card-link" href="{% url 'dashboard:consultancy_assigned_jobs' %}">
     <div class="pill-icon"><i class="fa-solid fa-briefcase"></i></div>
     <div>
       <p class="pill-title">Total Assigned Jobs</p>
       <strong class="pill-value" id="metricConsultancyAssignedJobs" data-count="{{ metrics.assigned_jobs }}">{{ metrics.assigned_jobs }}</strong>
       <span class="pill-sub">Admin/Company assigned</span>
     </div>
-  </article>
-  <article class="pill-card gradient-2">
+  </a>
+  <a class="pill-card gradient-2 dashboard-card-link" href="{% url 'dashboard:consultancy_jobs' %}?status=active">
     <div class="pill-icon"><i class="fa-solid fa-bolt"></i></div>
     <div>
       <p class="pill-title">Active Jobs</p>
       <strong class="pill-value" id="metricConsultancyActiveJobs" data-count="{{ metrics.active_jobs }}">{{ metrics.active_jobs }}</strong>
       <span class="pill-sub">Live requirements</span>
     </div>
-  </article>
-  <article class="pill-card gradient-3">
+  </a>
+  <a class="pill-card gradient-3 dashboard-card-link" href="{% url 'dashboard:consultancy_candidate_pool' %}">
     <div class="pill-icon"><i class="fa-solid fa-users"></i></div>
     <div>
       <p class="pill-title">Total Candidates Added</p>
       <strong class="pill-value" id="metricConsultancyCandidates" data-count="{{ metrics.candidates }}">{{ metrics.candidates }}</strong>
       <span class="pill-sub">Consultancy pool</span>
     </div>
-  </article>
-  <article class="pill-card gradient-4">
+  </a>
+  <a class="pill-card gradient-4 dashboard-card-link" href="{% url 'dashboard:consultancy_interviews' %}">
     <div class="pill-icon"><i class="fa-solid fa-calendar-check"></i></div>
     <div>
       <p class="pill-title">Interviews Scheduled</p>
       <strong class="pill-value" id="metricConsultancyInterviews" data-count="{{ metrics.interviews }}">{{ metrics.interviews }}</strong>
       <span class="pill-sub">This week</span>
     </div>
-  </article>
-  <article class="pill-card gradient-5">
+  </a>
+  <a class="pill-card gradient-5 dashboard-card-link" href="{% url 'dashboard:consultancy_placements' %}">
     <div class="pill-icon"><i class="fa-solid fa-handshake"></i></div>
     <div>
       <p class="pill-title">Successful Placements</p>
       <strong class="pill-value" id="metricConsultancyPlacements" data-count="{{ metrics.placements }}">{{ metrics.placements }}</strong>
       <span class="pill-sub">Closed offers</span>
     </div>
-  </article>
-  <article class="pill-card gradient-6">
+  </a>
+  <a class="pill-card gradient-6 dashboard-card-link" href="{% url 'dashboard:consultancy_earnings' %}">
     <div class="pill-icon"><i class="fa-solid fa-wallet"></i></div>
     <div>
       <p class="pill-title">Pending Payments</p>
       <strong class="pill-value" id="metricConsultancyPendingPayments" data-count="{{ metrics.pending_payments }}">INR {{ metrics.pending_payments }}</strong>
       <span class="pill-sub">Awaiting payout</span>
     </div>
-  </article>
+  </a>
 </section>
 
 <section class="graph-grid">

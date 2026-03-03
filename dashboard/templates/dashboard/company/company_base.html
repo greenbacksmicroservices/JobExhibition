@@ -68,6 +68,7 @@
               <a class="nav-sub{% if request.resolver_match.url_name == 'company_jobs' and not request.GET.status and not request.GET.action %} active{% endif %}" href="{% url 'dashboard:company_jobs' %}">All Jobs</a>
               <a class="nav-sub{% if request.GET.status == 'active' %} active{% endif %}" href="{% url 'dashboard:company_jobs' %}?status=active">Active Jobs</a>
               <a class="nav-sub{% if request.GET.status == 'draft' %} active{% endif %}" href="{% url 'dashboard:company_jobs' %}?status=draft">Draft Jobs</a>
+              <a class="nav-sub{% if request.GET.status == 'rejected' %} active{% endif %}" href="{% url 'dashboard:company_jobs' %}?status=rejected">Rejected Jobs</a>
               <a class="nav-sub{% if request.GET.status == 'expired' %} active{% endif %}" href="{% url 'dashboard:company_jobs' %}?status=expired">Expired Jobs</a>
               <a class="nav-sub{% if request.GET.status == 'closed' %} active{% endif %}" href="{% url 'dashboard:company_jobs' %}?status=closed">Closed Jobs</a>
               <a class="nav-sub{% if request.GET.status == 'archived' %} active{% endif %}" href="{% url 'dashboard:company_jobs' %}?status=archived">Archived Jobs</a>
@@ -135,8 +136,8 @@
             <span class="nav-icon"><i class="fa-solid fa-shield-halved"></i></span>
             <span>Security</span>
           </a>
-          <div class="nav-section {% if request.resolver_match.url_name == 'company_support' or request.resolver_match.url_name == 'company_support_create' or request.resolver_match.url_name == 'company_support_tickets' or request.resolver_match.url_name == 'company_support_open' or request.resolver_match.url_name == 'company_support_closed' or request.resolver_match.url_name == 'company_support_knowledge' or request.resolver_match.url_name == 'company_support_chat' or request.resolver_match.url_name == 'company_support_detail' %}open{% endif %}">
-            <button class="nav-item nav-toggle" type="button" data-target="companySupport" data-nav-url="{% url 'dashboard:company_support_create' %}" aria-expanded="{% if request.resolver_match.url_name == 'company_support' or request.resolver_match.url_name == 'company_support_create' or request.resolver_match.url_name == 'company_support_tickets' or request.resolver_match.url_name == 'company_support_open' or request.resolver_match.url_name == 'company_support_closed' or request.resolver_match.url_name == 'company_support_knowledge' or request.resolver_match.url_name == 'company_support_chat' or request.resolver_match.url_name == 'company_support_detail' %}true{% else %}false{% endif %}" aria-controls="companySupport">
+          <div class="nav-section {% if request.resolver_match.url_name == 'company_support' or request.resolver_match.url_name == 'company_support_create' or request.resolver_match.url_name == 'company_support_tickets' or request.resolver_match.url_name == 'company_support_open' or request.resolver_match.url_name == 'company_support_closed' or request.resolver_match.url_name == 'company_support_chat' or request.resolver_match.url_name == 'company_support_detail' %}open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="companySupport" data-nav-url="{% url 'dashboard:company_support_create' %}" aria-expanded="{% if request.resolver_match.url_name == 'company_support' or request.resolver_match.url_name == 'company_support_create' or request.resolver_match.url_name == 'company_support_tickets' or request.resolver_match.url_name == 'company_support_open' or request.resolver_match.url_name == 'company_support_closed' or request.resolver_match.url_name == 'company_support_chat' or request.resolver_match.url_name == 'company_support_detail' %}true{% else %}false{% endif %}" aria-controls="companySupport">
               <div class="nav-label">
                 <span class="nav-icon"><i class="fa-solid fa-headset"></i></span>
                 <span>Customer Support</span>
@@ -148,7 +149,6 @@
               <a class="nav-sub{% if request.resolver_match.url_name == 'company_support_tickets' %} active{% endif %}" href="{% url 'dashboard:company_support_tickets' %}">My Tickets</a>
               <a class="nav-sub{% if request.resolver_match.url_name == 'company_support_open' %} active{% endif %}" href="{% url 'dashboard:company_support_open' %}">Open Tickets</a>
               <a class="nav-sub{% if request.resolver_match.url_name == 'company_support_closed' %} active{% endif %}" href="{% url 'dashboard:company_support_closed' %}">Closed Tickets</a>
-              <a class="nav-sub{% if request.resolver_match.url_name == 'company_support_knowledge' %} active{% endif %}" href="{% url 'dashboard:company_support_knowledge' %}">Knowledge Base</a>
               <a class="nav-sub{% if request.resolver_match.url_name == 'company_support_chat' %} active{% endif %}" href="{% url 'dashboard:company_support_chat' %}">Live Chat</a>
             </div>
           </div>

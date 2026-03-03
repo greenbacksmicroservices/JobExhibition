@@ -23,11 +23,13 @@
       <span class="badge info">Open Rate Tracking (Advanced)</span>
     </div>
   </div>
-  <form class="comm-form">
+  <form class="comm-form" method="post" data-server-mode="1">
+    {% csrf_token %}
+    <input type="hidden" name="channel" value="Email" />
     <div class="form-grid">
       <div class="form-group" style="grid-column: 1 / -1;">
         <label>Subject</label>
-        <input type="text" id="bulkEmailSubject" placeholder="Enter email subject" />
+        <input type="text" id="bulkEmailSubject" name="subject" placeholder="Enter email subject" />
       </div>
       <div class="form-group" style="grid-column: 1 / -1;">
         <label>Message Editor (Rich Text)</label>
@@ -39,6 +41,7 @@
           <button type="button" class="tool-btn"><i class="fa-solid fa-list"></i></button>
         </div>
         <div class="rich-editor" id="bulkEmailEditor" contenteditable="true" data-placeholder="Write your email message..."></div>
+        <textarea id="bulkEmailMessage" name="message" hidden></textarea>
         <div class="variable-row">
           <span class="muted">Dynamic variables:</span>
           <div class="variable-chips">
@@ -65,10 +68,10 @@
       </div>
     </div>
     <div class="form-actions">
-      <button type="button" class="btn primary">Send Now</button>
-      <button type="button" class="btn ghost">Schedule Later</button>
+      <button type="submit" class="btn primary" name="action" value="send_now">Send Now</button>
+      <button type="submit" class="btn ghost" name="action" value="schedule_later">Schedule Later</button>
       <button type="button" class="btn ghost" id="emailPreviewBtn" data-bs-toggle="modal" data-bs-target="#emailPreviewModal">Preview</button>
-      <input type="datetime-local" />
+      <input type="datetime-local" name="schedule_at" />
     </div>
   </form>
 </section>
@@ -137,11 +140,13 @@
       <p class="muted">Short messages with character count and credit balance.</p>
     </div>
   </div>
-  <form class="comm-form">
+  <form class="comm-form" method="post" data-server-mode="1">
+    {% csrf_token %}
+    <input type="hidden" name="channel" value="SMS" />
     <div class="form-grid">
       <div class="form-group" style="grid-column: 1 / -1;">
         <label>Message Text</label>
-        <textarea class="sms-textarea" rows="4" maxlength="160" placeholder="Type SMS message (160 characters)..."></textarea>
+        <textarea class="sms-textarea" name="message" rows="4" maxlength="160" placeholder="Type SMS message (160 characters)..."></textarea>
         <div class="char-count">0 / 160</div>
       </div>
       <div class="form-group">
@@ -164,9 +169,9 @@
       </div>
     </div>
     <div class="form-actions">
-      <button type="button" class="btn primary">Send Now</button>
-      <button type="button" class="btn ghost">Schedule Later</button>
-      <input type="datetime-local" />
+      <button type="submit" class="btn primary" name="action" value="send_now">Send Now</button>
+      <button type="submit" class="btn ghost" name="action" value="schedule_later">Schedule Later</button>
+      <input type="datetime-local" name="schedule_at" />
     </div>
   </form>
 
@@ -216,11 +221,13 @@
   <div class="notice-card warning">
     <strong>Template required:</strong> WhatsApp does not allow random messages. Only approved templates can be sent in bulk.
   </div>
-  <form class="comm-form">
+  <form class="comm-form" method="post" data-server-mode="1">
+    {% csrf_token %}
+    <input type="hidden" name="channel" value="WhatsApp" />
     <div class="form-grid">
       <div class="form-group">
         <label>Template Name</label>
-        <select>
+        <select name="template_name">
           <option>Interview Reminder</option>
           <option>Offer Letter Ready</option>
           <option>Document Verification</option>
@@ -229,11 +236,11 @@
       </div>
       <div class="form-group">
         <label>Template ID</label>
-        <input type="text" placeholder="META_APPROVED_001" />
+        <input type="text" name="subject" placeholder="META_APPROVED_001" />
       </div>
       <div class="form-group" style="grid-column: 1 / -1;">
         <label>Message Preview</label>
-        <textarea rows="4" placeholder="Preview of the approved template..."></textarea>
+        <textarea name="message" rows="4" placeholder="Preview of the approved template..."></textarea>
         <div class="variable-row">
           <span class="muted">Auto variables:</span>
           <div class="variable-chips">
@@ -264,9 +271,9 @@
       </div>
     </div>
     <div class="form-actions">
-      <button type="button" class="btn primary">Send Now</button>
-      <button type="button" class="btn ghost">Schedule Later</button>
-      <input type="datetime-local" />
+      <button type="submit" class="btn primary" name="action" value="send_now">Send Now</button>
+      <button type="submit" class="btn ghost" name="action" value="schedule_later">Schedule Later</button>
+      <input type="datetime-local" name="schedule_at" />
     </div>
   </form>
 
@@ -319,15 +326,17 @@
     <div class="type-chip"><i class="fa-solid fa-file-signature"></i> Offer Letter</div>
     <div class="type-chip"><i class="fa-solid fa-bell"></i> Candidate Bell Icon</div>
   </div>
-  <form class="comm-form">
+  <form class="comm-form" method="post" data-server-mode="1">
+    {% csrf_token %}
+    <input type="hidden" name="channel" value="Notification" />
     <div class="form-grid">
       <div class="form-group">
         <label>Notification Title</label>
-        <input type="text" placeholder="e.g., Interview Scheduled" />
+        <input type="text" name="subject" placeholder="e.g., Interview Scheduled" />
       </div>
       <div class="form-group">
         <label>Target Segment</label>
-        <select data-custom-select="company-notify-custom">
+        <select data-custom-select="company-notify-custom" name="audience">
           <option value="all">All Applicants</option>
           <option value="shortlisted">Shortlisted</option>
           <option value="interview">Interview Scheduled</option>
@@ -338,7 +347,7 @@
       </div>
       <div class="form-group" style="grid-column: 1 / -1;">
         <label>Message</label>
-        <textarea rows="4" placeholder="Type notification message..."></textarea>
+        <textarea name="message" rows="4" placeholder="Type notification message..."></textarea>
       </div>
       <div class="form-group">
         <label>Deep Link</label>
@@ -354,9 +363,9 @@
       </div>
     </div>
     <div class="form-actions">
-      <button type="button" class="btn primary">Send Now</button>
-      <button type="button" class="btn ghost">Schedule Later</button>
-      <input type="datetime-local" />
+      <button type="submit" class="btn primary" name="action" value="send_now">Send Now</button>
+      <button type="submit" class="btn ghost" name="action" value="schedule_later">Schedule Later</button>
+      <input type="datetime-local" name="schedule_at" />
     </div>
   </form>
 </section>
@@ -497,15 +506,17 @@
 
   <div class="card-subsection">
     <h4>Create / Update Template</h4>
-    <form class="comm-form">
+    <form class="comm-form" method="post" data-server-mode="1">
+      {% csrf_token %}
+      <input type="hidden" name="channel" value="Template" />
       <div class="form-grid">
         <div class="form-group">
           <label>Template Name</label>
-          <input type="text" placeholder="e.g., Interview Call - Backend" />
+          <input type="text" name="template_name" placeholder="e.g., Interview Call - Backend" />
         </div>
         <div class="form-group">
           <label>Channel</label>
-          <select>
+          <select name="audience">
             <option>Email</option>
             <option>SMS</option>
             <option>WhatsApp</option>
@@ -514,11 +525,11 @@
         </div>
         <div class="form-group" style="grid-column: 1 / -1;">
           <label>Subject (Email only)</label>
-          <input type="text" placeholder="Subject line" />
+          <input type="text" name="subject" placeholder="Subject line" />
         </div>
         <div class="form-group" style="grid-column: 1 / -1;">
           <label>Template Body</label>
-          <textarea rows="5" placeholder="Hello {name}, you have been shortlisted for {job_title}."></textarea>
+          <textarea name="message" rows="5" placeholder="Hello {name}, you have been shortlisted for {job_title}."></textarea>
         </div>
         <div class="form-group" style="grid-column: 1 / -1;">
           <label>Available Variables</label>
@@ -530,7 +541,7 @@
         </div>
       </div>
       <div class="form-actions">
-        <button type="button" class="btn primary">Save Template</button>
+        <button type="submit" class="btn primary" name="action" value="save_template">Save Template</button>
         <button type="button" class="btn ghost">Preview</button>
       </div>
     </form>
@@ -562,50 +573,25 @@
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td><span class="badge info">Email</span></td>
-          <td>Shortlisted Interview Update</td>
-          <td>Shortlisted</td>
-          <td>2026-02-12 10:30</td>
-          <td>420</td>
-          <td>410</td>
-          <td>10</td>
-          <td><span class="badge success">Delivered</span></td>
-          <td>38%</td>
-        </tr>
-        <tr>
-          <td><span class="badge warning">SMS</span></td>
-          <td>Walk-in Reminder</td>
-          <td>All Applicants</td>
-          <td>2026-02-11 18:00</td>
-          <td>1,200</td>
-          <td>1,165</td>
-          <td>35</td>
-          <td><span class="badge success">Delivered</span></td>
-          <td>-</td>
-        </tr>
-        <tr>
-          <td><span class="badge success">WhatsApp</span></td>
-          <td>Interview Reminder</td>
-          <td>Interview Scheduled</td>
-          <td>2026-02-10 09:00</td>
-          <td>180</td>
-          <td>172</td>
-          <td>8</td>
-          <td><span class="badge warning">In Progress</span></td>
-          <td>-</td>
-        </tr>
-        <tr>
-          <td><span class="badge neutral">Notification</span></td>
-          <td>Status Change Alert</td>
-          <td>Candidates</td>
-          <td>2026-02-09 14:20</td>
-          <td>980</td>
-          <td>960</td>
-          <td>20</td>
-          <td><span class="badge success">Delivered</span></td>
-          <td>-</td>
-        </tr>
+        {% if sent_history_items %}
+          {% for item in sent_history_items %}
+          <tr>
+            <td><span class="badge info">{{ item.channel }}</span></td>
+            <td>{{ item.title }}</td>
+            <td>{{ item.audience }}</td>
+            <td>{{ item.date_time }}</td>
+            <td>{{ item.recipients }}</td>
+            <td>{{ item.delivered }}</td>
+            <td>{{ item.failed }}</td>
+            <td><span class="badge {% if item.status == 'Delivered' %}success{% else %}warning{% endif %}">{{ item.status }}</span></td>
+            <td>{{ item.open_rate }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="9" class="muted" style="text-align:center; padding: 16px;">No messages sent yet.</td>
+          </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
@@ -620,46 +606,36 @@
       <p class="muted">Plan future sends with automatic delivery and cancel options.</p>
     </div>
   </div>
-  <div class="schedule-grid">
-    <article class="schedule-card">
-      <div>
-        <h4>Interview Reminder</h4>
-        <p class="muted">WhatsApp - Interview Scheduled</p>
-      </div>
-      <div class="schedule-meta">
-        <span><i class="fa-solid fa-calendar"></i> 2026-02-20 09:00</span>
-        <span class="badge warning">Scheduled</span>
-      </div>
-      <div class="schedule-actions">
-        <button class="action-btn">Cancel</button>
-      </div>
-    </article>
-    <article class="schedule-card">
-      <div>
-        <h4>Offer Letter Email</h4>
-        <p class="muted">Email - Selected</p>
-      </div>
-      <div class="schedule-meta">
-        <span><i class="fa-solid fa-calendar"></i> 2026-02-22 15:30</span>
-        <span class="badge warning">Scheduled</span>
-      </div>
-      <div class="schedule-actions">
-        <button class="action-btn">Cancel</button>
-      </div>
-    </article>
-    <article class="schedule-card">
-      <div>
-        <h4>Status Update Notification</h4>
-        <p class="muted">In-App - All Applicants</p>
-      </div>
-      <div class="schedule-meta">
-        <span><i class="fa-solid fa-calendar"></i> 2026-02-24 11:00</span>
-        <span class="badge warning">Scheduled</span>
-      </div>
-      <div class="schedule-actions">
-        <button class="action-btn">Cancel</button>
-      </div>
-    </article>
+  <div class="schedule-grid" data-server-scheduled="1">
+    {% if scheduled_message_items %}
+      {% for item in scheduled_message_items %}
+      <article class="schedule-card" data-scheduled-id="{{ item.id }}">
+        <div>
+          <h4>{{ item.title }}</h4>
+          <p class="muted">{{ item.channel }} - {{ item.audience }}</p>
+        </div>
+        <div class="schedule-meta">
+          <span><i class="fa-solid fa-calendar"></i> {{ item.scheduled_for }}</span>
+          <span class="badge warning">Scheduled</span>
+        </div>
+        <div class="schedule-actions">
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="cancel_scheduled" />
+            <input type="hidden" name="scheduled_id" value="{{ item.id }}" />
+            <button class="action-btn" type="submit">Cancel</button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    {% else %}
+      <article class="schedule-card">
+        <div>
+          <h4>No scheduled messages</h4>
+          <p class="muted">Schedule from Bulk Email, SMS, WhatsApp, or Notifications.</p>
+        </div>
+      </article>
+    {% endif %}
   </div>
   <div class="reminder-note">
     <i class="fa-solid fa-bell"></i>

@@ -6016,3 +6016,120 @@ body.dark-mode .custom-recipient-item {
     border-color: #334155;
     background: rgba(15, 23, 42, 0.92);
 }
+
+.profile-shortcut {
+    text-decoration: none;
+    color: inherit;
+}
+
+.dashboard-card-link {
+    text-decoration: none;
+    color: inherit;
+}
+
+.dashboard-card-link:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.14);
+}
+
+.chat-thread-panel {
+    background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.chat-thread {
+    border-radius: 14px;
+    border: 1px solid #dbe6f7;
+    background: #ffffff;
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+}
+
+.chat-thread.active {
+    border-color: #3b82f6;
+    background: linear-gradient(135deg, #eef5ff, #f3f7ff);
+    box-shadow: 0 8px 18px rgba(59, 130, 246, 0.16);
+}
+
+.thread-avatar {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0ea5e9, #2563eb);
+    overflow: hidden;
+}
+
+.thread-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.chat-window {
+    border-color: #dbe6f7;
+    background: linear-gradient(180deg, #f9fcff, #f3f7ff);
+}
+
+.chat-messages {
+    padding: 4px 2px;
+}
+
+.chat-bubble {
+    border-radius: 16px;
+    border: 1px solid #d9e6ff;
+    background: #ffffff;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+}
+
+.chat-message.company .chat-bubble {
+    background: #e8f1ff;
+    border-color: #b9d2ff;
+}
+
+.support-conversation {
+    padding: 4px 2px 16px;
+}
+
+.message-bubble {
+    border-radius: 16px;
+    border: 1px solid #d9e6ff;
+    background: #ffffff;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+}
+
+.message-row.company .message-bubble {
+    background: #e8f1ff;
+    border-color: #b9d2ff;
+}
+
+body.dark-mode .chat-thread-panel {
+    background: linear-gradient(180deg, #0f172a, #111827);
+}
+
+body.dark-mode .chat-thread {
+    border-color: #273449;
+    background: #111827;
+    box-shadow: 0 8px 18px rgba(2, 6, 23, 0.4);
+}
+
+body.dark-mode .chat-thread.active {
+    border-color: #60a5fa;
+    background: linear-gradient(135deg, #172554, #1f2937);
+}
+
+body.dark-mode .chat-window {
+    border-color: #273449;
+    background: linear-gradient(180deg, #0f172a, #111827);
+}
+
+body.dark-mode .chat-bubble,
+body.dark-mode .message-bubble {
+    border-color: #334155;
+    background: #0f172a;
+    box-shadow: 0 8px 18px rgba(2, 6, 23, 0.5);
+}
+
+body.dark-mode .chat-message.company .chat-bubble,
+body.dark-mode .message-row.company .message-bubble {
+    background: #1e3a8a;
+    border-color: #3b82f6;
+}

@@ -156,6 +156,7 @@
           data-interview-time="{{ app.interview_time|default:''|escapejs }}"
           data-interview-mode="{{ app.interview_mode|default:''|escapejs }}"
           data-meeting-link="{{ app.meeting_link|default:''|escapejs }}"
+          data-meeting-address="{{ app.interview_location|default:''|escapejs }}"
           data-interviewer="{{ app.interviewer|default:''|escapejs }}"
           data-rejection-remark="{{ app.rejection_remark|default:''|escapejs }}"
           data-summary="{{ app.notes|default:''|escapejs }}"
@@ -238,8 +239,10 @@
               {% endif %}
               <button class="action-btn warning" type="button" data-action="schedule-interview">Schedule</button>
               {% if app.has_resume %}
+                <a class="action-btn" href="{% url 'dashboard:company_application_resume' app.application_id %}" target="_blank" rel="noopener">View Resume</a>
                 <a class="action-btn" href="{% url 'dashboard:company_application_resume' app.application_id %}?download=1">Download</a>
               {% else %}
+                <button class="action-btn" type="button" disabled>View Resume</button>
                 <button class="action-btn" type="button" disabled>Download</button>
               {% endif %}
             </div>
@@ -425,13 +428,17 @@
               <label>Meeting Link</label>
               <input type="url" name="meeting_link" id="scheduleLink" placeholder="https://" />
             </div>
+            <div class="company-form-group" id="scheduleAddressGroup" style="display:none;">
+              <label>Meeting Address</label>
+              <input type="text" name="meeting_address" id="scheduleAddress" placeholder="Office address" />
+            </div>
             <div class="company-form-group">
               <label>Interviewer</label>
               <input type="text" name="interviewer" id="scheduleInterviewer" placeholder="Interviewer name" />
             </div>
             <div class="company-form-group company-form-full">
-              <label>Feedback Form</label>
-              <textarea name="interview_feedback" id="scheduleFeedback" rows="3" placeholder="Add interview feedback notes..."></textarea>
+              <label>Message</label>
+              <textarea name="interview_feedback" id="scheduleFeedback" rows="3" placeholder="Add interview message or notes..."></textarea>
             </div>
           </div>
         </div>

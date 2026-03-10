@@ -118,29 +118,27 @@
     <div class="company-form-group company-form-full">
       <label>Job Status</label>
       {% if edit_job %}
-        {% with edit_job.status|default:"Pending" as job_status %}
-          <input type="hidden" name="status" id="jobStatusValue" value="{{ job_status }}" />
-          <select name="status_choice" id="jobStatusSelect">
-            <option value="draft" {% if job_status|lower == "pending" or job_status|lower == "draft" %}selected{% endif %}>Draft</option>
-            <option value="active" {% if job_status|lower == "approved" or job_status|lower == "active" %}selected{% endif %}>Active</option>
-            <option value="paused" {% if job_status|lower == "paused" %}selected{% endif %}>Paused</option>
-            <option value="rejected" {% if job_status|lower == "rejected" %}selected{% endif %}>Rejected</option>
-            <option value="closed" {% if job_status|lower == "closed" %}selected{% endif %}>Closed</option>
-            <option value="expired" {% if job_status|lower == "expired" %}selected{% endif %}>Expired</option>
-            <option value="archived" {% if job_status|lower == "reported" or job_status|lower == "archived" %}selected{% endif %}>Archived</option>
+        {% with edit_job.lifecycle_status|default:"Draft" as lifecycle_status %}
+          <input type="hidden" name="status" id="jobStatusValue" value="{{ edit_job.status|default:'Pending' }}" />
+          <select name="lifecycle_status" id="jobStatusSelect">
+            <option value="Draft" {% if lifecycle_status == "Draft" %}selected{% endif %}>Draft</option>
+            <option value="Active" {% if lifecycle_status == "Active" %}selected{% endif %}>Active</option>
+            <option value="Paused" {% if lifecycle_status == "Paused" %}selected{% endif %}>Paused</option>
+            <option value="Closed" {% if lifecycle_status == "Closed" %}selected{% endif %}>Closed</option>
+            <option value="Expired" {% if lifecycle_status == "Expired" %}selected{% endif %}>Expired</option>
+            <option value="Archived" {% if lifecycle_status == "Archived" %}selected{% endif %}>Archived</option>
           </select>
         {% endwith %}
       {% else %}
-        {% with "Pending" as job_status %}
-          <input type="hidden" name="status" id="jobStatusValue" value="{{ job_status }}" />
-          <select name="status_choice" id="jobStatusSelect">
-            <option value="draft" {% if job_status|lower == "pending" or job_status|lower == "draft" %}selected{% endif %}>Draft</option>
-            <option value="active" {% if job_status|lower == "approved" or job_status|lower == "active" %}selected{% endif %}>Active</option>
-            <option value="paused" {% if job_status|lower == "paused" %}selected{% endif %}>Paused</option>
-            <option value="rejected" {% if job_status|lower == "rejected" %}selected{% endif %}>Rejected</option>
-            <option value="closed" {% if job_status|lower == "closed" %}selected{% endif %}>Closed</option>
-            <option value="expired" {% if job_status|lower == "expired" %}selected{% endif %}>Expired</option>
-            <option value="archived" {% if job_status|lower == "reported" or job_status|lower == "archived" %}selected{% endif %}>Archived</option>
+        {% with "Draft" as lifecycle_status %}
+          <input type="hidden" name="status" id="jobStatusValue" value="Pending" />
+          <select name="lifecycle_status" id="jobStatusSelect">
+            <option value="Draft" {% if lifecycle_status == "Draft" %}selected{% endif %}>Draft</option>
+            <option value="Active" {% if lifecycle_status == "Active" %}selected{% endif %}>Active</option>
+            <option value="Paused" {% if lifecycle_status == "Paused" %}selected{% endif %}>Paused</option>
+            <option value="Closed" {% if lifecycle_status == "Closed" %}selected{% endif %}>Closed</option>
+            <option value="Expired" {% if lifecycle_status == "Expired" %}selected{% endif %}>Expired</option>
+            <option value="Archived" {% if lifecycle_status == "Archived" %}selected{% endif %}>Archived</option>
           </select>
         {% endwith %}
       {% endif %}
@@ -162,13 +160,12 @@
     {% if form_mode == "edit" %}
     <div class="job-status-quick" data-job-status-controls>
       <span class="label">Quick Status:</span>
-      <button class="status-chip" type="button" data-job-status="draft">Draft</button>
-      <button class="status-chip" type="button" data-job-status="active">Active</button>
-      <button class="status-chip" type="button" data-job-status="paused">Paused</button>
-      <button class="status-chip" type="button" data-job-status="rejected">Rejected</button>
-      <button class="status-chip" type="button" data-job-status="closed">Closed</button>
-      <button class="status-chip" type="button" data-job-status="expired">Expired</button>
-      <button class="status-chip" type="button" data-job-status="archived">Archived</button>
+      <button class="status-chip" type="button" data-job-status="Draft">Draft</button>
+      <button class="status-chip" type="button" data-job-status="Active">Active</button>
+      <button class="status-chip" type="button" data-job-status="Paused">Paused</button>
+      <button class="status-chip" type="button" data-job-status="Closed">Closed</button>
+      <button class="status-chip" type="button" data-job-status="Expired">Expired</button>
+      <button class="status-chip" type="button" data-job-status="Archived">Archived</button>
     </div>
     {% endif %}
     {% endif %}
@@ -205,9 +202,9 @@
           <td>{{ job.category|default:"--" }}</td>
           <td class="muted">{{ job.summary|default:"--" }}</td>
           <td>
-            {% with job.status|default:"pending"|lower as status %}
-              <span class="badge {% if status == 'active' or status == 'approved' %}success{% elif status == 'draft' %}neutral{% elif status == 'paused' or status == 'pending' %}warning{% elif status == 'closed' %}info{% elif status == 'expired' or status == 'rejected' %}danger{% elif status == 'archived' %}neutral{% else %}warning{% endif %}">
-                {{ status|title }}
+            {% with job.lifecycle_status|default:"Draft" as lifecycle %}
+              <span class="badge {% if lifecycle == 'Active' %}success{% elif lifecycle == 'Draft' %}neutral{% elif lifecycle == 'Paused' %}warning{% elif lifecycle == 'Closed' %}info{% elif lifecycle == 'Expired' %}danger{% elif lifecycle == 'Archived' %}neutral{% else %}warning{% endif %}">
+                {{ lifecycle|title }}
               </span>
             {% endwith %}
           </td>

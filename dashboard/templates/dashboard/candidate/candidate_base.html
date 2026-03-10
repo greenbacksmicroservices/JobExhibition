@@ -89,10 +89,6 @@
             <span class="nav-icon"><i class="fa-solid fa-headset"></i></span>
             <span>Support</span>
           </a>
-          <a class="nav-item" href="{% url 'dashboard:candidate_logout' %}">
-            <span class="nav-icon"><i class="fa-solid fa-right-from-bracket"></i></span>
-            <span>Logout</span>
-          </a>
         </nav>
 
       </aside>
@@ -176,6 +172,7 @@
     </div>
 
     <script src="{% static 'dashboard/js/dashboard.js' %}?v={{ static_asset_version }}"></script>
+    <script src="{% static 'dashboard/js/otp-verify-ui.js' %}?v={{ static_asset_version }}"></script>
     <script src="{% static 'dashboard/js/candidate-realtime.js' %}?v={{ static_asset_version }}"></script>
     <script src="{% static 'dashboard/js/candidate-ui.js' %}?v={{ static_asset_version }}"></script>
     <script src="{% static 'dashboard/js/candidate-job-actions.js' %}?v={{ static_asset_version }}"></script>

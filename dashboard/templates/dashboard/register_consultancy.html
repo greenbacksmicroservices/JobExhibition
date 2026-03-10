@@ -100,6 +100,25 @@
       background: #fff;
     }
     .field textarea { resize: vertical; min-height: 72px; }
+    .password-input {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .password-input input {
+      flex: 1;
+    }
+    .password-toggle {
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #0f172a;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
     .grid-2 {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -196,7 +215,7 @@
         <h4>1. Basic Company Information</h4>
         <div class="grid-2">
           <div class="field">
-            <label>Consultancy Name</label>
+            <label>Consultancy Name *</label>
             <input type="text" name="name" placeholder="Consultancy name" required />
           </div>
           <div class="field">
@@ -232,16 +251,19 @@
         <h4>2. Contact Details</h4>
         <div class="grid-2">
           <div class="field">
-            <label>Official Email (Login ID)</label>
+            <label>Official Email (Login ID) *</label>
             <input type="email" name="email" placeholder="consultancy@email.com" required />
           </div>
           <div class="field">
             <label>Create Password</label>
-            <input type="password" name="password" placeholder="Create password" required />
+            <div class="password-input">
+              <input type="password" id="consultancy_password" name="password" placeholder="Create password" required />
+              <button class="password-toggle" type="button" data-password-toggle="consultancy_password">Show</button>
+            </div>
           </div>
           <div class="field">
-            <label>Mobile Number</label>
-            <input type="text" name="phone" placeholder="+91" />
+            <label>Mobile Number *</label>
+            <input type="text" name="phone" placeholder="+91" required />
           </div>
           <div class="field">
             <label>Alternate Mobile Number</label>
@@ -391,5 +413,7 @@
       </div>
     </div>
   </div>
+
+  <script src="{% static 'dashboard/js/password-toggle.js' %}?v={{ static_asset_version }}"></script>
 </body>
 </html>

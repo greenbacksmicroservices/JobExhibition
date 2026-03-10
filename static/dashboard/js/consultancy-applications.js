@@ -24,6 +24,47 @@
     if (el) el.value = value || '';
   };
 
+  const setTimeWithPeriod = (timeValue) => {
+    const timeInput = document.getElementById('scheduleTime');
+    const periodSelect = document.getElementById('scheduleTimePeriod');
+    if (!timeInput || !periodSelect) {
+      if (timeInput) timeInput.value = timeValue || '';
+      return;
+    }
+
+    if (!timeValue) {
+      timeInput.value = '';
+      periodSelect.value = 'AM';
+      return;
+    }
+
+    const normalized = String(timeValue).trim();
+    const ampmMatch = normalized.match(/(AM|PM)$/i);
+    if (ampmMatch) {
+      const period = ampmMatch[1].toUpperCase();
+      const clock = normalized.replace(/(AM|PM)$/i, '').trim();
+      timeInput.value = clock;
+      periodSelect.value = period;
+      return;
+    }
+
+    const parts = normalized.split(':');
+    if (!parts.length) {
+      timeInput.value = normalized;
+      return;
+    }
+    const hour = parseInt(parts[0], 10);
+    const minute = parts[1] || '00';
+    if (Number.isNaN(hour)) {
+      timeInput.value = normalized;
+      return;
+    }
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = ((hour + 11) % 12) + 1;
+    timeInput.value = `${String(displayHour).padStart(2, '0')}:${minute}`;
+    periodSelect.value = period;
+  };
+
   const setLinkState = (link, url, enabled) => {
     if (!link) return;
     if (enabled) {
@@ -152,7 +193,7 @@
     }
     setValue('scheduleApplicationId', data.appId);
     setValue('scheduleDate', data.interviewDate);
-    setValue('scheduleTime', data.interviewTime);
+    setTimeWithPeriod(data.interviewTime);
     setValue('scheduleMode', data.interviewMode || 'Online');
     setValue('scheduleLink', data.meetingLink);
     setValue('scheduleAddress', data.meetingAddress || '');

@@ -287,7 +287,13 @@
             </div>
             <div class="company-form-group">
               <label>Time</label>
-              <input type="time" name="interview_time" id="scheduleTime" required />
+              <div class="time-input">
+                <input type="text" name="interview_time" id="scheduleTime" placeholder="hh:mm" required />
+                <select name="interview_time_period" id="scheduleTimePeriod">
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+              </div>
             </div>
             <div class="company-form-group">
               <label>Mode</label>

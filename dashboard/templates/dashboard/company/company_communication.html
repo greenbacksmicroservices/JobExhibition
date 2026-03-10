@@ -421,130 +421,135 @@
     <strong>How this works:</strong>
     <p class="muted">Create once, reuse in Bulk Email, SMS, WhatsApp, and Notifications. Variables like <code>{name}</code> and <code>{job_title}</code> auto-fill while sending.</p>
   </div>
-  <div class="template-grid">
-    <article class="template-card">
-      <div class="template-header">
-        <div>
-          <h4>Shortlisting Email</h4>
-          <span class="badge info">Email</span>
-        </div>
-        <button class="action-btn">Use</button>
+  <div class="template-layout">
+    <div class="template-form-panel">
+      <div class="card-subsection">
+        <h4>Create / Update Template</h4>
+        <form class="comm-form" method="post" data-server-mode="1">
+          {% csrf_token %}
+          <input type="hidden" name="channel" value="Template" />
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Template Name</label>
+              <input type="text" name="template_name" placeholder="e.g., Interview Call - Backend" />
+            </div>
+            <div class="form-group">
+              <label>Channel</label>
+              <select name="audience">
+                <option>Email</option>
+                <option>SMS</option>
+                <option>WhatsApp</option>
+                <option>In-App Notification</option>
+              </select>
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Subject (Email only)</label>
+              <input type="text" name="subject" placeholder="Subject line" />
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Template Body</label>
+              <textarea name="message" rows="5" placeholder="Hello {name}, you have been shortlisted for {job_title}."></textarea>
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Available Variables</label>
+              <div class="variable-chips">
+                <span class="variable-chip">{name}</span>
+                <span class="variable-chip">{job_title}</span>
+                <span class="variable-chip">{interview_date}</span>
+              </div>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn primary" name="action" value="save_template">Save Template</button>
+            <button type="button" class="btn ghost">Preview</button>
+          </div>
+        </form>
       </div>
-      <div class="template-body">
-        Hello {name}, you have been shortlisted for {job_title}. Our team will share the next steps soon.
-      </div>
-      <div class="variable-chips">
-        <span class="variable-chip">{name}</span>
-        <span class="variable-chip">{job_title}</span>
-      </div>
-    </article>
-    <article class="template-card">
-      <div class="template-header">
-        <div>
-          <h4>Interview Call</h4>
-          <span class="badge warning">SMS</span>
-        </div>
-        <button class="action-btn">Use</button>
-      </div>
-      <div class="template-body">
-        Interview scheduled for {job_title} on {interview_date}. Please be available on time.
-      </div>
-      <div class="variable-chips">
-        <span class="variable-chip">{job_title}</span>
-        <span class="variable-chip">{interview_date}</span>
-      </div>
-    </article>
-    <article class="template-card">
-      <div class="template-header">
-        <div>
-          <h4>Rejection Message</h4>
-          <span class="badge neutral">Notification</span>
-        </div>
-        <button class="action-btn">Use</button>
-      </div>
-      <div class="template-body">
-        Hi {name}, thank you for applying to {job_title}. We will keep your profile for future roles.
-      </div>
-      <div class="variable-chips">
-        <span class="variable-chip">{name}</span>
-        <span class="variable-chip">{job_title}</span>
-      </div>
-    </article>
-    <article class="template-card">
-      <div class="template-header">
-        <div>
-          <h4>Offer Letter</h4>
-          <span class="badge success">Email</span>
-        </div>
-        <button class="action-btn">Use</button>
-      </div>
-      <div class="template-body">
-        Congratulations {name}! Your offer for {job_title} is ready. Please check your email for details.
-      </div>
-      <div class="variable-chips">
-        <span class="variable-chip">{name}</span>
-        <span class="variable-chip">{job_title}</span>
-      </div>
-    </article>
-    <article class="template-card">
-      <div class="template-header">
-        <div>
-          <h4>Reminder Email</h4>
-          <span class="badge info">Email</span>
-        </div>
-        <button class="action-btn">Use</button>
-      </div>
-      <div class="template-body">
-        Reminder: your interview for {job_title} is scheduled on {interview_date}.
-      </div>
-      <div class="variable-chips">
-        <span class="variable-chip">{job_title}</span>
-        <span class="variable-chip">{interview_date}</span>
-      </div>
-    </article>
-  </div>
-
-  <div class="card-subsection">
-    <h4>Create / Update Template</h4>
-    <form class="comm-form" method="post" data-server-mode="1">
-      {% csrf_token %}
-      <input type="hidden" name="channel" value="Template" />
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Template Name</label>
-          <input type="text" name="template_name" placeholder="e.g., Interview Call - Backend" />
-        </div>
-        <div class="form-group">
-          <label>Channel</label>
-          <select name="audience">
-            <option>Email</option>
-            <option>SMS</option>
-            <option>WhatsApp</option>
-            <option>In-App Notification</option>
-          </select>
-        </div>
-        <div class="form-group" style="grid-column: 1 / -1;">
-          <label>Subject (Email only)</label>
-          <input type="text" name="subject" placeholder="Subject line" />
-        </div>
-        <div class="form-group" style="grid-column: 1 / -1;">
-          <label>Template Body</label>
-          <textarea name="message" rows="5" placeholder="Hello {name}, you have been shortlisted for {job_title}."></textarea>
-        </div>
-        <div class="form-group" style="grid-column: 1 / -1;">
-          <label>Available Variables</label>
+    </div>
+    <div class="template-preview-panel">
+      <div class="template-preview-grid">
+        <article class="template-card compact">
+          <div class="template-header">
+            <div>
+              <h4>Shortlisting Email</h4>
+              <span class="badge info">Email</span>
+            </div>
+            <button class="action-btn">Use</button>
+          </div>
+          <div class="template-body">
+            Hello {name}, you have been shortlisted for {job_title}. Our team will share the next steps soon.
+          </div>
           <div class="variable-chips">
             <span class="variable-chip">{name}</span>
             <span class="variable-chip">{job_title}</span>
+          </div>
+        </article>
+        <article class="template-card compact">
+          <div class="template-header">
+            <div>
+              <h4>Interview Call</h4>
+              <span class="badge warning">SMS</span>
+            </div>
+            <button class="action-btn">Use</button>
+          </div>
+          <div class="template-body">
+            Interview scheduled for {job_title} on {interview_date}. Please be available on time.
+          </div>
+          <div class="variable-chips">
+            <span class="variable-chip">{job_title}</span>
             <span class="variable-chip">{interview_date}</span>
           </div>
-        </div>
+        </article>
+        <article class="template-card compact">
+          <div class="template-header">
+            <div>
+              <h4>Rejection Message</h4>
+              <span class="badge neutral">Notification</span>
+            </div>
+            <button class="action-btn">Use</button>
+          </div>
+          <div class="template-body">
+            Hi {name}, thank you for applying to {job_title}. We will keep your profile for future roles.
+          </div>
+          <div class="variable-chips">
+            <span class="variable-chip">{name}</span>
+            <span class="variable-chip">{job_title}</span>
+          </div>
+        </article>
+        <article class="template-card compact">
+          <div class="template-header">
+            <div>
+              <h4>Offer Letter</h4>
+              <span class="badge success">Email</span>
+            </div>
+            <button class="action-btn">Use</button>
+          </div>
+          <div class="template-body">
+            Congratulations {name}! Your offer for {job_title} is ready. Please check your email for details.
+          </div>
+          <div class="variable-chips">
+            <span class="variable-chip">{name}</span>
+            <span class="variable-chip">{job_title}</span>
+          </div>
+        </article>
+        <article class="template-card compact">
+          <div class="template-header">
+            <div>
+              <h4>Reminder Email</h4>
+              <span class="badge info">Email</span>
+            </div>
+            <button class="action-btn">Use</button>
+          </div>
+          <div class="template-body">
+            Reminder: your interview for {job_title} is scheduled on {interview_date}.
+          </div>
+          <div class="variable-chips">
+            <span class="variable-chip">{job_title}</span>
+            <span class="variable-chip">{interview_date}</span>
+          </div>
+        </article>
       </div>
-      <div class="form-actions">
-        <button type="submit" class="btn primary" name="action" value="save_template">Save Template</button>
-        <button type="button" class="btn ghost">Preview</button>
-      </div>
-    </form>
+    </div>
   </div>
 </section>
 {% endif %}

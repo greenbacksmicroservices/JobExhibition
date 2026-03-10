@@ -14,6 +14,7 @@ urlpatterns = [
     path("company/register/", views.company_register_view, name="company_register"),
     path("consultancy/register/", views.consultancy_register_view, name="consultancy_register"),
     path("candidate/register/", views.candidate_register_view, name="candidate_register"),
+    path("otp/verify/", views.verify_registration_otp, name="verify_registration_otp"),
     path("company/login/", views.company_login_view, name="company_login"),
     path("company/logout/", views.company_logout_view, name="company_logout"),
     path("consultancy/logout/", views.consultancy_logout_view, name="consultancy_logout"),

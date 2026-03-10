@@ -1,5 +1,14 @@
+// Mark theme handling early so secondary scripts don't double-bind toggles.
+if (typeof window !== 'undefined') {
+  window.__dashboardThemeManaged = true;
+}
+
 // Smooth sidebar accordion functionality
 document.addEventListener('DOMContentLoaded', () => {
+  if (window.__dashboardCoreInitialized) {
+    return;
+  }
+  window.__dashboardCoreInitialized = true;
   const toggles = document.querySelectorAll('[data-sidebar-toggle]');
   const overlay = document.getElementById('sidebarOverlay');
   const accordions = document.querySelectorAll('.nav-toggle');

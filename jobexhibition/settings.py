@@ -266,8 +266,19 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 SERVE_MEDIA_FILES = _env_bool("SERVE_MEDIA_FILES", default=True)
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = 'no-reply@jobexhibition.local'
+EMAIL_BACKEND = _env_str("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = _env_str("EMAIL_HOST", "")
+EMAIL_PORT = _env_int("EMAIL_PORT", 587)
+EMAIL_HOST_USER = _env_str("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = _env_str("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", default=True)
+EMAIL_USE_SSL = _env_bool("EMAIL_USE_SSL", default=False)
+DEFAULT_FROM_EMAIL = _env_str(
+    "DEFAULT_FROM_EMAIL",
+    EMAIL_HOST_USER or "no-reply@jobexhibition.local",
+)
+
+AUTO_APPROVE_HOURS = _env_int("AUTO_APPROVE_HOURS", 24)
 
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/admin-dashboard/'
@@ -282,10 +293,7 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAIN
 SECURE_HSTS_PRELOAD = _env_bool("DJANGO_SECURE_HSTS_PRELOAD", default=False)
 
 # OTP / SMS settings
-OTP_SMS_API_KEY = _env_str(
-    'OTP_SMS_API_KEY',
-    'XW8UdfD7hV5soeyuQG9ONj0kpmFBlJS2w6nLirME1zaCKZ3TvHyYXTkDj31MEqIiUfwQm4V8pKCcH6av',
-)
+OTP_SMS_API_KEY = _env_str('OTP_SMS_API_KEY', 'XW8UdfD7hV5soeyuQG9ONj0kpmFBlJS2w6nLirME1zaCKZ3TvHyYXTkDj31MEqIiUfwQm4V8pKCcH6av')
 _otp_default_provider = 'fast2sms'
 OTP_SMS_PROVIDER = _env_str('OTP_SMS_PROVIDER', _otp_default_provider).lower()
 OTP_SMS_API_URL = _env_str('OTP_SMS_API_URL', 'https://www.fast2sms.com/dev/bulkV2')
@@ -304,6 +312,8 @@ OTP_FAST2SMS_MESSAGE_ID = _env_str('OTP_FAST2SMS_MESSAGE_ID', '202469')
 OTP_FAST2SMS_VARIABLES_VALUES = _env_str('OTP_FAST2SMS_VARIABLES_VALUES', '{otp}')
 OTP_FAST2SMS_SCHEDULE_TIME = _env_str('OTP_FAST2SMS_SCHEDULE_TIME', '')
 OTP_DEBUG_SHOW_IN_MESSAGES = _env_bool('OTP_DEBUG_SHOW_IN_MESSAGES', default=False)
+OTP_ALLOW_DEBUG_FALLBACK = _env_bool('OTP_ALLOW_DEBUG_FALLBACK', default=False)
+OTP_ALLOW_CONSOLE_EMAIL = _env_bool('OTP_ALLOW_CONSOLE_EMAIL', default=False)
 LOGIN_OTP_REQUIRED = _env_bool('LOGIN_OTP_REQUIRED', default=False)
 FORGOT_PASSWORD_OTP_REQUIRED = _env_bool('FORGOT_PASSWORD_OTP_REQUIRED', default=True)
 

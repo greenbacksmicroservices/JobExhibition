@@ -12,10 +12,10 @@
     body {
       min-height: 100vh;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
       background: linear-gradient(135deg, #e0f2fe 0%, #f8fafc 50%, #fff7ed 100%);
-      padding: 24px;
+      padding: 32px 24px 40px;
       overflow-x: hidden;
       position: relative;
     }
@@ -47,7 +47,7 @@
       100% { transform: translateY(-115vh) rotate(15deg); opacity: 0; }
     }
     .register-card {
-      width: min(880px, 100%);
+      width: min(1140px, 100%);
       background: rgba(255, 255, 255, 0.93);
       border-radius: 26px;
       padding: 28px;
@@ -92,6 +92,7 @@
       background: #fff;
     }
     .section h3 { font-size: 15px; color: #1e293b; margin-bottom: 12px; }
+    .section .section-note { font-size: 12px; color: #64748b; margin-bottom: 10px; }
     .grid-2 {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -100,7 +101,8 @@
     .field { display: grid; gap: 6px; }
     .field label { font-size: 12px; font-weight: 600; color: #475569; }
     .field input,
-    .field select {
+    .field select,
+    .field textarea {
       width: 100%;
       padding: 11px 12px;
       border-radius: 10px;
@@ -109,7 +111,35 @@
       background: #fff;
       color: #0f172a;
     }
+    .field input.otp-verified {
+      border-color: #16a34a;
+      padding-right: 36px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2316a34a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 10l4 4 8-8'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 16px 16px;
+    }
+    .field textarea { min-height: 90px; resize: vertical; }
     .field small { font-size: 11px; color: #64748b; }
+    .password-input {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .password-input input {
+      flex: 1;
+    }
+    .password-toggle {
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #0f172a;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
     .otp-row {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -142,6 +172,17 @@
       font-size: 12px;
       color: #334155;
       font-weight: 600;
+    }
+    .check-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #2563eb;
+      margin: 0;
+      flex-shrink: 0;
+    }
+    .check-row label {
+      cursor: pointer;
+      line-height: 1.4;
     }
     .actions {
       display: flex;
@@ -207,6 +248,14 @@
       color: #1d4ed8;
       background: #eff6ff;
     }
+    @media (max-width: 640px) {
+      .otp-row {
+        grid-template-columns: 1fr;
+      }
+      .otp-row .btn-secondary {
+        width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
@@ -222,7 +271,7 @@
   <div class="register-card">
     <h1>Company Registration</h1>
     <p class="subtitle">Fast signup for companies with verification, OTP check, and hiring contact details.</p>
-    <p class="note">Validation: Email verification mandatory, OTP mobile verification, strong password, duplicate company/mobile check.</p>
+    <p class="note">Validation: Email + mobile OTP verification, strong password, duplicate company/mobile/username check.</p>
 
     {% if messages %}
       {% for message in messages %}
@@ -230,83 +279,245 @@
       {% endfor %}
     {% endif %}
 
-    <form method="post">
+    <form method="post" enctype="multipart/form-data">
       {% csrf_token %}
 
       <section class="section">
-        <h3>Basic Company Registration</h3>
+        <h3>Basic Company Information</h3>
+        <p class="section-note">Company ki basic details li jati hain.</p>
         <div class="grid-2">
           <div class="field">
             <label>Company Name *</label>
             <input type="text" name="name" value="{{ form_data.name|default:'' }}" required />
           </div>
           <div class="field">
-            <label>Official Email Address *</label>
-            <input type="email" name="email" value="{{ form_data.email|default:'' }}" required />
-            <small>Official domain preferred (example: hr@company.com).</small>
+            <label>Company Type</label>
+            <select name="company_type" required>
+              <option value="">Select</option>
+              <option value="Private Ltd" {% if form_data.company_type == 'Private Ltd' %}selected{% endif %}>Private Ltd</option>
+              <option value="LLP" {% if form_data.company_type == 'LLP' %}selected{% endif %}>LLP</option>
+              <option value="Partnership" {% if form_data.company_type == 'Partnership' %}selected{% endif %}>Partnership</option>
+              <option value="Proprietorship" {% if form_data.company_type == 'Proprietorship' %}selected{% endif %}>Proprietorship</option>
+              <option value="NGO" {% if form_data.company_type == 'NGO' %}selected{% endif %}>NGO</option>
+            </select>
           </div>
         </div>
         <div class="grid-2">
           <div class="field">
-            <label>Mobile Number *</label>
-            <input type="text" name="phone" value="{{ form_data.phone|default:'' }}" placeholder="10-15 digits" required />
+            <label>Industry Type</label>
+            <input type="text" name="industry_type" value="{{ form_data.industry_type|default:'' }}" placeholder="IT, Manufacturing, Education, Healthcare etc." required />
           </div>
-          <div class="field otp-row">
-            <div>
-              <label>Mobile OTP *</label>
-              <input type="text" name="mobile_otp" value="{{ form_data.mobile_otp|default:'' }}" placeholder="Enter OTP" />
-            </div>
-            <button class="btn-secondary" type="submit" name="action" value="send_otp">Send OTP</button>
+          <div class="field">
+            <label>Company Size</label>
+            <select name="company_size" required>
+              <option value="">Select</option>
+              <option value="1-10" {% if form_data.company_size == '1-10' %}selected{% endif %}>1-10</option>
+              <option value="10-50" {% if form_data.company_size == '10-50' %}selected{% endif %}>10-50</option>
+              <option value="50-100" {% if form_data.company_size == '50-100' %}selected{% endif %}>50-100</option>
+              <option value="100+" {% if form_data.company_size == '100+' %}selected{% endif %}>100+</option>
+            </select>
           </div>
         </div>
         <div class="grid-2">
           <div class="field">
-            <label>Password *</label>
-            <input type="password" name="password" required />
+            <label>Company Website URL</label>
+            <input type="url" name="website_url" value="{{ form_data.website_url|default:'' }}" placeholder="https://company.com" required />
           </div>
-          <div class="field">
-            <label>Confirm Password *</label>
-            <input type="password" name="confirm_password" required />
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label>City / Location *</label>
-            <input type="text" name="location" value="{{ form_data.location|default:'' }}" required />
-          </div>
-          <div class="field">
-            <label>CAPTCHA *</label>
-            <div class="captcha">Solve: {{ captcha_question }}</div>
-            <input type="text" name="captcha_answer" value="{{ form_data.captcha_answer|default:'' }}" placeholder="Enter answer" />
-          </div>
-        </div>
-        <div class="field check-row">
-          <input type="checkbox" name="terms_accepted" {% if form_data.terms_accepted %}checked{% endif %} />
-          <label>Agree to Terms & Conditions *</label>
         </div>
       </section>
 
       <section class="section">
-        <h3>Hiring Contact Info</h3>
+        <h3>Contact Information</h3>
+        <p class="section-note">Company se contact karne ke liye details.</p>
         <div class="grid-2">
           <div class="field">
-            <label>HR Name</label>
-            <input type="text" name="hr_name" value="{{ form_data.hr_name|default:'' }}" />
+            <label>Contact Person Name</label>
+            <input type="text" name="hr_name" value="{{ form_data.hr_name|default:'' }}" required />
           </div>
           <div class="field">
-            <label>HR Designation</label>
-            <input type="text" name="hr_designation" value="{{ form_data.hr_designation|default:'' }}" />
+            <label>Designation</label>
+            <input type="text" name="hr_designation" value="{{ form_data.hr_designation|default:'' }}" required />
           </div>
         </div>
         <div class="grid-2">
           <div class="field">
-            <label>HR Phone</label>
-            <input type="text" name="hr_phone" value="{{ form_data.hr_phone|default:'' }}" />
+            <label>Official Email ID *</label>
+            <input type="email" name="email" value="{{ form_data.email|default:'' }}" required />
+            <small>Official domain preferred (example: hr@company.com).</small>
           </div>
           <div class="field">
-            <label>HR Email</label>
-            <input type="email" name="hr_email" value="{{ form_data.hr_email|default:'' }}" />
+            <label>Mobile Number *</label>
+            <input type="text" name="phone" value="{{ form_data.phone|default:'' }}" placeholder="10-15 digits" required />
           </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Alternate Phone Number (optional)</label>
+            <input type="text" name="alt_phone" value="{{ form_data.alt_phone|default:'' }}" />
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>Company Address</h3>
+        <p class="section-note">Office location ki details.</p>
+        <div class="grid-2">
+          <div class="field">
+            <label>Address Line 1</label>
+            <input type="text" name="address_line1" value="{{ form_data.address_line1|default:'' }}" required />
+          </div>
+          <div class="field">
+            <label>Address Line 2</label>
+            <input type="text" name="address_line2" value="{{ form_data.address_line2|default:'' }}" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>City</label>
+            <input type="text" name="city" value="{{ form_data.city|default:'' }}" required />
+          </div>
+          <div class="field">
+            <label>State</label>
+            <input type="text" name="state" value="{{ form_data.state|default:'' }}" required />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Country</label>
+            <input type="text" name="country" value="{{ form_data.country|default:'' }}" required />
+          </div>
+          <div class="field">
+            <label>Pincode</label>
+            <input type="text" name="pincode" value="{{ form_data.pincode|default:'' }}" required />
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>Legal Information</h3>
+        <p class="section-note">Company verification ke liye.</p>
+        <div class="grid-2">
+          <div class="field">
+            <label>GST Number (optional)</label>
+            <input type="text" name="gst_number" value="{{ form_data.gst_number|default:'' }}" />
+          </div>
+          <div class="field">
+            <label>CIN Number / Registration Number</label>
+            <input type="text" name="cin_number" value="{{ form_data.cin_number|default:'' }}" required />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>PAN Number</label>
+            <input type="text" name="pan_number" value="{{ form_data.pan_number|default:'' }}" required />
+          </div>
+          <div class="field">
+            <label>Company Registration Certificate Upload</label>
+            <input type="file" name="registration_document" required />
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>Account Login Details</h3>
+        <p class="section-note">Portal login ke liye.</p>
+        <div class="grid-2">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" name="username" value="{{ form_data.username|default:'' }}" required />
+          </div>
+          <div class="field">
+            <label>Email ID</label>
+            <input type="email" value="{{ form_data.email|default:'' }}" disabled />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Password</label>
+            <div class="password-input">
+              <input type="password" id="company_password" name="password" required />
+              <button class="password-toggle" type="button" data-password-toggle="company_password">Show</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Confirm Password</label>
+            <div class="password-input">
+              <input type="password" id="company_confirm_password" name="confirm_password" required />
+              <button class="password-toggle" type="button" data-password-toggle="company_confirm_password">Show</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>Company Profile Details</h3>
+        <p class="section-note">Company ke bare mein short info.</p>
+        <div class="grid-2">
+          <div class="field" style="grid-column: 1 / -1;">
+            <label>Company Description</label>
+            <textarea name="company_description" rows="4" placeholder="Short company overview">{{ form_data.company_description|default:'' }}</textarea>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Logo Upload</label>
+            <input type="file" name="logo_upload" accept="image/*" />
+          </div>
+          <div class="field">
+            <label>Year of Establishment</label>
+            <input type="number" name="year_established" value="{{ form_data.year_established|default:'' }}" min="1900" max="2100" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Number of Employees</label>
+            <input type="number" name="employee_count" value="{{ form_data.employee_count|default:'' }}" min="1" />
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>Verification Section</h3>
+        <p class="section-note">Account secure karne ke liye.</p>
+        <div class="grid-2">
+          <div class="field otp-row">
+            <div>
+              <label>Email OTP Verification</label>
+              <input type="text" name="email_otp" value="{{ form_data.email_otp|default:'' }}" placeholder="Enter OTP" inputmode="numeric" autocomplete="one-time-code" data-otp-flow="company" data-otp-channel="email" data-otp-verify-url="{% url 'dashboard:verify_registration_otp' %}" required />
+            </div>
+            <button class="btn-secondary" type="submit" name="action" value="send_email_otp" formnovalidate>Send OTP</button>
+          </div>
+          <div class="field otp-row">
+            <div>
+              <label>Mobile OTP Verification</label>
+              <input type="text" name="mobile_otp" value="{{ form_data.mobile_otp|default:'' }}" placeholder="Enter OTP" inputmode="numeric" autocomplete="one-time-code" data-otp-flow="company" data-otp-channel="sms" data-otp-verify-url="{% url 'dashboard:verify_registration_otp' %}" required />
+            </div>
+            <button class="btn-secondary" type="submit" name="action" value="send_otp" formnovalidate>Send OTP</button>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Captcha</label>
+            <div class="captcha">Solve: {{ captcha_question }}</div>
+            <input type="text" name="captcha_answer" value="{{ form_data.captcha_answer|default:'' }}" placeholder="Enter answer" />
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>Agreement & Policy</h3>
+        <p class="section-note">Legal acceptance.</p>
+        <div class="field check-row">
+          <input type="checkbox" id="terms_accepted" name="terms_accepted" {% if form_data.terms_accepted %}checked{% endif %} required />
+          <label for="terms_accepted">I agree to Terms & Conditions</label>
+        </div>
+        <div class="field check-row">
+          <input type="checkbox" id="privacy_accepted" name="privacy_accepted" {% if form_data.privacy_accepted %}checked{% endif %} required />
+          <label for="privacy_accepted">I agree to Privacy Policy</label>
+        </div>
+        <div class="field check-row">
+          <input type="checkbox" id="guidelines_accepted" name="guidelines_accepted" {% if form_data.guidelines_accepted %}checked{% endif %} required />
+          <label for="guidelines_accepted">I agree to Recruiter Guidelines</label>
         </div>
       </section>
 
@@ -329,5 +540,8 @@
       </div>
     </div>
   </div>
+
+  <script src="{% static 'dashboard/js/password-toggle.js' %}?v={{ static_asset_version }}"></script>
+  <script src="{% static 'dashboard/js/otp-verify-ui.js' %}?v={{ static_asset_version }}"></script>
 </body>
 </html>

@@ -28,46 +28,6 @@
 </section>
 
 <section class="job-search-layout">
-  <aside class="job-filter-panel">
-    <h4>Filters</h4>
-    <form class="filter-stack" method="get">
-      <input type="hidden" name="search" value="{{ filters.search }}" />
-      <input type="hidden" name="location" value="{{ filters.location }}" />
-      <div class="filter-group">
-        <label>Salary Range</label>
-        <input type="text" name="salary" value="{{ filters.salary }}" placeholder="e.g. 5-10 LPA" />
-      </div>
-      <div class="filter-group">
-        <label>Experience</label>
-        <input type="text" name="experience" value="{{ filters.experience }}" placeholder="e.g. 3-5 years" />
-      </div>
-      <div class="filter-group">
-        <label>Skills</label>
-        <input type="text" name="skills" value="{{ filters.skills }}" placeholder="React, Python" />
-      </div>
-      <div class="filter-group">
-        <label>Job Type</label>
-        <select name="job_type">
-          <option value="">Any</option>
-          <option value="Full-time" {% if filters.job_type == 'Full-time' %}selected{% endif %}>Full-time</option>
-          <option value="Part-time" {% if filters.job_type == 'Part-time' %}selected{% endif %}>Part-time</option>
-          <option value="Contract" {% if filters.job_type == 'Contract' %}selected{% endif %}>Contract</option>
-          <option value="Remote" {% if filters.job_type == 'Remote' %}selected{% endif %}>Remote</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <label>Sort</label>
-        <select name="sort">
-          <option value="latest" {% if filters.sort == 'latest' %}selected{% endif %}>Latest</option>
-          <option value="salary_high" {% if filters.sort == 'salary_high' %}selected{% endif %}>Salary high to low</option>
-        </select>
-      </div>
-      <div class="filter-actions">
-        <button class="btn primary" type="submit">Apply Filters</button>
-      </div>
-    </form>
-  </aside>
-
   <div class="job-results-panel">
     {% if jobs %}
       <div class="job-card-list">
@@ -82,11 +42,11 @@
             <span class="badge info">{{ job.category }}</span>
           </div>
           <div class="job-card-tags">
-            <span>Price / Salary: {{ job.salary|default:"Negotiable" }}</span>
-            <span>{{ job.experience|default:"Experience flexible" }}</span>
-            <span>{{ job.skills|default:"Skills open" }}</span>
+            <span class="job-tag">Price / Salary: {{ job.salary|default:"Negotiable" }}</span>
+            <span class="job-tag">{{ job.experience|default:"Experience flexible" }}</span>
+            <span class="job-tag">{{ job.skills|default:"Skills open" }}</span>
             {% if job.recruiter_name %}
-            <span>Posted by Consultancy: {{ job.recruiter_name }}</span>
+            <span class="job-tag">Posted by Consultancy: {{ job.recruiter_name }}</span>
             {% endif %}
           </div>
           <div class="job-card-actions">

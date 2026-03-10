@@ -60,7 +60,7 @@ def _provider_error_message(response_text, fallback):
 def _send_fast2sms_otp(mobile, otp):
     api_key = (getattr(settings, "OTP_SMS_API_KEY", "") or "").strip()
     if not api_key:
-        return False, "OTP service is not configured (missing API key)."
+        return False, "OTP service is not configured. Please set OTP_SMS_API_KEY."
 
     mobile_number = _normalize_mobile_number(mobile)
     if not mobile_number or len(mobile_number) < 10:
@@ -90,7 +90,7 @@ def _send_fast2sms_otp(mobile, otp):
         payload["template_id"] = template_id
 
     req = urllib.request.Request(
-        (getattr(settings, "OTP_SMS_API_URL", "") or "https://www.fast2sms.com/dev/bulkV2"),
+        (getattr(settings, "OTP_SMS_API_URL", "XW8UdfD7hV5soeyuQG9ONj0kpmFBlJS2w6nLirME1zaCKZ3TvHyYXTkDj31MEqIiUfwQm4V8pKCcH6av") or "https://www.fast2sms.com/dev/bulkV2"),
         data=json.dumps(payload).encode("utf-8"),
         method="POST",
     )

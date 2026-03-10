@@ -73,7 +73,7 @@
         {% csrf_token %}
         <input type="hidden" name="action" value="generate_ai_resume" />
         <select name="template_name">
-          <option value="showcase" {% if ai_template == "showcase" or ai_template == "premium" or ai_template == "designer" %}selected{% endif %}>Showcase Template (Photo Style)</option>
+          <option value="showcase" {% if ai_template == "showcase" or ai_template == "premium" or ai_template == "designer" %}selected{% endif %}>Showcase Template</option>
           <option value="modern" {% if ai_template == "modern" %}selected{% endif %}>Modern Template</option>
           <option value="corporate" {% if ai_template == "corporate" %}selected{% endif %}>Corporate Template</option>
           <option value="simple" {% if ai_template == "simple" %}selected{% endif %}>Simple Template</option>

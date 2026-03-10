@@ -6,13 +6,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!statusSelect || !statusButtons.length || !statusValue) return;
 
   const statusMap = {
-    draft: 'Pending',
-    active: 'Approved',
-    paused: 'Pending',
-    rejected: 'Rejected',
-    closed: 'Rejected',
-    expired: 'Rejected',
-    archived: 'Reported',
+    Draft: 'Pending',
+    Active: 'Approved',
+    Paused: 'Pending',
+    Closed: 'Approved',
+    Expired: 'Approved',
+    Archived: 'Reported',
+    Rejected: 'Rejected',
   };
 
   const syncStatusButtons = () => {

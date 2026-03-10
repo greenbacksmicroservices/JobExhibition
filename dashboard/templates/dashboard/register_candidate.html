@@ -114,8 +114,35 @@
       background: #fff;
       color: #0f172a;
     }
+    .field input.otp-verified {
+      border-color: #16a34a;
+      padding-right: 36px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2316a34a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 10l4 4 8-8'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 16px 16px;
+    }
     .field textarea { min-height: 80px; resize: vertical; }
     .field small { color: #64748b; font-size: 11px; }
+    .password-input {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .password-input input {
+      flex: 1;
+    }
+    .password-toggle {
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #0f172a;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
     .otp-row {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -195,6 +222,14 @@
       color: #4f46e5;
       background: #eef2ff;
     }
+    @media (max-width: 640px) {
+      .otp-row {
+        grid-template-columns: 1fr;
+      }
+      .otp-row .btn-secondary {
+        width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
@@ -237,34 +272,26 @@
             <label>Mobile Number *</label>
             <input type="text" name="phone" value="{{ form_data.phone|default:'' }}" placeholder="10-15 digits" required />
           </div>
-          <div class="field otp-row">
-            <div>
-              <label>Mobile OTP *</label>
-              <input type="text" name="mobile_otp" value="{{ form_data.mobile_otp|default:'' }}" placeholder="Enter OTP" />
-            </div>
-            <button class="btn-secondary" type="submit" name="action" value="send_otp">Send OTP</button>
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label>Password *</label>
-            <input type="password" name="password" required />
-            <small>Use upper, lower, number, special character.</small>
-          </div>
-          <div class="field">
-            <label>Confirm Password *</label>
-            <input type="password" name="confirm_password" required />
-          </div>
-        </div>
-        <div class="grid-2">
           <div class="field">
             <label>City / Current Location</label>
             <input type="text" name="location" value="{{ form_data.location|default:'' }}" />
           </div>
+        </div>
+        <div class="grid-2">
           <div class="field">
-            <label>CAPTCHA *</label>
-            <div class="captcha">Solve: {{ captcha_question }}</div>
-            <input type="text" name="captcha_answer" value="{{ form_data.captcha_answer|default:'' }}" placeholder="Enter answer" />
+            <label>Password</label>
+            <div class="password-input">
+              <input type="password" id="candidate_password" name="password" required />
+              <button class="password-toggle" type="button" data-password-toggle="candidate_password">Show</button>
+            </div>
+            <small>Use upper, lower, number, special character.</small>
+          </div>
+          <div class="field">
+            <label>Confirm Password</label>
+            <div class="password-input">
+              <input type="password" id="candidate_confirm_password" name="confirm_password" required />
+              <button class="password-toggle" type="button" data-password-toggle="candidate_confirm_password">Show</button>
+            </div>
           </div>
         </div>
       </section>
@@ -413,6 +440,33 @@
         </div>
       </section>
 
+      <section class="section">
+        <h3>Verification</h3>
+        <div class="grid-2">
+          <div class="field otp-row">
+            <div>
+              <label>Email OTP</label>
+              <input type="text" name="email_otp" value="{{ form_data.email_otp|default:'' }}" placeholder="Enter OTP" inputmode="numeric" autocomplete="one-time-code" data-otp-flow="candidate" data-otp-channel="email" data-otp-verify-url="{% url 'dashboard:verify_registration_otp' %}" required />
+            </div>
+            <button class="btn-secondary" type="submit" name="action" value="send_email_otp" formnovalidate>Send OTP</button>
+          </div>
+          <div class="field otp-row">
+            <div>
+              <label>Mobile OTP</label>
+              <input type="text" name="mobile_otp" value="{{ form_data.mobile_otp|default:'' }}" placeholder="Enter OTP" inputmode="numeric" autocomplete="one-time-code" data-otp-flow="candidate" data-otp-channel="sms" data-otp-verify-url="{% url 'dashboard:verify_registration_otp' %}" required />
+            </div>
+            <button class="btn-secondary" type="submit" name="action" value="send_otp" formnovalidate>Send OTP</button>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>CAPTCHA</label>
+            <div class="captcha">Solve: {{ captcha_question }}</div>
+            <input type="text" name="captcha_answer" value="{{ form_data.captcha_answer|default:'' }}" placeholder="Enter answer" />
+          </div>
+        </div>
+      </section>
+
       <div class="actions">
         <button class="btn-primary" type="submit" name="action" value="register">Create Candidate Account</button>
       </div>
@@ -431,5 +485,8 @@
       </div>
     </div>
   </div>
+
+  <script src="{% static 'dashboard/js/password-toggle.js' %}?v={{ static_asset_version }}"></script>
+  <script src="{% static 'dashboard/js/otp-verify-ui.js' %}?v={{ static_asset_version }}"></script>
 </body>
 </html>

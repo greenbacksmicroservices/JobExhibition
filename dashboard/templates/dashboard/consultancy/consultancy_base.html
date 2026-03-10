@@ -131,10 +131,6 @@
               <a class="nav-sub{% if request.resolver_match.url_name == 'consultancy_support_chat' %} active{% endif %}" href="{% url 'dashboard:consultancy_support_chat' %}">Live Chat</a>
             </div>
           </div>
-          <a class="nav-item" href="{% url 'dashboard:consultancy_logout' %}">
-            <span class="nav-icon"><i class="fa-solid fa-right-from-bracket"></i></span>
-            <span>Logout</span>
-          </a>
         </nav>
       </aside>
 
@@ -217,6 +213,7 @@
     </div>
 
     <script src="{% static 'dashboard/js/dashboard.js' %}?v={{ static_asset_version }}"></script>
+    <script src="{% static 'dashboard/js/otp-verify-ui.js' %}?v={{ static_asset_version }}"></script>
     <script src="{% static 'dashboard/js/consultancy-realtime.js' %}?v={{ static_asset_version }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     {% block extra_js %}{% endblock %}

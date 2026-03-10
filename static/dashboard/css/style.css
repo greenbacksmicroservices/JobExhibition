@@ -43,6 +43,15 @@ button {
     vertical-align: middle;
 }
 
+input.otp-verified {
+    border-color: #16a34a;
+    padding-right: 36px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2316a34a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 10l4 4 8-8'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px 16px;
+}
+
 .sidebar-overlay {
     display: none;
 }
@@ -3221,7 +3230,7 @@ body.sidebar-collapsed .profile-progress-text {
 
 .job-search-layout {
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-columns: 1fr;
     gap: 18px;
     margin-top: 18px;
 }
@@ -3233,8 +3242,7 @@ body.sidebar-collapsed .profile-progress-text {
     padding: 18px;
     box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
     align-self: start;
-    position: sticky;
-    top: 18px;
+    position: static;
 }
 
 .job-filter-panel h4 {
@@ -3246,6 +3254,11 @@ body.sidebar-collapsed .profile-progress-text {
 .filter-stack {
     display: grid;
     gap: 12px;
+}
+
+.job-filter-panel .filter-stack {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    align-items: end;
 }
 
 .job-results-panel {
@@ -3288,19 +3301,40 @@ body.sidebar-collapsed .profile-progress-text {
     font-weight: 700;
 }
 
+.job-card .badge {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    letter-spacing: 0.2px;
+}
+
 .job-card-tags {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    align-items: flex-start;
 }
 
-.job-card-tags span {
-    padding: 4px 10px;
+.job-card-tags .job-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    flex: 0 0 auto;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    line-height: 1.2;
+    max-width: 100%;
+    padding: 6px 10px;
     border-radius: 999px;
     background: #eef2ff;
     color: #4338ca;
     font-size: 11px;
     font-weight: 600;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
 .job-card-actions {
@@ -4154,6 +4188,44 @@ body.sidebar-collapsed .profile-progress-text {
     gap: 16px;
 }
 
+.company-communication .template-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.company-communication .template-form-panel .card-subsection {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
+
+.company-communication .template-preview-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.company-communication .template-card.compact {
+    padding: 10px;
+    border-radius: 12px;
+}
+
+.company-communication .template-card.compact h4 {
+    font-size: 13px;
+}
+
+.company-communication .template-card.compact .template-body {
+    padding: 8px;
+    font-size: 11px;
+}
+
+@media (max-width: 980px) {
+    .company-communication .template-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
 .company-communication .template-card {
     border: 1px solid #e5e7eb;
     border-radius: 14px;
@@ -4273,6 +4345,19 @@ body.sidebar-collapsed .profile-progress-text {
     border: 1px solid #e5e7eb;
     font-size: 12px;
     background: #fff;
+}
+
+.interview-form .time-input,
+.company-form-group .time-input {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.interview-form .time-input select,
+.company-form-group .time-input select {
+    min-width: 72px;
 }
 
 .interview-form .form-group textarea {
@@ -4536,6 +4621,7 @@ body.sidebar-collapsed .profile-progress-text {
 
 .resume-card {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
@@ -4543,6 +4629,18 @@ body.sidebar-collapsed .profile-progress-text {
     border-radius: 10px;
     border: 1px dashed #cbd5f5;
     background: #f8fafc;
+}
+
+.resume-card .table-actions {
+    margin-left: auto;
+    align-items: center;
+}
+
+@media (max-width: 720px) {
+    .resume-card .table-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
 }
 
 .match-meter {
@@ -5386,6 +5484,13 @@ body.dark-mode .sidebar {
     box-shadow: 8px 0 28px rgba(1, 8, 28, 0.55);
 }
 
+body.dark-mode .company-sidebar,
+body.dark-mode .consultancy-sidebar,
+body.dark-mode .candidate-sidebar {
+    background: linear-gradient(135deg, #0b1d45 0%, #112a63 50%, #0a1a40 100%) !important;
+    box-shadow: 8px 0 28px rgba(1, 8, 28, 0.55) !important;
+}
+
 body.dark-mode .sidebar .nav-item {
     color: #dbeafe;
 }
@@ -5947,7 +6052,7 @@ body.dark-mode .job-search-bar input {
     color: #e2e8f0;
 }
 
-body.dark-mode .job-card-tags span {
+body.dark-mode .job-card-tags .job-tag {
     background: rgba(99, 102, 241, 0.2);
     color: #c7d2fe;
 }

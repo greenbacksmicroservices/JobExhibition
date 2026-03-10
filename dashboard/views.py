@@ -1,6 +1,7 @@
 import calendar
 import csv
 import json
+import logging
 import mimetypes
 import os
 import random
@@ -20,6 +21,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import check_password, identify_hasher, make_password
 from django.contrib.auth.models import Group
 from django.core.files.base import ContentFile
+from django.core.cache import cache
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
 from django.db import DatabaseError, IntegrityError, OperationalError, close_old_connections
@@ -162,6 +164,8 @@ COMMON_SKILL_KEYWORDS = [
     "kubernetes",
     "salesforce",
 ]
+
+logger = logging.getLogger(__name__)
 
 def _resolve_subscription_segment(plan_type, payment_status, plan_expiry):
     plan_type = (plan_type or "").strip()
@@ -1116,6 +1120,26 @@ def _parse_int(value):
         return None
 
 
+def _normalize_ampm_time(raw_time, period):
+    value = (raw_time or "").strip()
+    if not value:
+        return ""
+    period_value = (period or "").strip().upper()
+    if period_value not in {"AM", "PM"}:
+        return value
+    try:
+        parts = value.split(":")
+        hour = int(parts[0])
+        minute = int(parts[1]) if len(parts) > 1 else 0
+    except (TypeError, ValueError):
+        return value
+    if hour == 12:
+        hour = 0
+    if period_value == "PM":
+        hour += 12
+    return f"{hour:02d}:{minute:02d}"
+
+
 def _password_strength_errors(password):
     errors = []
     value = password or ""
@@ -1175,13 +1199,70 @@ def _mask_phone_number(phone):
     return f"{'*' * max(len(digits) - 4, 0)}{digits[-4:]}"
 
 
+def _maybe_show_debug_otp(request, otp_value, label="OTP"):
+    if not otp_value:
+        return
+    if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False):
+        messages.info(request, f"{label} OTP (debug): {otp_value}")
+
+
+def _email_backend_is_console():
+    backend = (getattr(settings, "EMAIL_BACKEND", "") or "").lower()
+    return "console" in backend or "dummy" in backend
+
+
+def _send_account_activation_email(account, account_type):
+    if not account or not getattr(account, "email", ""):
+        return False
+    subject = "Your Job Exhibition account is now active"
+    name = getattr(account, "name", "there")
+    role = (account_type or "account").strip().title()
+    message = (
+        f"Hello {name},\n\n"
+        f"Your {role} account has been approved and is now active on Job Exhibition.\n"
+        "You can log in and start posting jobs immediately.\n\n"
+        "Thanks,\n"
+        "Job Exhibition Team"
+    )
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+    sent_count = send_mail(
+        subject,
+        message,
+        from_email,
+        [account.email],
+        fail_silently=True,
+    )
+    return sent_count > 0
+
+
+def _auto_approve_due_accounts():
+    hours = int(getattr(settings, "AUTO_APPROVE_HOURS", 24) or 24)
+    if hours <= 0:
+        return
+    now = timezone.now()
+    last_run_ts = cache.get("auto_approve_last_run_ts")
+    if last_run_ts and now.timestamp() - float(last_run_ts) < 900:
+        return
+    cache.set("auto_approve_last_run_ts", now.timestamp(), timeout=900)
+    cutoff = now - timedelta(hours=hours)
+
+    for model, account_type in ((Company, "company"), (Consultancy, "consultancy")):
+        pending_qs = model.objects.filter(kyc_status="Pending", registration_date__lte=cutoff)
+        for account in pending_qs:
+            account.kyc_status = "Verified"
+            if getattr(account, "account_status", "") != "Active":
+                account.account_status = "Active"
+                account.save(update_fields=["kyc_status", "account_status"])
+            else:
+                account.save(update_fields=["kyc_status"])
+            _send_account_activation_email(account, account_type)
+
+
 def _issue_session_otp(request, session_key, phone, extra_payload=None):
     clean_phone = (phone or "").strip()
     otp_value = f"{random.randint(100000, 999999)}"
     is_sent, error_message = send_otp_sms(clean_phone, otp_value)
-    allow_debug_fallback = bool(
-        getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False)
-    )
+    allow_debug_fallback = bool(getattr(settings, "OTP_ALLOW_DEBUG_FALLBACK", False))
     if not is_sent:
         if not allow_debug_fallback:
             request.session.pop(session_key, None)
@@ -1222,6 +1303,9 @@ def _issue_email_session_otp(request, session_key, email, extra_payload=None):
     if not target_email:
         request.session.pop(session_key, None)
         return "", "Email address is required."
+    if _email_backend_is_console() and not getattr(settings, "OTP_ALLOW_CONSOLE_EMAIL", False):
+        request.session.pop(session_key, None)
+        return "", "Email OTP is not configured. Please set EMAIL_BACKEND and SMTP settings."
 
     otp_value = f"{random.randint(100000, 999999)}"
     subject = "Job Exhibition OTP Verification"
@@ -1230,18 +1314,19 @@ def _issue_email_session_otp(request, session_key, email, extra_payload=None):
         f"It is valid for {OTP_TTL_SECONDS // 60} minutes."
     )
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
-    sent_count = send_mail(
-        subject,
-        message,
-        from_email,
-        [target_email],
-        fail_silently=True,
-    )
-    allow_debug_fallback = bool(
-        getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False)
-        or getattr(settings, "DEBUG", False)
-    )
-    if sent_count <= 0 and not allow_debug_fallback:
+    try:
+        sent_count = send_mail(
+            subject,
+            message,
+            from_email,
+            [target_email],
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception("OTP email send failed.")
+        request.session.pop(session_key, None)
+        return "", "Unable to send OTP email right now. Please try again."
+    if sent_count <= 0:
         request.session.pop(session_key, None)
         return "", "Unable to send OTP email right now. Please try again."
 
@@ -1283,6 +1368,20 @@ def _validate_registration_otp(request, flow_key, phone, otp_value):
 
 def _clear_registration_otp(request, flow_key):
     _clear_session_otp(request, f"{OTP_SESSION_PREFIX}{flow_key}")
+
+
+def _issue_registration_email_otp(request, flow_key, email):
+    session_key = f"{OTP_SESSION_PREFIX}{flow_key}_email"
+    return _issue_email_session_otp(request, session_key, email)
+
+
+def _validate_registration_email_otp(request, flow_key, email, otp_value):
+    session_key = f"{OTP_SESSION_PREFIX}{flow_key}_email"
+    return _validate_email_session_otp(request, session_key, email, otp_value)
+
+
+def _clear_registration_email_otp(request, flow_key):
+    _clear_session_otp(request, f"{OTP_SESSION_PREFIX}{flow_key}_email")
 
 
 def _client_ip(request):
@@ -1919,6 +2018,7 @@ def register_options_view(request):
 
 
 def login_view(request):
+    _auto_approve_due_accounts()
     # If already authenticated as admin, redirect to dashboard
     if request.user.is_authenticated:
         if _is_subadmin_user(request.user):
@@ -2030,7 +2130,9 @@ def login_view(request):
             if admin_user:
                 return ("admin", admin_user)
 
-            company = Company.objects.filter(Q(name__iexact=value) | Q(email__iexact=value)).first()
+            company = Company.objects.filter(
+                Q(name__iexact=value) | Q(email__iexact=value) | Q(username__iexact=value)
+            ).first()
             if company:
                 return ("company", company)
 
@@ -2501,33 +2603,94 @@ def company_register_view(request):
         name = (request.POST.get("name") or "").strip()
         email = (request.POST.get("email") or "").strip().lower()
         phone = (request.POST.get("phone") or "").strip()
-        location = (request.POST.get("location") or "").strip()
         password = request.POST.get("password") or ""
         confirm_password = request.POST.get("confirm_password") or ""
+        username = (request.POST.get("username") or "").strip()
+        company_type = (request.POST.get("company_type") or "").strip()
+        industry_type = (request.POST.get("industry_type") or "").strip()
+        company_size = (request.POST.get("company_size") or "").strip()
+        website_url = (request.POST.get("website_url") or "").strip()
         hr_name = (request.POST.get("hr_name") or "").strip()
         hr_designation = (request.POST.get("hr_designation") or "").strip()
-        hr_phone = (request.POST.get("hr_phone") or "").strip()
-        hr_email = (request.POST.get("hr_email") or "").strip().lower()
+        alt_phone = (request.POST.get("alt_phone") or "").strip()
+        address_line1 = (request.POST.get("address_line1") or "").strip()
+        address_line2 = (request.POST.get("address_line2") or "").strip()
+        city = (request.POST.get("city") or "").strip()
+        state = (request.POST.get("state") or "").strip()
+        country = (request.POST.get("country") or "").strip()
+        pincode = (request.POST.get("pincode") or "").strip()
+        gst_number = (request.POST.get("gst_number") or "").strip()
+        cin_number = (request.POST.get("cin_number") or "").strip()
+        pan_number = (request.POST.get("pan_number") or "").strip()
+        company_description = (request.POST.get("company_description") or "").strip()
+        year_established = _parse_int(request.POST.get("year_established"))
+        employee_count = _parse_int(request.POST.get("employee_count"))
+        registration_document = request.FILES.get("registration_document")
+        logo_upload = request.FILES.get("logo_upload")
+        hr_phone = phone
+        hr_email = email
         contact_position = (request.POST.get("contact_position") or "").strip() or hr_designation
         mobile_otp = (request.POST.get("mobile_otp") or "").strip()
+        email_otp = (request.POST.get("email_otp") or "").strip()
         captcha_answer = (request.POST.get("captcha_answer") or "").strip()
         terms_accepted = request.POST.get("terms_accepted") == "on"
+        privacy_accepted = request.POST.get("privacy_accepted") == "on"
+        guidelines_accepted = request.POST.get("guidelines_accepted") == "on"
         registration_source = "google" if request.POST.get("signup_with_google") == "1" else "manual"
+        location = city or state
+        full_address = ", ".join(part for part in [address_line1, address_line2, city, state, pincode, country] if part)
 
         form_data = {
             "name": name,
+            "username": username,
             "email": email,
             "phone": phone,
-            "location": location,
+            "company_type": company_type,
+            "industry_type": industry_type,
+            "company_size": company_size,
+            "website_url": website_url,
             "hr_name": hr_name,
             "hr_designation": hr_designation,
-            "hr_phone": hr_phone,
-            "hr_email": hr_email,
+            "alt_phone": alt_phone,
+            "address_line1": address_line1,
+            "address_line2": address_line2,
+            "city": city,
+            "state": state,
+            "country": country,
+            "pincode": pincode,
+            "gst_number": gst_number,
+            "cin_number": cin_number,
+            "pan_number": pan_number,
+            "company_description": company_description,
+            "year_established": year_established,
+            "employee_count": employee_count,
             "contact_position": contact_position,
             "mobile_otp": mobile_otp,
+            "email_otp": email_otp,
             "captcha_answer": captcha_answer,
             "terms_accepted": terms_accepted,
+            "privacy_accepted": privacy_accepted,
+            "guidelines_accepted": guidelines_accepted,
         }
+
+        if action == "send_email_otp":
+            if not email:
+                messages.error(request, "Please enter email before requesting OTP.")
+            elif not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+                messages.error(request, "Enter a valid email address.")
+            else:
+                otp_value, otp_error = _issue_registration_email_otp(request, flow_key, email)
+                if otp_error:
+                    messages.error(request, otp_error)
+                else:
+                    messages.success(request, "OTP sent successfully to your email address.")
+                    _maybe_show_debug_otp(request, otp_value, "Email")
+            captcha_question = _set_registration_captcha(request, flow_key)
+            return render(
+                request,
+                "dashboard/register_company.html",
+                {"form_data": form_data, "captcha_question": captcha_question},
+            )
 
         if action == "send_otp":
             if not phone:
@@ -2535,11 +2698,12 @@ def company_register_view(request):
             elif not re.match(r"^\+?\d{10,15}$", phone):
                 messages.error(request, "Enter a valid mobile number (10 to 15 digits).")
             else:
-                _, otp_error = _issue_registration_otp(request, flow_key, phone)
+                otp_value, otp_error = _issue_registration_otp(request, flow_key, phone)
                 if otp_error:
                     messages.error(request, otp_error)
                 else:
                     messages.success(request, "OTP sent successfully to your mobile number.")
+                    _maybe_show_debug_otp(request, otp_value, "SMS")
             captcha_question = _set_registration_captcha(request, flow_key)
             return render(
                 request,
@@ -2548,8 +2712,33 @@ def company_register_view(request):
             )
 
         errors = []
-        if not name or not email or not phone or not password or not confirm_password or not location:
-            errors.append("Company name, official email, mobile number, password, and city/location are required.")
+        required_fields = {
+            "Company name": name,
+            "Company type": company_type,
+            "Industry type": industry_type,
+            "Company size": company_size,
+            "Company website URL": website_url,
+            "Contact person name": hr_name,
+            "Designation": hr_designation,
+            "Official email": email,
+            "Mobile number": phone,
+            "Address line 1": address_line1,
+            "City": city,
+            "State": state,
+            "Country": country,
+            "Pincode": pincode,
+            "CIN/Registration number": cin_number,
+            "PAN number": pan_number,
+            "Username": username,
+            "Password": password,
+            "Confirm password": confirm_password,
+        }
+        missing_fields = [label for label, value in required_fields.items() if not value]
+        if missing_fields:
+            errors.append("Please fill required fields: " + ", ".join(missing_fields) + ".")
+
+        if not registration_document:
+            errors.append("Company registration certificate is required.")
 
         if password != confirm_password:
             errors.append("Password and confirm password do not match.")
@@ -2562,15 +2751,26 @@ def company_register_view(request):
             errors.append("Company with this email already exists.")
         if Company.objects.filter(phone=phone).exists():
             errors.append("This mobile number is already used by another company account.")
+        if username and Company.objects.filter(username__iexact=username).exists():
+            errors.append("This username is already used by another company account.")
 
-        if not _validate_registration_otp(request, flow_key, phone, mobile_otp):
+        mobile_otp_valid = _validate_registration_otp(request, flow_key, phone, mobile_otp)
+        if not mobile_otp_valid:
             errors.append("Invalid or expired mobile OTP. Please request a new OTP.")
+
+        email_otp_valid = _validate_registration_email_otp(request, flow_key, email, email_otp)
+        if not email_otp_valid:
+            errors.append("Invalid or expired email OTP. Please request a new OTP.")
 
         if not _validate_registration_captcha(request, flow_key, captcha_answer):
             errors.append("Invalid CAPTCHA answer.")
 
         if not terms_accepted:
             errors.append("You must agree to Terms & Conditions.")
+        if not privacy_accepted:
+            errors.append("You must agree to Privacy Policy.")
+        if not guidelines_accepted:
+            errors.append("You must agree to Recruiter Guidelines.")
 
         if errors:
             for error in errors:
@@ -2584,10 +2784,27 @@ def company_register_view(request):
 
         company = Company.objects.create(
             name=name,
+            username=username,
             email=email,
             password=_hash_password(password),
             phone=phone,
             location=location,
+            address=full_address,
+            company_type=company_type,
+            industry_type=industry_type,
+            company_size=company_size,
+            website_url=website_url,
+            alt_phone=alt_phone,
+            address_line1=address_line1,
+            address_line2=address_line2,
+            city=city,
+            state=state,
+            country=country,
+            pincode=pincode,
+            gst_number=gst_number,
+            cin_number=cin_number,
+            pan_number=pan_number,
+            registration_document=registration_document,
             contact_position=contact_position,
             hr_name=hr_name,
             hr_designation=hr_designation,
@@ -2595,23 +2812,37 @@ def company_register_view(request):
             hr_email=hr_email,
             account_type="Company",
             account_status="Active",
-            email_verified=False,
-            phone_verified=True,
+            email_verified=email_otp_valid,
+            phone_verified=mobile_otp_valid,
             terms_accepted=terms_accepted,
+            privacy_accepted=privacy_accepted,
+            guidelines_accepted=guidelines_accepted,
             registration_source=registration_source,
+            profile_image=logo_upload,
+            company_description=company_description,
+            year_established=year_established,
+            employee_count=employee_count,
         )
-
-        verify_url, mail_sent = _send_email_verification_message(request, company, "company")
 
         if not _is_official_company_email(email):
             messages.warning(request, "Official domain email is recommended (example: hr@company.com).")
 
-        if mail_sent:
-            messages.success(request, "Company registered. Verification email sent. Please verify email before login.")
+        if email_otp_valid:
+            messages.success(request, "Company registered and email verified via OTP.")
         else:
-            messages.success(request, "Company registered. Please verify your email using the link below before login.")
-        if settings.DEBUG:
-            messages.info(request, f"Verification link: {verify_url}")
+            verify_url, mail_sent = _send_email_verification_message(request, company, "company")
+            if mail_sent:
+                messages.success(
+                    request,
+                    "Company registered. Verification email sent. Please verify email before login.",
+                )
+            else:
+                messages.success(
+                    request,
+                    "Company registered. Please verify your email using the link below before login.",
+                )
+            if settings.DEBUG:
+                messages.info(request, f"Verification link: {verify_url}")
 
         _clear_registration_otp(request, flow_key)
         _set_registration_captcha(request, flow_key)
@@ -2629,8 +2860,9 @@ def consultancy_register_view(request):
         name = (request.POST.get("name") or "").strip()
         email = (request.POST.get("email") or "").strip()
         password = request.POST.get("password") or ""
-        if not name or not email or not password:
-            messages.error(request, "Name, email, and password are required.")
+        phone = (request.POST.get("phone") or "").strip()
+        if not name or not email or not phone or not password:
+            messages.error(request, "Name, email, phone, and password are required.")
         elif Consultancy.objects.filter(name__iexact=name).exists() or Consultancy.objects.filter(email__iexact=email).exists():
             messages.error(request, "Consultancy with this name or email already exists.")
         else:
@@ -2647,7 +2879,7 @@ def consultancy_register_view(request):
                 name=name,
                 email=email,
                 password=_hash_password(password),
-                phone=(request.POST.get("phone") or "").strip(),
+                phone=phone,
                 location=location,
                 contact_position=(request.POST.get("owner_designation") or request.POST.get("contact_position") or "").strip(),
                 company_type=(request.POST.get("company_type") or "").strip(),
@@ -2702,6 +2934,7 @@ def candidate_register_view(request):
         password = request.POST.get("password") or ""
         confirm_password = request.POST.get("confirm_password") or ""
         mobile_otp = (request.POST.get("mobile_otp") or "").strip()
+        email_otp = (request.POST.get("email_otp") or "").strip()
         captcha_answer = (request.POST.get("captcha_answer") or "").strip()
 
         date_of_birth_raw = (request.POST.get("date_of_birth") or "").strip()
@@ -2754,8 +2987,28 @@ def candidate_register_view(request):
             "languages": languages,
             "profile_visibility": profile_visibility,
             "mobile_otp": mobile_otp,
+            "email_otp": email_otp,
             "captcha_answer": captcha_answer,
         }
+
+        if action == "send_email_otp":
+            if not email:
+                messages.error(request, "Please enter email before requesting OTP.")
+            elif not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+                messages.error(request, "Enter a valid email address.")
+            else:
+                otp_value, otp_error = _issue_registration_email_otp(request, flow_key, email)
+                if otp_error:
+                    messages.error(request, otp_error)
+                else:
+                    messages.success(request, "OTP sent successfully to your email address.")
+                    _maybe_show_debug_otp(request, otp_value, "Email")
+            captcha_question = _set_registration_captcha(request, flow_key)
+            return render(
+                request,
+                "dashboard/register_candidate.html",
+                {"form_data": form_data, "captcha_question": captcha_question},
+            )
 
         if action == "send_otp":
             if not phone:
@@ -2763,11 +3016,12 @@ def candidate_register_view(request):
             elif not re.match(r"^\+?\d{10,15}$", phone):
                 messages.error(request, "Enter a valid mobile number (10 to 15 digits).")
             else:
-                _, otp_error = _issue_registration_otp(request, flow_key, phone)
+                otp_value, otp_error = _issue_registration_otp(request, flow_key, phone)
                 if otp_error:
                     messages.error(request, otp_error)
                 else:
                     messages.success(request, "OTP sent successfully to your mobile number.")
+                    _maybe_show_debug_otp(request, otp_value, "SMS")
             captcha_question = _set_registration_captcha(request, flow_key)
             return render(
                 request,
@@ -2854,8 +3108,8 @@ def candidate_register_view(request):
             certifications=certifications,
             languages=languages,
             profile_visibility=profile_visibility != "private",
-            email_verified=False,
-            phone_verified=True,
+            email_verified=email_otp_valid,
+            phone_verified=mobile_otp_valid,
         )
 
         if degree or university or passing_year or percentage:
@@ -2892,16 +3146,26 @@ def candidate_register_view(request):
                 f"Resume auto parsing detected skills: {', '.join(inferred_skills)}",
             )
 
-        verify_url, mail_sent = _send_email_verification_message(request, candidate, "candidate")
-
-        if mail_sent:
-            messages.success(request, "Candidate registered. Verification email sent. Please verify email before login.")
+        if email_otp_valid:
+            messages.success(request, "Candidate registered and email verified via OTP.")
         else:
-            messages.success(request, "Candidate registered. Please verify your email using the link below before login.")
-        if settings.DEBUG:
-            messages.info(request, f"Verification link: {verify_url}")
+            verify_url, mail_sent = _send_email_verification_message(request, candidate, "candidate")
+            if mail_sent:
+                messages.success(
+                    request,
+                    "Candidate registered. Verification email sent. Please verify email before login.",
+                )
+            else:
+                messages.success(
+                    request,
+                    "Candidate registered. Please verify your email using the link below before login.",
+                )
+            if settings.DEBUG:
+                messages.info(request, f"Verification link: {verify_url}")
 
         _clear_registration_otp(request, flow_key)
+        _clear_registration_email_otp(request, flow_key)
+        _clear_registration_email_otp(request, flow_key)
         _set_registration_captcha(request, flow_key)
         return redirect("dashboard:login")
 
@@ -2910,6 +3174,29 @@ def candidate_register_view(request):
         "dashboard/register_candidate.html",
         {"form_data": form_data, "captcha_question": captcha_question},
     )
+
+
+@require_http_methods(["POST"])
+def verify_registration_otp(request):
+    flow = (request.POST.get("flow") or "").strip().lower()
+    channel = (request.POST.get("channel") or "").strip().lower()
+    otp_value = (request.POST.get("otp") or "").strip()
+    email = (request.POST.get("email") or "").strip().lower()
+    phone = (request.POST.get("phone") or "").strip()
+
+    if flow not in {"company", "candidate"}:
+        return JsonResponse({"verified": False, "error": "Invalid verification flow."}, status=400)
+    if not otp_value:
+        return JsonResponse({"verified": False, "error": "OTP is required."}, status=400)
+
+    if channel == "email":
+        verified = _validate_registration_email_otp(request, flow, email, otp_value)
+    elif channel in {"sms", "mobile"}:
+        verified = _validate_registration_otp(request, flow, phone, otp_value)
+    else:
+        return JsonResponse({"verified": False, "error": "Invalid OTP channel."}, status=400)
+
+    return JsonResponse({"verified": bool(verified)})
 
 
 def verify_email_view(request, token):
@@ -3787,7 +4074,9 @@ def consultancy_applications_view(request):
         elif action == "schedule_interview":
             application_id = request.POST.get("application_id")
             interview_date = parse_date(request.POST.get("interview_date")) if request.POST.get("interview_date") else None
-            interview_time = (request.POST.get("interview_time") or "").strip()
+            interview_time_raw = (request.POST.get("interview_time") or "").strip()
+            interview_time_period = (request.POST.get("interview_time_period") or "").strip()
+            interview_time = _normalize_ampm_time(interview_time_raw, interview_time_period)
             interview_mode = (request.POST.get("interview_mode") or "Online").strip()
             meeting_link = (request.POST.get("meeting_link") or "").strip()
             meeting_address = (request.POST.get("meeting_address") or "").strip()
@@ -4095,7 +4384,10 @@ def consultancy_interviews_view(request):
             candidate_name = (request.POST.get("candidate") or "").strip()
             job_title = (request.POST.get("job_title") or "").strip()
             interview_date = parse_date(request.POST.get("interview_date")) if request.POST.get("interview_date") else None
-            interview_time = parse_time(request.POST.get("interview_time")) if request.POST.get("interview_time") else None
+            interview_time_raw = (request.POST.get("interview_time") or "").strip()
+            interview_time_period = (request.POST.get("interview_time_period") or "").strip()
+            interview_time_value = _normalize_ampm_time(interview_time_raw, interview_time_period)
+            interview_time = parse_time(interview_time_value) if interview_time_value else None
             mode = (request.POST.get("mode") or "Online").strip()
             meeting_link = (request.POST.get("meeting_link") or "").strip()
             location = (request.POST.get("location") or "").strip()
@@ -4850,7 +5142,7 @@ def consultancy_profile_settings_view(request):
                         messages.error(request, otp_error)
                     else:
                         messages.success(request, f"Delete OTP sent to {registered_email}.")
-                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False):
+                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False):
                             messages.info(
                                 request,
                                 f"Test OTP: {otp_value} (shown because debug OTP mode is enabled).",
@@ -4875,7 +5167,7 @@ def consultancy_profile_settings_view(request):
                             request,
                             f"Delete OTP sent to mobile ending {_mask_phone_number(registered_mobile)}.",
                         )
-                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False):
+                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False):
                             messages.info(
                                 request,
                                 f"Test OTP: {otp_value} (shown because debug OTP mode is enabled).",
@@ -7545,7 +7837,7 @@ def candidate_settings_view(request):
                         request,
                         f"Delete OTP sent to mobile ending {_mask_phone_number(phone)}.",
                     )
-                    if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False):
+                    if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False):
                         messages.info(
                             request,
                             f"Test OTP: {otp_value} (shown because debug OTP mode is enabled).",
@@ -8105,15 +8397,13 @@ def company_jobs_view(request):
         return redirect("dashboard:company_jobs")
 
     status_map = {
-        "active": "Approved",
-        "draft": "Pending",
-        "paused": "Pending",
         "rejected": "Rejected",
-        "closed": "Rejected",
-        "expired": "Rejected",
-        "archived": "Reported",
+        "reported": "Reported",
     }
-    if status_filter:
+    lifecycle_filters = {"draft", "active", "paused", "closed", "expired", "archived"}
+    if status_filter in lifecycle_filters:
+        jobs = jobs.filter(lifecycle_status__iexact=status_filter.title())
+    elif status_filter:
         mapped_status = status_map.get(status_filter)
         if mapped_status:
             jobs = jobs.filter(status=mapped_status)
@@ -9306,7 +9596,7 @@ def company_settings_view(request):
                         messages.error(request, otp_error)
                     else:
                         messages.success(request, f"Delete OTP sent to {registered_email}.")
-                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False):
+                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False):
                             messages.info(
                                 request,
                                 f"Test OTP: {otp_value} (shown because debug OTP mode is enabled).",
@@ -9331,7 +9621,7 @@ def company_settings_view(request):
                             request,
                             f"Delete OTP sent to mobile ending {_mask_phone_number(registered_mobile)}.",
                         )
-                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False) or getattr(settings, "DEBUG", False):
+                        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False):
                             messages.info(
                                 request,
                                 f"Test OTP: {otp_value} (shown because debug OTP mode is enabled).",

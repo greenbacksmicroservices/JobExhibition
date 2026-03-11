@@ -24,6 +24,7 @@ from django.core.files.base import ContentFile
 from django.core.cache import cache
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
+from dashboard.otp.email import send_otp_email as send_html_otp_email
 from django.db import DatabaseError, IntegrityError, OperationalError, close_old_connections
 from django.db.models import Q, Count, Sum, F
 from django.http import FileResponse, HttpResponse, JsonResponse
@@ -32,6 +33,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_time
 from django.utils.html import escape
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from .notifications import build_panel_notifications, mark_panel_notifications_seen
@@ -1303,32 +1305,31 @@ def _issue_email_session_otp(request, session_key, email, extra_payload=None):
     if not target_email:
         request.session.pop(session_key, None)
         return "", "Email address is required."
-    if _email_backend_is_console() and not getattr(settings, "OTP_ALLOW_CONSOLE_EMAIL", False):
-        request.session.pop(session_key, None)
-        return "", "Email OTP is not configured. Please set EMAIL_BACKEND and SMTP settings."
-
+    
+    # Get user name if available
+    to_name = "User"
+    if hasattr(request, 'user') and request.user.is_authenticated:
+        to_name = getattr(request.user, 'name', '') or getattr(request.user, 'username', '') or "User"
+    elif hasattr(request, 'session') and request.session.get('user_name'):
+        to_name = request.session.get('user_name')
+    
+    # Use the new HTML email OTP function from dashboard.otp.email
     otp_value = f"{random.randint(100000, 999999)}"
-    subject = "Job Exhibition OTP Verification"
-    message = (
-        f"Your OTP is {otp_value}. "
-        f"It is valid for {OTP_TTL_SECONDS // 60} minutes."
-    )
-    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+    
     try:
-        sent_count = send_mail(
-            subject,
-            message,
-            from_email,
-            [target_email],
-            fail_silently=False,
+        success, error_message = send_html_otp_email(
+            to_email=target_email,
+            otp=otp_value,
+            to_name=to_name,
         )
     except Exception:
         logger.exception("OTP email send failed.")
         request.session.pop(session_key, None)
         return "", "Unable to send OTP email right now. Please try again."
-    if sent_count <= 0:
+    
+    if not success:
         request.session.pop(session_key, None)
-        return "", "Unable to send OTP email right now. Please try again."
+        return "", error_message or "Unable to send OTP email right now. Please try again."
 
     payload = {
         "email": target_email,
@@ -3476,6 +3477,112 @@ def api_consultancy_metrics(request):
     ]
 
     return JsonResponse({"metrics": metrics, "pipeline": pipeline})
+
+
+@csrf_exempt
+def api_test_email_otp(request):
+    """
+    Test API endpoint for sending email OTP.
+    Used for testing SMTP email configuration with Postman.
+    
+    Method: POST
+    Content-Type: application/json
+    
+    Request Body:
+    {
+        "email": "test@example.com",
+        "name": "Test User"  // optional
+    }
+    
+    Response:
+    {
+        "success": true,
+        "message": "OTP sent successfully",
+        "debug_otp": "123456"  // Only in DEBUG mode
+    }
+    """
+    if request.method == "POST":
+        try:
+            # Parse JSON body
+            if request.content_type == "application/json":
+                data = json.loads(request.body.decode("utf-8"))
+            else:
+                data = request.POST
+            
+            email = (data.get("email") or "").strip().lower()
+            name = (data.get("name") or "Test User").strip()
+            
+            if not email:
+                return JsonResponse({
+                    "success": False,
+                    "error": "Email address is required"
+                }, status=400)
+            
+            # Generate OTP
+            otp_value = f"{random.randint(100000, 999999)}"
+            
+            # Send email using the new email OTP function
+            from dashboard.otp.email import send_otp_email
+            success, error_message = send_otp_email(
+                to_email=email,
+                otp=otp_value,
+                to_name=name,
+            )
+            
+            if not success:
+                return JsonResponse({
+                    "success": False,
+                    "error": error_message or "Failed to send OTP"
+                }, status=500)
+            
+            response_data = {
+                "success": True,
+                "message": f"OTP sent successfully to {email}",
+            }
+            
+            # Include OTP in debug mode for testing
+            if settings.DEBUG:
+                response_data["debug_otp"] = otp_value
+                response_data["note"] = "OTP shown because DEBUG=True. In production, this will not be included."
+            
+            return JsonResponse(response_data)
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                "success": False,
+                "error": "Invalid JSON format"
+            }, status=400)
+        except Exception as e:
+            logger.exception("Error in test email OTP API")
+            return JsonResponse({
+                "success": False,
+                "error": str(e)
+            }, status=500)
+    
+    # Return API documentation for GET requests
+    return JsonResponse({
+        "endpoint": "/api/test-email-otp/",
+        "method": "POST",
+        "description": "Test API endpoint for sending email OTP via SMTP",
+        "request_body": {
+            "email": "recipient@example.com (required)",
+            "name": "Recipient Name (optional)"
+        },
+        "response_success": {
+            "success": True,
+            "message": "OTP sent successfully",
+            "debug_otp": "123456 (only in DEBUG mode)"
+        },
+        "response_error": {
+            "success": False,
+            "error": "Error message"
+        },
+        "smtp_config": {
+            "host": settings.EMAIL_HOST,
+            "port": settings.EMAIL_PORT,
+            "from_email": settings.DEFAULT_FROM_EMAIL,
+        }
+    })
 
 
 @consultancy_login_required
@@ -12520,3 +12627,44 @@ def logout_view(request):
         )
     logout(request)
     return redirect("dashboard:login")
+
+
+@require_http_methods(["GET"])
+def api_public_jobs_list(request):
+    """
+    Public API to list approved jobs. No authentication required.
+    """
+    # Only show approved jobs for the public API
+    qs = Job.objects.filter(status="Approved").order_by("-id")
+
+    # Optional search filtering
+    search = request.GET.get("search", "").strip()
+    if search:
+        qs = qs.filter(
+            Q(title__icontains=search)
+            | Q(company__icontains=search)
+            | Q(category__icontains=search)
+            | Q(location__icontains=search)
+        )
+
+    # Pagination
+    page = int(request.GET.get("page", 1))
+    page_size = int(request.GET.get("page_size", 10))
+    paginator = Paginator(qs, page_size)
+
+    try:
+        page_obj = paginator.get_page(page)
+    except Exception:
+        page_obj = paginator.get_page(1)
+
+    results = [_serialize_job(job) for job in page_obj.object_list]
+
+    return JsonResponse(
+        {
+            "success": True,
+            "results": results,
+            "total_count": paginator.count,
+            "total_pages": paginator.num_pages,
+            "current_page": page_obj.number,
+        }
+    )

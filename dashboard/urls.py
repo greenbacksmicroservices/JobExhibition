@@ -11,6 +11,7 @@ urlpatterns = [
     path("forgot-password/", views.forgot_password_view, name="forgot_password"),
     path("reset-password/<str:token>/", views.password_reset_confirm_view, name="password_reset_confirm"),
     path("verify-email/<str:token>/", views.verify_email_view, name="verify_email"),
+    path("api/test-email-otp/", views.api_test_email_otp, name="api_test_email_otp"),
     path("company/register/", views.company_register_view, name="company_register"),
     path("consultancy/register/", views.consultancy_register_view, name="consultancy_register"),
     path("candidate/register/", views.candidate_register_view, name="candidate_register"),
@@ -583,4 +584,5 @@ urlpatterns = [
         views.api_candidate_toggle_saved_job,
         name="candidate_api_toggle_saved_job",
     ),
+    path("api/public/jobs/", views.api_public_jobs_list, name="api_public_jobs_list"),
 ]

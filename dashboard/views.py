@@ -12520,3 +12520,42 @@ def logout_view(request):
         )
     logout(request)
     return redirect("dashboard:login")
+@require_http_methods(["GET"])
+def api_public_jobs_list(request):
+    """
+    Public API to list approved jobs. No authentication required.
+    """
+    # Only show approved jobs for the public API
+    qs = Job.objects.filter(status="Approved").order_by("-id")
+
+    # Optional search filtering
+    search = request.GET.get("search", "").strip()
+    if search:
+        qs = qs.filter(
+            Q(title__icontains=search)
+            | Q(company__icontains=search)
+            | Q(category__icontains=search)
+            | Q(location__icontains=search)
+        )
+
+    # Pagination
+    page = int(request.GET.get("page", 1))
+    page_size = int(request.GET.get("page_size", 10))
+    paginator = Paginator(qs, page_size)
+
+    try:
+        page_obj = paginator.get_page(page)
+    except Exception:
+        page_obj = paginator.get_page(1)
+
+    results = [_serialize_job(job) for job in page_obj.object_list]
+
+    return JsonResponse(
+        {
+            "success": True,
+            "results": results,
+            "total_count": paginator.count,
+            "total_pages": paginator.num_pages,
+            "current_page": page_obj.number,
+        }
+    )

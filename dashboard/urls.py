@@ -583,4 +583,5 @@ urlpatterns = [
         views.api_candidate_toggle_saved_job,
         name="candidate_api_toggle_saved_job",
     ),
+    path("api/public/jobs/", views.api_public_jobs_list, name="api_public_jobs_list"),
 ]

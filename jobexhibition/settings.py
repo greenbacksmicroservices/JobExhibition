@@ -267,20 +267,20 @@ MEDIA_ROOT = BASE_DIR / 'media'
 SERVE_MEDIA_FILES = _env_bool("SERVE_MEDIA_FILES", default=True)
 
 # Email (SMTP) configuration
-# Based on PHP SMTP credentials from smtpcodesphp.md
-# Hostinger SMTP: smtp.hostinger.com:465 (SSL)
+# Gmail SMTP credentials from PHP function makeMailer()
+# Host: smtp.gmail.com, Port: 587, TLS: STARTTLS
 EMAIL_BACKEND = _env_str("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
-EMAIL_HOST = _env_str("EMAIL_HOST", "smtp.hostinger.com")
-EMAIL_PORT = _env_int("EMAIL_PORT", 465)
-EMAIL_HOST_USER = _env_str("EMAIL_HOST_USER", "registration@sabkapaisa.com")
-EMAIL_HOST_PASSWORD = _env_str("EMAIL_HOST_PASSWORD", "Admin$12345")
-EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", default=False)
-EMAIL_USE_SSL = _env_bool("EMAIL_USE_SSL", default=True)
+EMAIL_HOST = _env_str("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = _env_int("EMAIL_PORT", 587)
+EMAIL_HOST_USER = _env_str("EMAIL_HOST_USER", "jyotijrs9404j@gmail.com")
+EMAIL_HOST_PASSWORD = _env_str("EMAIL_HOST_PASSWORD", "prsx sihj jdne qikf")
+EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", default=True)
+EMAIL_USE_SSL = _env_bool("EMAIL_USE_SSL", default=False)
 DEFAULT_FROM_EMAIL = _env_str(
     "DEFAULT_FROM_EMAIL",
-    "SabkaPaisa <registration@sabkapaisa.com>",
+    "Job Exhibition <jyotijrs9404j@gmail.com>",
 )
-SITE_TITLE = _env_str("SITE_TITLE", "SabkaPaisa")
+SITE_TITLE = _env_str("SITE_TITLE", "Job Exhibition")
 
 AUTO_APPROVE_HOURS = _env_int("AUTO_APPROVE_HOURS", 24)
 

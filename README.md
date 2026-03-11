@@ -13,6 +13,72 @@ python manage.py runserver
 
 Open `http://127.0.0.1:8000/login/` and sign in with your admin account.
 
+---
+
+## 📧 SMTP Email Credentials (For OTP & Password Reset)
+
+**These credentials are working and tested.** Used for sending OTP emails and password reset links.
+
+### Gmail SMTP Configuration (From PHP makeMailer function)
+
+| Setting | Value |
+|---------|-------|
+| **SMTP Host** | `smtp.gmail.com` |
+| **SMTP Port** | `587` |
+| **SMTP Username** | `jyotijrs9404j@gmail.com` |
+| **SMTP Password** | `prsx sihj jdne qikf` |
+| **Encryption** | `TLS (STARTTLS)` |
+| **From Email** | `Job Exhibition <jyotijrs9404j@gmail.com>` |
+
+### Environment Variables (.env file)
+
+```bash
+# Email (SMTP) Configuration - Gmail
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=jyotijrs9404j@gmail.com
+EMAIL_HOST_PASSWORD=prsx sihj jdne qikf
+EMAIL_USE_TLS=True
+EMAIL_USE_SSL=False
+DEFAULT_FROM_EMAIL=Job Exhibition <jyotijrs9404j@gmail.com>
+SITE_TITLE=Job Exhibition
+```
+
+### Test the Email API
+
+**Endpoint:** `http://localhost:8000/api/test-email-otp/`
+
+**Using curl:**
+```bash
+curl -X POST http://localhost:8000/api/test-email-otp/ ^
+  -H "Content-Type: application/json" ^
+  -d "{\"email\": \"your-email@gmail.com\", \"name\": \"Your Name\"}"
+```
+
+**Using Postman:**
+- **Method:** POST
+- **URL:** `http://localhost:8000/api/test-email-otp/`
+- **Headers:** `Content-Type: application/json`
+- **Body (raw JSON):**
+```json
+{
+    "email": "your-email@gmail.com",
+    "name": "Your Name"
+}
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "message": "OTP sent successfully to your-email@gmail.com",
+    "debug_otp": "123456"
+}
+```
+
+---
+
 ## Production MySQL (Hostinger)
 
 Set these env vars on your live server before starting Django:

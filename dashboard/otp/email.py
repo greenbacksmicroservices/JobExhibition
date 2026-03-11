@@ -5,9 +5,6 @@ Based on PHP SMTP configuration from smtpcodesphp.md
 
 import logging
 from django.conf import settings
-from django.core.mail import send_mail
-from django.core.mail.backends.smtp import EmailBackend
-from django.core.mail.message import EmailMessage
 
 logger = logging.getLogger(__name__)
 
@@ -128,68 +125,64 @@ def _render_otp_email_body(otp, to_name="User"):
 def send_otp_email(to_email, otp, to_name="User"):
     """
     Send OTP via email using SMTP settings.
-    
+
     Args:
         to_email: Recipient email address
         otp: OTP code to send
         to_name: Recipient name (default: "User")
-    
+
     Returns:
         tuple: (success: bool, error_message: str)
     """
     try:
         smtp_settings = _get_smtp_settings()
-        
+
+        # Check if using console backend (for development)
+        backend_path = getattr(settings, 'EMAIL_BACKEND', '')
+        if 'console' in backend_path.lower():
+            # Log to console for development/testing
+            logger.info("=" * 60)
+            logger.info(f"OTP EMAIL (Console Backend)")
+            logger.info(f"To: {to_email}")
+            logger.info(f"Name: {to_name}")
+            logger.info(f"OTP: {otp}")
+            logger.info(f"Subject: {_render_otp_email_subject()}")
+            logger.info("=" * 60)
+            return True, ""
+
         # Check if SMTP is configured
         if not smtp_settings['host'] or not smtp_settings['username']:
             logger.warning("SMTP not configured. Using console backend for OTP.")
             logger.info(f"OTP for {to_email} is: {otp}")
             return True, ""
-        
-        # Create email backend
-        backend = EmailBackend(
-            host=smtp_settings['host'],
-            port=smtp_settings['port'],
-            username=smtp_settings['username'],
-            password=smtp_settings['password'],
-            use_tls=smtp_settings['use_tls'],
-            use_ssl=smtp_settings['use_ssl'],
-            fail_silently=False,
-        )
-        
+
         # Generate email content
         subject = _render_otp_email_subject()
         html_body, plain_body = _render_otp_email_body(otp, to_name)
+
+        # Send email using Django's send_mail
+        from django.core.mail import EmailMultiAlternatives
         
-        # Create email message
-        email = EmailMessage(
+        msg = EmailMultiAlternatives(
             subject=subject,
             body=plain_body,
             from_email=smtp_settings['from_email'],
             to=[to_email],
         )
-        email.content_subtype = "html"
-        email.body = html_body
+        msg.attach_alternative(html_body, "text/html")
         
-        # Send email
-        connection = backend.open()
-        if connection:
-            sent_count = email.send(connection=connection)
-            backend.close()
-            
-            if sent_count > 0:
-                logger.info(f"OTP email sent successfully to {to_email}")
-                return True, ""
-            else:
-                logger.error(f"Failed to send OTP email to {to_email}")
-                return False, "Failed to send OTP email. Please try again."
+        sent_count = msg.send()
+        
+        if sent_count > 0:
+            logger.info(f"OTP email sent successfully to {to_email}")
+            return True, ""
         else:
-            logger.error(f"Could not open SMTP connection for {to_email}")
-            return False, "Unable to connect to email server. Please try again."
+            logger.error(f"Failed to send OTP email to {to_email}")
+            return False, "Failed to send OTP email. Please check SMTP settings."
             
     except Exception as e:
         logger.exception(f"Error sending OTP email to {to_email}: {str(e)}")
-        return False, f"Unable to send OTP: {str(e)}"
+        return False, f"SMTP Error: {str(e)}"
 
 
 def verify_smtp_connection():

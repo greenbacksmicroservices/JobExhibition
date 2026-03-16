@@ -14,6 +14,7 @@ from .models import (
     Company,
     Consultancy,
     ConsultancyKycDocument,
+    Feedback,
     Interview,
     Message,
     MessageThread,
@@ -30,6 +31,7 @@ admin.site.register(CandidateExperience)
 admin.site.register(CandidateSkill)
 admin.site.register(CandidateProject)
 admin.site.register(Interview)
+admin.site.register(Feedback)
 admin.site.register(Advertisement)
 admin.site.register(AssignedJob)
 admin.site.register(MessageThread)

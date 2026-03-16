@@ -239,4 +239,61 @@
     </table>
   </div>
 </section>
+
+{% if feedback_prompt and feedback_application %}
+<div class="modal fade" id="feedbackModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="submit_feedback" />
+        <input type="hidden" name="application_id" value="{{ feedback_application.application_id }}" />
+        <div class="modal-header">
+          <h5 class="modal-title">Rate Your Application</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="muted">Share feedback for {{ feedback_application.job_title }} at {{ feedback_application.company }}.</p>
+          <div class="company-form-group company-form-full">
+            <label>Rating</label>
+            <div class="rating-input" aria-label="Rating">
+              <input type="radio" id="candidate-rate-5" name="rating" value="5" required />
+              <label for="candidate-rate-5" title="5 stars"><i class="fa-solid fa-star"></i></label>
+              <input type="radio" id="candidate-rate-4" name="rating" value="4" />
+              <label for="candidate-rate-4" title="4 stars"><i class="fa-solid fa-star"></i></label>
+              <input type="radio" id="candidate-rate-3" name="rating" value="3" />
+              <label for="candidate-rate-3" title="3 stars"><i class="fa-solid fa-star"></i></label>
+              <input type="radio" id="candidate-rate-2" name="rating" value="2" />
+              <label for="candidate-rate-2" title="2 stars"><i class="fa-solid fa-star"></i></label>
+              <input type="radio" id="candidate-rate-1" name="rating" value="1" />
+              <label for="candidate-rate-1" title="1 star"><i class="fa-solid fa-star"></i></label>
+            </div>
+          </div>
+          <div class="company-form-group company-form-full" style="margin-top: 12px;">
+            <label>Message</label>
+            <textarea rows="4" name="message" placeholder="Write a short feedback..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn ghost" data-bs-dismiss="modal">Skip</button>
+          <button type="submit" class="btn primary">Submit Feedback</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+  {% if feedback_prompt and feedback_application %}
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const modalEl = document.getElementById('feedbackModal');
+      if (!modalEl || !window.bootstrap) return;
+      const modal = new bootstrap.Modal(modalEl);
+      modal.show();
+    });
+  </script>
+  {% endif %}
 {% endblock %}

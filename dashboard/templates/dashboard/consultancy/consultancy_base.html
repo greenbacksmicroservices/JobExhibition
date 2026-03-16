@@ -111,6 +111,10 @@
             <span class="nav-icon"><i class="fa-solid fa-chart-pie"></i></span>
             <span>Reports</span>
           </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'consultancy_feedback' %}active{% endif %}" href="{% url 'dashboard:consultancy_feedback' %}">
+            <span class="nav-icon"><i class="fa-solid fa-star"></i></span>
+            <span>Feedbacks</span>
+          </a>
           <a class="nav-item {% if request.resolver_match.url_name == 'consultancy_profile_settings' %}active{% endif %}" href="{% url 'dashboard:consultancy_profile_settings' %}">
             <span class="nav-icon"><i class="fa-solid fa-gear"></i></span>
             <span>Profile & Settings</span>

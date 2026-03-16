@@ -17,6 +17,36 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def _load_env_file():
+    """Load BASE_DIR/.env into os.environ without overriding existing variables."""
+    env_path = BASE_DIR / ".env"
+    if not env_path.exists():
+        return
+    try:
+        content = env_path.read_text(encoding="utf-8")
+    except OSError:
+        return
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and (
+            (value[0] == '"' and value[-1] == '"')
+            or (value[0] == "'" and value[-1] == "'")
+        ):
+            value = value[1:-1].strip()
+        os.environ[key] = value
+
+
+_load_env_file()
+
+
 def _env_bool(key, default=False):
     value = os.getenv(key)
     if value is None:
@@ -52,6 +82,36 @@ def _env_str(key, default=""):
     ):
         value = value[1:-1].strip()
     return value
+
+
+def _env_first(keys, default=""):
+    for key in keys:
+        value = _env_str(key, "")
+        if value:
+            return value
+    return default
+
+
+def _is_placeholder_secret(value):
+    normalized = (value or "").strip().lower()
+    if normalized in {
+        "",
+        "replace-with-fast2sms-api-key",
+        "replace-with-api-key",
+        "your-fast2sms-api-key",
+        "your_fast2sms_api_key",
+        "your-real-fast2sms-key",
+        "your_real_fast2sms_key",
+        "changeme",
+    }:
+        return True
+    if normalized.startswith("replace-with-"):
+        return True
+    if normalized.startswith("your_") and normalized.endswith("_key"):
+        return True
+    if normalized.startswith("your-") and normalized.endswith("-key"):
+        return True
+    return False
 
 
 def _git_head_version():
@@ -297,7 +357,15 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAIN
 SECURE_HSTS_PRELOAD = _env_bool("DJANGO_SECURE_HSTS_PRELOAD", default=False)
 
 # OTP / SMS settings
-OTP_SMS_API_KEY = _env_str('OTP_SMS_API_KEY', 'XW8UdfD7hV5soeyuQG9ONj0kpmFBlJS2w6nLirME1zaCKZ3TvHyYXTkDj31MEqIiUfwQm4V8pKCcH6av')
+_otp_sms_api_key = _env_first(
+    [
+        "OTP_SMS_API_KEY",
+        "OTP_FAST2SMS_API_KEY",
+        "FAST2SMS_API_KEY",
+    ],
+    "",
+)
+OTP_SMS_API_KEY = "XW8UdfD7hV5soeyuQG9ONj0kpmFBlJS2w6nLirME1zaCKZ3TvHyYXTkDj31MEqIiUfwQm4V8pKCcH6av" if _is_placeholder_secret(_otp_sms_api_key) else _otp_sms_api_key
 _otp_default_provider = 'fast2sms'
 OTP_SMS_PROVIDER = _env_str('OTP_SMS_PROVIDER', _otp_default_provider).lower()
 OTP_SMS_API_URL = _env_str('OTP_SMS_API_URL', 'https://www.fast2sms.com/dev/bulkV2')
@@ -309,11 +377,19 @@ OTP_SMS_TIMEOUT_SECONDS = _env_int('OTP_SMS_TIMEOUT_SECONDS', 10)
 OTP_FAST2SMS_ROUTE = _env_str('OTP_FAST2SMS_ROUTE', 'dlt')
 OTP_FAST2SMS_LANGUAGE = _env_str('OTP_FAST2SMS_LANGUAGE', 'english')
 OTP_FAST2SMS_FLASH = _env_int('OTP_FAST2SMS_FLASH', 0)
-OTP_FAST2SMS_SENDER_ID = _env_str('OTP_FAST2SMS_SENDER_ID', 'GBMSF')
+OTP_FAST2SMS_SENDER_ID = _env_str('OTP_FAST2SMS_SENDER_ID', 'GBJOB')
 OTP_FAST2SMS_ENTITY_ID = _env_str('OTP_FAST2SMS_ENTITY_ID', '')
 OTP_FAST2SMS_TEMPLATE_ID = _env_str('OTP_FAST2SMS_TEMPLATE_ID', '')
-OTP_FAST2SMS_MESSAGE_ID = _env_str('OTP_FAST2SMS_MESSAGE_ID', '202469')
-OTP_FAST2SMS_VARIABLES_VALUES = _env_str('OTP_FAST2SMS_VARIABLES_VALUES', '{otp}')
+OTP_FAST2SMS_MESSAGE_ID = _env_str('OTP_FAST2SMS_MESSAGE_ID', '211271')
+OTP_FAST2SMS_VARIABLES_VALUES = _env_str('OTP_FAST2SMS_VARIABLES_VALUES', '{otp}|{ttl_minutes}|')
+OTP_FAST2SMS_REGISTER_MESSAGE_ID = _env_str('OTP_FAST2SMS_REGISTER_MESSAGE_ID', '211271')
+OTP_FAST2SMS_FORGOT_PASSWORD_MESSAGE_ID = _env_str('OTP_FAST2SMS_FORGOT_PASSWORD_MESSAGE_ID', '211269')
+OTP_FAST2SMS_ACCOUNT_DELETE_MESSAGE_ID = _env_str('OTP_FAST2SMS_ACCOUNT_DELETE_MESSAGE_ID', '211270')
+OTP_FAST2SMS_LOGIN_MESSAGE_ID = _env_str('OTP_FAST2SMS_LOGIN_MESSAGE_ID', '211272')
+OTP_FAST2SMS_REGISTER_VARIABLES_VALUES = _env_str('OTP_FAST2SMS_REGISTER_VARIABLES_VALUES', '{otp}|{ttl_minutes}|')
+OTP_FAST2SMS_FORGOT_PASSWORD_VARIABLES_VALUES = _env_str('OTP_FAST2SMS_FORGOT_PASSWORD_VARIABLES_VALUES', '{otp}|{ttl_minutes}|')
+OTP_FAST2SMS_ACCOUNT_DELETE_VARIABLES_VALUES = _env_str('OTP_FAST2SMS_ACCOUNT_DELETE_VARIABLES_VALUES', '{otp}|{ttl_minutes}|')
+OTP_FAST2SMS_LOGIN_VARIABLES_VALUES = _env_str('OTP_FAST2SMS_LOGIN_VARIABLES_VALUES', '{otp}|{ttl_minutes}|')
 OTP_FAST2SMS_SCHEDULE_TIME = _env_str('OTP_FAST2SMS_SCHEDULE_TIME', '')
 OTP_DEBUG_SHOW_IN_MESSAGES = _env_bool('OTP_DEBUG_SHOW_IN_MESSAGES', default=False)
 OTP_ALLOW_DEBUG_FALLBACK = _env_bool('OTP_ALLOW_DEBUG_FALLBACK', default=False)

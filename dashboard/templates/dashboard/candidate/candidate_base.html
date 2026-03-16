@@ -81,6 +81,10 @@
             <span class="nav-icon"><i class="fa-solid fa-file"></i></span>
             <span>Resume Manager</span>
           </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_feedback' %}active{% endif %}" href="{% url 'dashboard:candidate_feedback' %}">
+            <span class="nav-icon"><i class="fa-solid fa-star"></i></span>
+            <span>Feedbacks</span>
+          </a>
           <a class="nav-item {% if request.resolver_match.url_name == 'candidate_settings' %}active{% endif %}" href="{% url 'dashboard:candidate_settings' %}">
             <span class="nav-icon"><i class="fa-solid fa-gear"></i></span>
             <span>Settings</span>

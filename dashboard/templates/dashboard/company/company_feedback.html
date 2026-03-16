@@ -1,0 +1,133 @@
+{% extends "dashboard/company/company_base.html" %}
+{% load static %}
+
+{% block title %}Feedbacks{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="eyebrow">Feedbacks</p>
+    <h2>Share your job posting experience</h2>
+    <p class="muted">Rate the job posting process and help us improve.</p>
+  </div>
+</section>
+
+<section class="dashboard-row feedback-layout">
+  <article class="card compact-card feedback-card">
+    <div class="card-header">
+      <div>
+        <h3>Submit Feedback</h3>
+        <p class="muted">Pick a recently posted job and share your feedback.</p>
+      </div>
+      <a class="btn ghost" href="{% url 'dashboard:company_jobs' %}">Back to Jobs</a>
+    </div>
+    {% if pending_jobs %}
+    <form class="company-form-grid" method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="submit_feedback" />
+      <div class="rating-card" data-rating-card>
+        <h4>Kaisa laga?</h4>
+        <div class="rating-input" aria-label="Rating" data-rating-input>
+          <input type="radio" id="company-feedback-5" name="rating" value="5" required />
+          <label for="company-feedback-5" title="5 stars"><i class="fa-solid fa-star"></i></label>
+          <input type="radio" id="company-feedback-4" name="rating" value="4" />
+          <label for="company-feedback-4" title="4 stars"><i class="fa-solid fa-star"></i></label>
+          <input type="radio" id="company-feedback-3" name="rating" value="3" />
+          <label for="company-feedback-3" title="3 stars"><i class="fa-solid fa-star"></i></label>
+          <input type="radio" id="company-feedback-2" name="rating" value="2" />
+          <label for="company-feedback-2" title="2 stars"><i class="fa-solid fa-star"></i></label>
+          <input type="radio" id="company-feedback-1" name="rating" value="1" />
+          <label for="company-feedback-1" title="1 star"><i class="fa-solid fa-star"></i></label>
+        </div>
+        <div class="rating-message" data-rating-message>Rating select kijiye...</div>
+      </div>
+      <div class="company-form-group company-form-full">
+        <label>Job</label>
+        <select name="job_id">
+          <option value="">Select job</option>
+          {% for job in pending_jobs %}
+            <option value="{{ job.job_id }}" {% if job.job_id == selected_job_id %}selected{% endif %}>
+              {{ job.title }} ({{ job.job_id }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="company-form-group company-form-full">
+        <label>Message</label>
+        <textarea rows="4" name="message" placeholder="Tell us about your posting experience..."></textarea>
+      </div>
+      <div class="company-form-actions">
+        <button class="btn primary rating-submit is-hidden" type="submit" data-rating-submit>Submit Feedback</button>
+        <a class="btn ghost" href="{% url 'dashboard:company_jobs' %}">Skip</a>
+      </div>
+    </form>
+    {% else %}
+    <div class="notice-card">
+      <strong>No pending feedback</strong>
+      <p class="muted">Post a new job to leave feedback.</p>
+    </div>
+    {% endif %}
+  </article>
+
+  <article class="card compact-card">
+    <div class="card-header">
+      <div>
+        <h3>My Feedbacks</h3>
+        <p class="muted">Recent feedback submitted from your company account.</p>
+      </div>
+      <span class="muted" id="feedbackUpdatedAt">--</span>
+    </div>
+    <div class="table-wrap">
+      <table class="table" data-feedback-table data-scope="panel" data-endpoint="{{ feedbacks_api_url }}">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Job</th>
+            <th>Rating</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if feedbacks %}
+            {% for item in feedbacks %}
+            <tr>
+              <td>{{ item.created_at|date:"d M Y H:i"|default:"--" }}</td>
+              <td>
+                {% if item.context_label %}
+                  {{ item.context_label }}
+                {% elif item.job %}
+                  {{ item.job.title }}
+                {% else %}
+                  --
+                {% endif %}
+              </td>
+              <td>
+                {% if item.rating %}
+                  <div class="rating-stars">
+                    {% for star in "12345" %}
+                      <i class="fa-solid fa-star {% if forloop.counter > item.rating %}muted-star{% endif %}"></i>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <span class="muted">--</span>
+                {% endif %}
+              </td>
+              <td class="muted">{{ item.message|default:"--" }}</td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="4" class="muted" style="text-align:center; padding: 16px;">No feedback submitted yet.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/feedback-ui.js' %}?v={{ static_asset_version }}"></script>
+<script src="{% static 'dashboard/js/feedback-realtime.js' %}?v={{ static_asset_version }}"></script>
+{% endblock %}

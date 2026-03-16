@@ -187,6 +187,112 @@
       color: #0f766e;
       background: #ecfeff;
     }
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #334155;
+      font-weight: 600;
+    }
+    .check-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #0f766e;
+      margin: 0;
+      flex-shrink: 0;
+    }
+    .check-row label {
+      cursor: pointer;
+      line-height: 1.4;
+    }
+    .terms-link {
+      color: #0f766e;
+      font-weight: 700;
+      cursor: pointer;
+      border-bottom: 1px dashed rgba(15, 118, 110, 0.7);
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 999;
+      backdrop-filter: blur(6px);
+      padding: 16px;
+    }
+    .modal-content {
+      background: #fff;
+      width: min(720px, 100%);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 25px 60px rgba(15, 23, 42, 0.2);
+      animation: modalUp 0.35s ease;
+    }
+    @keyframes modalUp {
+      from { transform: translateY(40px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .modal-header {
+      background: #0f766e;
+      color: #fff;
+      padding: 14px 18px;
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-body {
+      padding: 18px;
+      max-height: 420px;
+      overflow-y: auto;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #1f2937;
+    }
+    .modal-body ul {
+      padding-left: 18px;
+      margin: 8px 0 14px;
+    }
+    .modal-body li {
+      margin-bottom: 6px;
+    }
+    .modal-footer {
+      padding: 12px 18px;
+      border-top: 1px solid #e2e8f0;
+      background: #f8fafc;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 22px;
+      cursor: pointer;
+    }
+    .accept-btn {
+      background: #22c55e;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .modal-body::-webkit-scrollbar {
+      width: 8px;
+    }
+    .modal-body::-webkit-scrollbar-track {
+      background: #ecfeff;
+    }
+    .modal-body::-webkit-scrollbar-thumb {
+      background: #0f766e;
+      border-radius: 999px;
+    }
   </style>
 </head>
 <body>
@@ -398,6 +504,18 @@
         </div>
       </div>
 
+      <div class="form-section">
+        <h4>7. Agreement &amp; Policy</h4>
+        <div class="field check-row">
+          <input type="checkbox" id="consultancy_agreement" name="consultancy_agreement" required />
+          <label for="consultancy_agreement">I agree to <span class="terms-link" onclick="openModal('consultancyAgreementModal')">Consultancy Agreement</span></label>
+        </div>
+        <div class="field check-row">
+          <input type="checkbox" id="consultancy_terms" name="terms_accepted" required />
+          <label for="consultancy_terms">I agree to <span class="terms-link" onclick="openModal('consultancyTermsModal')">Terms &amp; Conditions</span></label>
+        </div>
+      </div>
+
       <button class="btn-primary" type="submit">Submit for Approval</button>
     </form>
 
@@ -413,6 +531,274 @@
       </div>
     </div>
   </div>
+
+  <div class="modal-overlay" id="consultancyAgreementModal" aria-hidden="true">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="consultancyAgreementTitle">
+      <div class="modal-header">
+        <span id="consultancyAgreementTitle">Consultancy Agreement</span>
+        <button class="close-btn" type="button" onclick="closeModal('consultancyAgreementModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p><strong>JobExhibition.com</strong></p>
+        <p>This Consultancy Agreement governs the use of JobExhibition.com by recruitment consultancies and staffing agencies that register on the platform to post job opportunities, manage candidate applications, and conduct recruitment activities.</p>
+        <p>By creating an account as a consultancy on JobExhibition.com, you agree to comply with the terms and conditions outlined in this agreement.</p>
+        <p>JobExhibition.com operates as an online job marketplace connecting candidates, employers, and recruitment consultancies.</p>
+
+        <strong>1. Consultancy Account Registration</strong>
+        <ul>
+          <li>Provide accurate business and contact information.</li>
+          <li>Use a valid company email address.</li>
+          <li>Maintain the confidentiality of account login credentials.</li>
+          <li>Keep company profile information updated.</li>
+          <li>JobExhibition.com reserves the right to verify consultancy accounts before granting full access.</li>
+        </ul>
+
+        <strong>2. Authorized Use of the Platform</strong>
+        <ul>
+          <li>Post job opportunities on behalf of employers or clients.</li>
+          <li>Search and review candidate profiles.</li>
+          <li>Contact candidates regarding employment opportunities.</li>
+          <li>Manage job applications and interview processes.</li>
+          <li>All activities must be related to legitimate recruitment services.</li>
+        </ul>
+
+        <strong>3. Job Posting Responsibilities</strong>
+        <ul>
+          <li>All job postings must be genuine employment opportunities.</li>
+          <li>Job postings must be authorized by the employer or client.</li>
+          <li>Job descriptions must be accurate and clearly explained.</li>
+          <li>Fake or misleading job advertisements are prohibited.</li>
+          <li>Duplicate or spam job postings are not allowed.</li>
+          <li>Jobs requiring candidates to pay any fee are strictly prohibited.</li>
+        </ul>
+
+        <strong>4. Candidate Data Usage</strong>
+        <ul>
+          <li>Candidate data must be used only for recruitment purposes.</li>
+          <li>Candidate data must not be shared with unauthorized third parties.</li>
+          <li>Candidate data must not be used for marketing or promotional purposes.</li>
+          <li>All candidate information must be handled with confidentiality.</li>
+        </ul>
+
+        <strong>5. Subscription and Platform Services</strong>
+        <ul>
+          <li>Consultancies may access features through subscription plans.</li>
+          <li>Plans may include job posting limits, resume viewing and downloading features, and candidate communication tools.</li>
+          <li>Interview management features may be included.</li>
+          <li>Subscription pricing and features may change periodically.</li>
+          <li>Payments are generally non-refundable unless specified otherwise.</li>
+        </ul>
+
+        <strong>6. Communication and Conduct</strong>
+        <ul>
+          <li>Consultancies must maintain professional conduct with candidates.</li>
+          <li>Harassment of candidates is strictly prohibited.</li>
+          <li>Misrepresentation of job opportunities is not allowed.</li>
+          <li>Spam messages must not be sent to candidates.</li>
+          <li>Consultancies must not request payments from candidates.</li>
+        </ul>
+
+        <strong>7. Business Verification</strong>
+        <ul>
+          <li>JobExhibition.com may request business registration certificates.</li>
+          <li>GST registration may be required if applicable.</li>
+          <li>Official business contact information may be verified.</li>
+          <li>Verified consultancies may receive trust badges or platform visibility.</li>
+        </ul>
+
+        <strong>8. Prohibited Activities</strong>
+        <ul>
+          <li>Charging candidates for job placement.</li>
+          <li>Posting fake or misleading job listings.</li>
+          <li>Misusing candidate data.</li>
+          <li>Attempting unauthorized access to platform data.</li>
+          <li>Using automated tools to collect candidate information.</li>
+        </ul>
+
+        <strong>9. Suspension or Termination</strong>
+        <ul>
+          <li>Accounts violating platform rules may be suspended.</li>
+          <li>Fraudulent activities may result in termination.</li>
+          <li>Repeated complaints from candidates may lead to restrictions.</li>
+          <li>The platform may remove job listings without prior notice.</li>
+        </ul>
+
+        <strong>10. Limitation of Liability</strong>
+        <ul>
+          <li>JobExhibition.com acts only as a technology platform.</li>
+          <li>The platform does not guarantee candidate suitability.</li>
+          <li>The platform does not guarantee hiring success.</li>
+          <li>Consultancies are responsible for their own recruitment verification.</li>
+        </ul>
+
+        <strong>11. Changes to the Agreement</strong>
+        <p>JobExhibition.com may update this Consultancy Agreement periodically. Consultancies should review this page regularly to stay informed about policy updates.</p>
+
+        <strong>Contact Information</strong>
+        <p>Website: www.jobexhibition.com<br>Email: support@jobexhibition.com</p>
+      </div>
+      <div class="modal-footer">
+        <button class="accept-btn" type="button" onclick="acceptTerms('consultancyAgreementModal', 'consultancy_agreement')">Accept &amp; Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="consultancyTermsModal" aria-hidden="true">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="consultancyTermsTitle">
+      <div class="modal-header">
+        <span id="consultancyTermsTitle">Terms &amp; Conditions</span>
+        <button class="close-btn" type="button" onclick="closeModal('consultancyTermsModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p><strong>JobExhibition.com</strong></p>
+        <p>Welcome to JobExhibition.com. These Terms and Conditions govern the use of the Job Exhibition platform by candidates, recruiters, consultancies, and visitors.</p>
+        <p>By accessing or using the website, you agree to comply with these terms.</p>
+
+        <strong>1. Platform Overview</strong>
+        <ul>
+          <li>JobExhibition.com is an online job marketplace connecting job seekers, employers, and recruitment consultancies.</li>
+          <li>Job seekers (candidates), employers (recruiters), and recruitment consultancies can register and use the platform.</li>
+          <li>Candidates can create profiles, upload resumes, and apply for jobs.</li>
+          <li>Recruiters can post job opportunities and manage applications.</li>
+          <li>JobExhibition acts only as an intermediary platform and does not participate in hiring decisions.</li>
+        </ul>
+
+        <strong>2. User Accounts</strong>
+        <ul>
+          <li>Users may register as Candidate, Recruiter, or Consultancy.</li>
+          <li>Provide accurate and complete information.</li>
+          <li>Maintain confidentiality of login credentials.</li>
+          <li>Update profile information when necessary.</li>
+          <li>Use the platform only for lawful purposes.</li>
+          <li>Accounts violating policies may be suspended or terminated.</li>
+        </ul>
+
+        <strong>3. Candidate Responsibilities</strong>
+        <ul>
+          <li>All resume information must be accurate and truthful.</li>
+          <li>Fake experience, certifications, or qualifications are prohibited.</li>
+          <li>Uploaded documents must belong to the candidate.</li>
+          <li>Recruiters may view candidate profiles and resumes.</li>
+          <li>Resume information may be shared with employers for relevant job opportunities.</li>
+          <li>JobExhibition does not guarantee employment.</li>
+        </ul>
+
+        <strong>4. Recruiter and Consultancy Responsibilities</strong>
+        <ul>
+          <li>Job postings must be genuine and legally compliant.</li>
+          <li>Job descriptions must accurately represent the role.</li>
+          <li>No fraudulent recruitment practices are allowed.</li>
+          <li>Recruiters must not collect fees from candidates for job placements.</li>
+          <li>Misleading or duplicate job listings are prohibited.</li>
+          <li>Candidate information must not be used for unauthorized purposes.</li>
+        </ul>
+
+        <strong>5. Job Posting and Approval</strong>
+        <ul>
+          <li>Job postings may undergo platform moderation.</li>
+          <li>Admin approval may be required before publishing.</li>
+          <li>Content review may be conducted.</li>
+          <li>The platform may approve or reject job listings.</li>
+          <li>Suspicious or fraudulent postings may be removed.</li>
+        </ul>
+
+        <strong>6. Subscription and Paid Services</strong>
+        <ul>
+          <li>Subscription plans may be offered for recruiters and consultancies.</li>
+          <li>Plans may include job posting limits, resume download access, and candidate communication tools.</li>
+          <li>Featured job listings may be available.</li>
+          <li>Subscription pricing and limits are defined in platform plans.</li>
+          <li>Payments are generally non-refundable unless otherwise specified.</li>
+        </ul>
+
+        <strong>7. Data Usage</strong>
+        <ul>
+          <li>Candidate information may be shared with recruiters under subscription access.</li>
+          <li>Recruiters must use candidate data only for recruitment purposes.</li>
+          <li>Unauthorized use of personal data is strictly prohibited.</li>
+        </ul>
+
+        <strong>8. Fraud and Misuse Policy</strong>
+        <ul>
+          <li>Posting fake jobs is prohibited.</li>
+          <li>Creating duplicate accounts is not allowed.</li>
+          <li>Unauthorized access to platform data is forbidden.</li>
+          <li>Harassment or misuse of other users is prohibited.</li>
+          <li>Fraudulent activities may result in suspension, permanent bans, or legal action.</li>
+        </ul>
+
+        <strong>9. Limitation of Liability</strong>
+        <ul>
+          <li>JobExhibition does not guarantee job placement.</li>
+          <li>Interview opportunities are not guaranteed.</li>
+          <li>Hiring decisions are made by employers.</li>
+          <li>The platform is not responsible for disputes between candidates and employers.</li>
+          <li>Users should independently verify job opportunities.</li>
+        </ul>
+
+        <strong>10. Intellectual Property</strong>
+        <ul>
+          <li>Website design, branding, and software belong to JobExhibition.</li>
+          <li>Logos and content are protected intellectual property.</li>
+          <li>Unauthorized copying or reproduction is prohibited.</li>
+        </ul>
+
+        <strong>11. Account Suspension</strong>
+        <ul>
+          <li>Accounts may be suspended for fraudulent activity.</li>
+          <li>Misuse of the platform may result in termination.</li>
+          <li>Violation of policies may lead to account restriction.</li>
+          <li>Misleading job postings may result in account suspension.</li>
+        </ul>
+
+        <strong>12. Changes to Terms</strong>
+        <p>JobExhibition reserves the right to update these Terms and Conditions at any time. Users should review this page periodically.</p>
+
+        <strong>Contact Information</strong>
+        <p>Email: support@jobexhibition.com<br>Website: www.jobexhibition.com</p>
+      </div>
+      <div class="modal-footer">
+        <button class="accept-btn" type="button" onclick="acceptTerms('consultancyTermsModal', 'consultancy_terms')">Accept &amp; Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const modalOverlays = document.querySelectorAll('.modal-overlay');
+
+    function openModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) {
+        modal.style.display = 'flex';
+        modal.setAttribute('aria-hidden', 'false');
+      }
+    }
+
+    function closeModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) {
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+      }
+    }
+
+    function acceptTerms(modalId, checkboxId) {
+      const checkbox = document.getElementById(checkboxId);
+      if (checkbox) {
+        checkbox.checked = true;
+      }
+      closeModal(modalId);
+    }
+
+    modalOverlays.forEach((overlay) => {
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) {
+          overlay.style.display = 'none';
+          overlay.setAttribute('aria-hidden', 'true');
+        }
+      });
+    });
+  </script>
 
   <script src="{% static 'dashboard/js/password-toggle.js' %}?v={{ static_asset_version }}"></script>
 </body>

@@ -42,6 +42,7 @@ urlpatterns = [
     path("consultancy/earnings/", views.consultancy_earnings_view, name="consultancy_earnings"),
     path("consultancy/communication/", views.consultancy_communication_view, name="consultancy_communication"),
     path("consultancy/messages/", views.consultancy_messages_view, name="consultancy_messages"),
+    path("consultancy/feedback/", views.consultancy_feedback_view, name="consultancy_feedback"),
     path("consultancy/reports/", views.consultancy_reports_view, name="consultancy_reports"),
     path("consultancy/profile-settings/", views.consultancy_profile_settings_view, name="consultancy_profile_settings"),
     path(
@@ -110,8 +111,10 @@ urlpatterns = [
     path("candidate/subscription/", views.candidate_subscription_view, name="candidate_subscription"),
     path("candidate/settings/", views.candidate_settings_view, name="candidate_settings"),
     path("candidate/support/", views.candidate_support_view, name="candidate_support"),
+    path("candidate/feedback/", views.candidate_feedback_view, name="candidate_feedback"),
     path("company/dashboard/", views.company_dashboard_view, name="company_dashboard"),
     path("company/api/metrics/", views.api_company_metrics, name="company_api_metrics"),
+    path("company/api/feedbacks/", views.api_company_feedbacks, name="company_feedbacks_api"),
     path(
         "company/api/applications/<str:application_id>/thread/",
         views.api_company_application_thread,
@@ -123,8 +126,10 @@ urlpatterns = [
         name="company_api_security_activity",
     ),
     path("consultancy/api/metrics/", views.api_consultancy_metrics, name="consultancy_api_metrics"),
+    path("consultancy/api/feedbacks/", views.api_consultancy_feedbacks, name="consultancy_feedbacks_api"),
     path("company/profile/", views.company_profile_view, name="company_profile"),
     path("company/jobs/", views.company_jobs_view, name="company_jobs"),
+    path("company/feedback/", views.company_feedback_view, name="company_feedback"),
     path("company/applications/", views.company_applications_view, name="company_applications"),
     path("company/messages/", views.company_messages_view, name="company_messages"),
     path(
@@ -309,6 +314,7 @@ urlpatterns = [
     path("applications/selected/", views.applications_selected_view, name="applications_selected"),
     path("applications/rejected/", views.applications_rejected_view, name="applications_rejected"),
     path("applications/offer/", views.applications_offer_view, name="applications_offer"),
+    path("feedbacks/", views.admin_feedbacks_view, name="admin_feedbacks"),
     path("subscriptions/", views.subscriptions_view, name="subscriptions"),
     path(
         "subscriptions/free-paid/",
@@ -579,10 +585,16 @@ urlpatterns = [
     path("api/dashboard/metrics/", views.api_dashboard_metrics, name="api_dashboard_metrics"),
     path("candidate/api/applications/", views.api_candidate_applications, name="candidate_api_applications"),
     path("candidate/api/metrics/", views.api_candidate_metrics, name="candidate_api_metrics"),
+    path("candidate/api/feedbacks/", views.api_candidate_feedbacks, name="candidate_feedbacks_api"),
     path(
         "candidate/api/saved-jobs/toggle/",
         views.api_candidate_toggle_saved_job,
         name="candidate_api_toggle_saved_job",
     ),
+    path("api/feedbacks/admin/", views.api_admin_feedbacks, name="admin_feedbacks_api"),
     path("api/public/jobs/", views.api_public_jobs_list, name="api_public_jobs_list"),
+    path("api/public/metrics/", views.api_public_metrics, name="api_public_metrics"),
+    path("api/public/metrics", views.api_public_metrics, name="api_public_metrics_noslash"),
+    path("api/public/feedbacks/", views.api_public_feedbacks, name="api_public_feedbacks"),
+    path("api/public/feedbacks", views.api_public_feedbacks, name="api_public_feedbacks_noslash"),
 ]

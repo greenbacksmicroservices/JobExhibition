@@ -4,25 +4,25 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Job Exhibition Admin Dashboard</title>
-    <link rel="icon" href="{% static 'dashboard/favicon.ico' %}" />
+    <title>Feedbacks | Job Exhibition Admin</title>
+    <link rel="icon" href="{% static 'dashboard/favicon.ico' %}?v={{ static_asset_version }}" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}?v={{ static_asset_version }}" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/user-management.css' %}?v={{ static_asset_version }}" />
   </head>
-  <body>
+  <body class="user-management feedbacks-page">
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
     <div class="app-shell">
       <aside class="sidebar">
-                <div class="brand">
+        <div class="brand">
           <div class="brand-mark"><img src="{% static 'dashboard/img/je-logo.svg' %}?v={{ static_asset_version }}" alt="Job Exhibition logo" /></div>
           <div class="brand-text">
             <h1 class="style-1"><span class="brand-job">Job</span> <span class="brand-exhibition">Exhibition</span></h1>
             <span class="brand-subtitle">Admin Control</span>
           </div>
-</div>
+        </div>
 
-
-        
         <div class="company-user admin-user">
           <div class="company-logo-stack">
             <div class="company-logo" style="--progress: 100;">
@@ -40,8 +40,8 @@
           </div>
         </div>
 
-<nav class="sidebar-nav">
-          <a class="nav-item active" href="{% url 'dashboard:dashboard' %}">
+        <nav class="sidebar-nav">
+          <a class="nav-item" href="{% url 'dashboard:dashboard' %}">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
             <span>Dashboard</span>
           </a>
@@ -95,7 +95,7 @@
             </div>
           </div>
 
-          <a class="nav-item" href="{% url 'dashboard:admin_feedbacks' %}">
+          <a class="nav-item active" href="{% url 'dashboard:admin_feedbacks' %}">
             <i class="fa-solid fa-star nav-icon"></i>
             <span>Feedbacks</span>
           </a>
@@ -139,7 +139,6 @@
             </div>
           </div>
 
-          
           <div class="nav-section{% if support_section %} open{% endif %}">
             <button class="nav-item nav-toggle" type="button" data-target="supportCenter" aria-expanded="{% if support_section %}true{% else %}false{% endif %}" aria-controls="supportCenter">
               <div class="nav-label">
@@ -240,244 +239,163 @@
         </nav>
       </aside>
 
-      <main class="main" id="overview">
+      <main class="main">
         <header class="page-header">
           <div class="topbar">
-<div class="top-actions">
-              <div class="sidebar-control">
-  <button class="sidebar-control-btn" type="button" data-sidebar-toggle aria-label="Toggle sidebar">
-    <i class="fa-solid fa-bars"></i>
-    <span>Responsive Collapsible Sidebar</span>
-  </button>
-</div>
-<button class="icon-btn fullscreen-toggle" type="button" data-fullscreen-toggle aria-label="Toggle fullscreen">
-  <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
-</button>
-
-              <button class="icon-btn compact" id="darkModeToggle" aria-label="Toggle dark mode">
-                <i class="fa-solid fa-moon"></i>
-              </button>
-              <a class="icon-btn compact" href="{% url 'dashboard:message_monitor' %}" aria-label="Messages">
-                <i class="fa-solid fa-envelope"></i>
-              </a>
-              <details class="notification-dropdown">
-                <summary class="icon-btn" aria-label="Notifications">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
-                  {% if messages %}<span class="notif-dot"></span>{% endif %}
-                </summary>
-                <div class="notification-menu">
-                  <h4>Notifications</h4>
-                  {% if messages %}
-                  <ul class="notification-list">
-                    {% for message in messages %}
-                    <li>{{ message }}</li>
-                    {% endfor %}
-                  </ul>
-                  {% else %}
-                  <p class="muted">No notifications yet.</p>
-                  {% endif %}
-                </div>
-              </details>
+            <div>
+              <p class="eyebrow">Admin Panel</p>
+              <h2>Feedbacks Overview</h2>
+              <p class="muted">Live feedback from candidates, companies, and consultancies.</p>
             </div>
-            <details class="profile-dropdown">
-              <summary class="profile-summary">
-                <div class="profile-avatar">{{ request.user.username|default:"A"|first|upper }}</div>
-                <div class="profile-meta">
-                  <strong>{{ request.user.username|default:"Admin" }}</strong>
-                  <span>Platform Administrator</span>
-                </div>
-                <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-              </summary>
-              <div class="profile-menu">
-                              {% if request.user.last_login %}
-                              <a class="menu-item last-login-info" href="{% url 'dashboard:admin_profile_last_login' %}">
-                                <strong>Last Login</strong>
-                                <span>{{ request.user.last_login|date:"M d, Y H:i" }}</span>
-                              </a>
-                              {% endif %}
-                              <a class="menu-item" href="{% url 'dashboard:admin_profile' %}">
-                                <i class="fa-solid fa-user"></i> My Profile
-                              </a>
-                              <a class="menu-item" href="{% url 'dashboard:admin_profile_photo' %}">
-                                <i class="fa-solid fa-image"></i> Upload Photo
-                              </a>
-                              <a class="menu-item" href="{% url 'dashboard:admin_profile_password' %}">
-                                <i class="fa-solid fa-key"></i> Change Password
-                              </a>
-                              <a class="menu-item logout" href="{% url 'dashboard:logout' %}">
-                                <i class="fa-solid fa-right-from-bracket"></i> Logout
-                              </a>
-              </div>
-              </details>
+            <div class="page-actions">
+              <span class="muted" id="feedbackUpdatedAt">--</span>
+              <a class="btn ghost" href="{% url 'dashboard:dashboard' %}">Back to Dashboard</a>
+            </div>
           </div>
         </header>
 
-        <section class="metrics-grid">
-          <a class="metric-card metric-card-link gradient-1" href="{% url 'dashboard:jobs_approved' %}">
-            <div class="metric-top">
-              <span class="metric-title">Total Active Jobs</span>
-              <span class="metric-badge">Live</span>
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>All Feedbacks</h3>
+              <p class="muted">Newest submissions appear first.</p>
             </div>
-            <strong id="metricActiveJobs">0</strong>
-            <p>Approved jobs on platform</p>
-          </a>
-          <a class="metric-card metric-card-link gradient-2" href="{% url 'dashboard:candidates' %}">
-            <div class="metric-top">
-              <span class="metric-title">Total Candidates</span>
-              <span class="metric-badge">Users</span>
-            </div>
-            <strong id="metricCandidates">0</strong>
-            <p>Active candidate profiles</p>
-          </a>
-          <a class="metric-card metric-card-link gradient-3" href="{% url 'dashboard:companies' %}">
-            <div class="metric-top">
-              <span class="metric-title">Total Recruiters</span>
-              <span class="metric-badge">Hiring</span>
-            </div>
-            <strong id="metricRecruiters">0</strong>
-            <p>Companies + consultancies</p>
-          </a>
-          <a class="metric-card metric-card-link gradient-4" href="{% url 'dashboard:consultancies' %}">
-            <div class="metric-top">
-              <span class="metric-title">Total Consultancies</span>
-              <span class="metric-badge">Partners</span>
-            </div>
-            <strong id="metricConsultancies">0</strong>
-            <p>Verified consultancies</p>
-          </a>
-          <a class="metric-card metric-card-link gradient-5" href="{% url 'dashboard:companies' %}">
-            <div class="metric-top">
-              <span class="metric-title">Today's Registrations</span>
-              <span class="metric-badge">New</span>
-            </div>
-            <strong id="metricTodayRegistrations">0</strong>
-            <p>Users registered today</p>
-          </a>
-          <a class="metric-card metric-card-link gradient-6" href="{% url 'dashboard:subscriptions_revenue' %}">
-            <div class="metric-top">
-              <span class="metric-title">Revenue This Month</span>
-              <span class="metric-badge">INR</span>
-            </div>
-            <strong id="metricRevenueMonth">INR 0</strong>
-            <p>Monthly recurring revenue</p>
-          </a>
-        </section>
-
-        <section class="charts-grid">
-          <article class="card chart-card">
-            <div class="chart-header">
-              <div>
-                <h3>Job Posting Trend</h3>
-                <p class="muted">Histogram view</p>
-              </div>
-            </div>
-            <div class="chart-canvas histogram-chart" id="chartJobsTrend"></div>
-          </article>
-
-          <article class="card chart-card">
-            <div class="chart-header">
-              <div>
-                <h3>Job Categories</h3>
-                <p class="muted">Pie chart breakdown</p>
-              </div>
-            </div>
-            <div class="chart-canvas" id="chartJobCategories"></div>
-          </article>
-
-          <article class="card chart-card">
-            <div class="chart-header">
-              <div>
-                <h3>Subscription Conversion</h3>
-                <p class="muted">Free vs paid accounts</p>
-              </div>
-            </div>
-            <div class="chart-canvas bar-chart" id="chartSubscriptionConversion"></div>
-          </article>
-
-          <article class="card chart-card">
-            <div class="chart-header">
-              <div>
-                <h3>Platform Totals</h3>
-                <p class="muted">Companies, consultancies, candidates</p>
-              </div>
-            </div>
-            <div class="chart-canvas bar-chart" id="chartUserTotals"></div>
-          </article>
-
-          <article class="card chart-card">
-            <div class="chart-header">
-              <div>
-                <h3>Job Approval vs Rejection</h3>
-                <p class="muted">Histogram distribution</p>
-              </div>
-            </div>
-            <div class="chart-canvas histogram-chart" id="chartApprovalTrend"></div>
-          </article>
-        </section>
-
-        <section class="alerts-activity-grid">
-          <article class="card alerts-card">
-            <div class="card-header">
-              <div>
-                <h3>Alerts Panel</h3>
-                <p class="muted">Immediate action required</p>
-              </div>
-            </div>
-            <div class="alerts-list">
-              <a class="alert-row" href="{% url 'dashboard:jobs_pending' %}">
-                <span>Jobs pending approval</span>
-                <strong id="alertJobsPending">0</strong>
-              </a>
-              <a class="alert-row" href="{% url 'dashboard:grievance_complaints' %}">
-                <span>Complaints waiting</span>
-                <strong id="alertComplaints">0</strong>
-              </a>
-              <a class="alert-row" href="{% url 'dashboard:subscriptions_expiry_alerts' %}">
-                <span>Subscription expiring today</span>
-                <strong id="alertExpiringToday">0</strong>
-              </a>
-              <a class="alert-row" href="{% url 'dashboard:security_login_history' %}">
-                <span>Suspicious users</span>
-                <strong id="alertSuspicious">0</strong>
-              </a>
-            </div>
-          </article>
-
-          <article class="card activity-card">
-            <div class="card-header">
-              <div>
-                <h3>Recent Activity</h3>
-                <p class="muted">Latest platform updates</p>
-              </div>
-            </div>
-            <div class="activity-list" id="recentActivityList">
-              <div class="activity-item">
-                <div>
-                  <strong>Loading...</strong>
-                  <span class="muted">Please wait</span>
-                </div>
-                <span class="activity-time">--</span>
-              </div>
-            </div>
-          </article>
+          </div>
+          <div class="table-wrap">
+            <table class="table table-hover" data-feedback-table data-scope="admin" data-endpoint="{{ feedbacks_api_url }}">
+              <thead class="table-light">
+                <tr>
+                  <th>ID</th>
+                  <th>Role</th>
+                  <th>Submitted By</th>
+                  <th>Context</th>
+                  <th>Rating</th>
+                  <th>Message</th>
+                  <th>Submitted At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if feedbacks %}
+                  {% for item in feedbacks %}
+                  <tr>
+                    <td>{{ item.feedback_id|default:item.id }}</td>
+                    <td>{{ item.get_role_display }}</td>
+                    <td>
+                      {% if item.candidate %}
+                        {% with display_name=item.candidate.name designation=item.candidate.current_position organization=item.application.company|default:item.candidate.current_company %}
+                          <div class="feedback-user">
+                            <div class="avatar">
+                              {% if item.candidate.profile_image %}
+                                <img src="{{ item.candidate.profile_image.url }}" alt="{{ display_name|default:'Candidate' }}" />
+                              {% else %}
+                                <span>{{ display_name|default:"C"|first|upper }}</span>
+                              {% endif %}
+                            </div>
+                            <div class="feedback-meta">
+                              <strong>{{ display_name|default:"--" }}</strong>
+                              {% if designation or organization %}
+                                <span>
+                                  {% if designation %}{{ designation }}{% endif %}
+                                  {% if designation and organization %} · {% endif %}
+                                  {% if organization %}{{ organization }}{% endif %}
+                                </span>
+                              {% endif %}
+                            </div>
+                          </div>
+                        {% endwith %}
+                      {% elif item.company %}
+                        {% with display_name=item.company.name designation=item.company.contact_position|default:item.company.hr_designation organization=item.company.name %}
+                          <div class="feedback-user">
+                            <div class="avatar">
+                              {% if item.company.profile_image %}
+                                <img src="{{ item.company.profile_image.url }}" alt="{{ display_name|default:'Company' }}" />
+                              {% else %}
+                                <span>{{ display_name|default:"C"|first|upper }}</span>
+                              {% endif %}
+                            </div>
+                            <div class="feedback-meta">
+                              <strong>{{ display_name|default:"--" }}</strong>
+                              {% if designation or organization %}
+                                <span>
+                                  {% if designation %}{{ designation }}{% endif %}
+                                  {% if designation and organization %} · {% endif %}
+                                  {% if organization %}{{ organization }}{% endif %}
+                                </span>
+                              {% endif %}
+                            </div>
+                          </div>
+                        {% endwith %}
+                      {% elif item.consultancy %}
+                        {% with display_name=item.consultancy.name designation=item.consultancy.contact_position|default:item.consultancy.owner_designation organization=item.consultancy.name %}
+                          <div class="feedback-user">
+                            <div class="avatar">
+                              {% if item.consultancy.profile_image %}
+                                <img src="{{ item.consultancy.profile_image.url }}" alt="{{ display_name|default:'Consultancy' }}" />
+                              {% else %}
+                                <span>{{ display_name|default:"C"|first|upper }}</span>
+                              {% endif %}
+                            </div>
+                            <div class="feedback-meta">
+                              <strong>{{ display_name|default:"--" }}</strong>
+                              {% if designation or organization %}
+                                <span>
+                                  {% if designation %}{{ designation }}{% endif %}
+                                  {% if designation and organization %} · {% endif %}
+                                  {% if organization %}{{ organization }}{% endif %}
+                                </span>
+                              {% endif %}
+                            </div>
+                          </div>
+                        {% endwith %}
+                      {% else %}
+                        <div class="feedback-user">
+                          <div class="avatar"><span>--</span></div>
+                          <div class="feedback-meta">
+                            <strong>--</strong>
+                          </div>
+                        </div>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if item.context_label %}
+                        {{ item.context_label }}
+                      {% elif item.application %}
+                        {{ item.application.job_title }} - {{ item.application.company }}
+                      {% elif item.job %}
+                        {{ item.job.title }}
+                      {% else %}
+                        --
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if item.rating %}
+                        <div class="rating-stars">
+                          {% for star in "12345" %}
+                            <i class="fa-solid fa-star {% if forloop.counter > item.rating %}muted-star{% endif %}"></i>
+                          {% endfor %}
+                        </div>
+                      {% else %}
+                        <span class="muted">--</span>
+                      {% endif %}
+                    </td>
+                    <td class="muted">{{ item.message|default:"--" }}</td>
+                    <td>{{ item.created_at|date:"d M Y H:i"|default:"--" }}</td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="7" class="muted" style="text-align:center; padding: 16px;">No feedback submitted yet.</td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
         </section>
       </main>
     </div>
 
     <script src="{% static 'dashboard/js/dashboard.js' %}?v={{ static_asset_version }}"></script>
-    <script src="{% static 'dashboard/js/dashboard-data.js' %}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'dashboard/js/feedback-realtime.js' %}?v={{ static_asset_version }}"></script>
   </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-

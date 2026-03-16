@@ -10,28 +10,116 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 NON_DIGITS = re.compile(r"\D+")
+OTP_TTL_MINUTES = 10
+
+
+def _normalize_otp_purpose(purpose):
+    raw_value = (purpose or "").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "register": "register",
+        "registration": "register",
+        "signup": "register",
+        "sign_up": "register",
+        "forgot": "forgot_password",
+        "forgotpassword": "forgot_password",
+        "forgot_password": "forgot_password",
+        "password_reset": "forgot_password",
+        "reset_password": "forgot_password",
+        "delete": "account_delete",
+        "delete_account": "account_delete",
+        "account_delete": "account_delete",
+        "login": "login",
+        "otp": "otp",
+    }
+    return aliases.get(raw_value, "otp")
 
 
 def _normalize_mobile_number(mobile):
     digits = NON_DIGITS.sub("", mobile or "")
-    # Fast2SMS usually expects 10-digit Indian numbers.
+    # Fast2SMS expects Indian 10-digit mobile numbers.
+    if digits.startswith("00"):
+        digits = digits[2:]
     if len(digits) == 12 and digits.startswith("91"):
-        return digits[2:]
+        digits = digits[2:]
+    if len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    if len(digits) > 10:
+        digits = digits[-10:]
     return digits
 
 
-def _render_otp_message(otp):
-    template = getattr(
-        settings,
-        "OTP_SMS_MESSAGE_TEMPLATE",
-        "Your OTP for JobExhibition is {otp}. It is valid for 10 minutes.",
-    )
-    ttl_minutes = 10
+def _render_otp_message(otp, purpose="otp"):
+    purpose_key = _normalize_otp_purpose(purpose)
+    default_template = "Your OTP for JobExhibition is {otp}. It is valid for {ttl_minutes} minutes."
+    template_key_by_purpose = {
+        "register": "OTP_SMS_MESSAGE_TEMPLATE_REGISTER",
+        "forgot_password": "OTP_SMS_MESSAGE_TEMPLATE_FORGOT_PASSWORD",
+        "account_delete": "OTP_SMS_MESSAGE_TEMPLATE_ACCOUNT_DELETE",
+        "login": "OTP_SMS_MESSAGE_TEMPLATE_LOGIN",
+    }
+    template_key = template_key_by_purpose.get(purpose_key, "OTP_SMS_MESSAGE_TEMPLATE")
+    template = (getattr(settings, template_key, "") or "").strip()
+    if not template:
+        template = (getattr(settings, "OTP_SMS_MESSAGE_TEMPLATE", default_template) or default_template).strip()
+
     try:
-        return template.format(otp=otp, ttl_minutes=ttl_minutes)
+        return template.format(otp=otp, ttl_minutes=OTP_TTL_MINUTES)
     except (KeyError, ValueError):
-        logger.warning("Invalid OTP_SMS_MESSAGE_TEMPLATE format. Falling back to default template.")
-        return f"Your OTP for JobExhibition is {otp}. It is valid for {ttl_minutes} minutes."
+        logger.warning("Invalid %s format. Falling back to default template.", template_key)
+        return default_template.format(otp=otp, ttl_minutes=OTP_TTL_MINUTES)
+
+
+def _resolve_fast2sms_dlt_message_id(purpose):
+    purpose_key = _normalize_otp_purpose(purpose)
+    message_key_by_purpose = {
+        "register": "OTP_FAST2SMS_REGISTER_MESSAGE_ID",
+        "forgot_password": "OTP_FAST2SMS_FORGOT_PASSWORD_MESSAGE_ID",
+        "account_delete": "OTP_FAST2SMS_ACCOUNT_DELETE_MESSAGE_ID",
+        "login": "OTP_FAST2SMS_LOGIN_MESSAGE_ID",
+    }
+    purpose_message_key = message_key_by_purpose.get(purpose_key)
+    if purpose_message_key:
+        purpose_message_id = (getattr(settings, purpose_message_key, "") or "").strip()
+        if purpose_message_id:
+            return purpose_message_id
+
+    return (
+        (getattr(settings, "OTP_FAST2SMS_MESSAGE_ID", "") or "").strip()
+        or (getattr(settings, "OTP_FAST2SMS_TEMPLATE_ID", "") or "").strip()
+    )
+
+
+def _resolve_fast2sms_dlt_variables_template(purpose):
+    purpose_key = _normalize_otp_purpose(purpose)
+    variables_key_by_purpose = {
+        "register": "OTP_FAST2SMS_REGISTER_VARIABLES_VALUES",
+        "forgot_password": "OTP_FAST2SMS_FORGOT_PASSWORD_VARIABLES_VALUES",
+        "account_delete": "OTP_FAST2SMS_ACCOUNT_DELETE_VARIABLES_VALUES",
+        "login": "OTP_FAST2SMS_LOGIN_VARIABLES_VALUES",
+    }
+    purpose_variables_key = variables_key_by_purpose.get(purpose_key)
+    if purpose_variables_key and hasattr(settings, purpose_variables_key):
+        raw_value = getattr(settings, purpose_variables_key, "")
+        return str(raw_value or "").strip()
+    return (getattr(settings, "OTP_FAST2SMS_VARIABLES_VALUES", "") or "").strip()
+
+
+def _render_fast2sms_dlt_variables_values(variables_template, otp):
+    if not variables_template:
+        return ""
+    try:
+        rendered = variables_template.format(otp=otp, ttl_minutes=OTP_TTL_MINUTES)
+    except (KeyError, ValueError):
+        rendered = variables_template
+
+    # For DLT templates shared as raw pipe-separated examples, keep the first slot
+    # aligned with the runtime OTP so user-entered OTP validation does not break.
+    if "{" not in variables_template and "|" in rendered:
+        parts = rendered.split("|")
+        if parts:
+            parts[0] = str(otp)
+            rendered = "|".join(parts)
+    return rendered
 
 
 def _provider_error_message(response_text, fallback):
@@ -48,7 +136,13 @@ def _provider_error_message(response_text, fallback):
         provider_message = (response_text or "").strip()
 
     lower_msg = provider_message.lower()
-    if "invalid authentication" in lower_msg or "authorization key" in lower_msg:
+    if (
+        "invalid authentication" in lower_msg
+        or "authorization key" in lower_msg
+        or "invalid api key" in lower_msg
+        or "invalid key" in lower_msg
+        or "authentication failed" in lower_msg
+    ):
         return "Invalid OTP API key. Please check OTP_SMS_API_KEY."
     if "complete one transaction of 100" in lower_msg or "100 inr" in lower_msg:
         return "Fast2SMS account me minimum INR 100 transaction required hai before API OTP route use."
@@ -57,22 +151,23 @@ def _provider_error_message(response_text, fallback):
     return fallback
 
 
-def _send_fast2sms_otp(mobile, otp):
+def _send_fast2sms_otp(mobile, otp, purpose="otp"):
+    purpose_key = _normalize_otp_purpose(purpose)
     api_key = (getattr(settings, "OTP_SMS_API_KEY", "") or "").strip()
     if not api_key:
         return False, "OTP service is not configured. Please set OTP_SMS_API_KEY."
 
     mobile_number = _normalize_mobile_number(mobile)
-    if not mobile_number or len(mobile_number) < 10:
+    if not mobile_number or len(mobile_number) != 10:
         return False, "Enter a valid mobile number to receive OTP."
 
     route = (getattr(settings, "OTP_FAST2SMS_ROUTE", "dlt") or "dlt").strip().lower()
     if route == "dlt":
-        return _send_fast2sms_dlt_otp(api_key, mobile_number, otp)
+        return _send_fast2sms_dlt_otp(api_key, mobile_number, otp, purpose=purpose_key)
 
     payload = {
         "route": route,
-        "message": _render_otp_message(otp),
+        "message": _render_otp_message(otp, purpose=purpose_key),
         "language": getattr(settings, "OTP_FAST2SMS_LANGUAGE", "english"),
         "flash": int(getattr(settings, "OTP_FAST2SMS_FLASH", 0) or 0),
         "numbers": mobile_number,
@@ -90,7 +185,7 @@ def _send_fast2sms_otp(mobile, otp):
         payload["template_id"] = template_id
 
     req = urllib.request.Request(
-        (getattr(settings, "OTP_SMS_API_URL", "XW8UdfD7hV5soeyuQG9ONj0kpmFBlJS2w6nLirME1zaCKZ3TvHyYXTkDj31MEqIiUfwQm4V8pKCcH6av") or "https://www.fast2sms.com/dev/bulkV2"),
+        (getattr(settings, "OTP_SMS_API_URL", "https://www.fast2sms.com/dev/bulkV2") or "https://www.fast2sms.com/dev/bulkV2"),
         data=json.dumps(payload).encode("utf-8"),
         method="POST",
     )
@@ -140,24 +235,17 @@ def _send_fast2sms_otp(mobile, otp):
     return True, ""
 
 
-def _send_fast2sms_dlt_otp(api_key, mobile_number, otp):
+def _send_fast2sms_dlt_otp(api_key, mobile_number, otp, purpose="otp"):
+    purpose_key = _normalize_otp_purpose(purpose)
     sender_id = (getattr(settings, "OTP_FAST2SMS_SENDER_ID", "") or "").strip()
-    message_id = (
-        (getattr(settings, "OTP_FAST2SMS_MESSAGE_ID", "") or "").strip()
-        or (getattr(settings, "OTP_FAST2SMS_TEMPLATE_ID", "") or "").strip()
-    )
+    message_id = _resolve_fast2sms_dlt_message_id(purpose_key)
     if not sender_id:
         return False, "OTP sender ID missing. Set OTP_FAST2SMS_SENDER_ID for DLT route."
     if not message_id:
         return False, "OTP DLT template/message ID missing. Set OTP_FAST2SMS_MESSAGE_ID."
 
-    variables_template = (getattr(settings, "OTP_FAST2SMS_VARIABLES_VALUES", "") or "").strip()
-    variables_values = ""
-    if variables_template:
-        try:
-            variables_values = variables_template.format(otp=otp, ttl_minutes=10)
-        except (KeyError, ValueError):
-            variables_values = variables_template
+    variables_template = _resolve_fast2sms_dlt_variables_template(purpose_key)
+    variables_values = _render_fast2sms_dlt_variables_values(variables_template, otp)
 
     query = {
         "authorization": api_key,
@@ -166,11 +254,9 @@ def _send_fast2sms_dlt_otp(api_key, mobile_number, otp):
         "message": message_id,
         "variables_values": variables_values,
         "numbers": mobile_number,
+        "schedule_time": (getattr(settings, "OTP_FAST2SMS_SCHEDULE_TIME", "") or "").strip(),
         "flash": str(int(getattr(settings, "OTP_FAST2SMS_FLASH", 0) or 0)),
     }
-    schedule_time = (getattr(settings, "OTP_FAST2SMS_SCHEDULE_TIME", "") or "").strip()
-    if schedule_time:
-        query["schedule_time"] = schedule_time
 
     base_url = (getattr(settings, "OTP_SMS_API_URL", "") or "https://www.fast2sms.com/dev/bulkV2").strip()
     separator = "&" if "?" in base_url else "?"
@@ -222,7 +308,8 @@ def _send_fast2sms_dlt_otp(api_key, mobile_number, otp):
     return True, ""
 
 
-def send_otp_sms(mobile, otp):
+def send_otp_sms(mobile, otp, purpose="otp"):
+    purpose_key = _normalize_otp_purpose(purpose)
     provider = (getattr(settings, "OTP_SMS_PROVIDER", "console") or "console").strip().lower()
 
     if provider in {"disabled", "off"}:
@@ -230,11 +317,11 @@ def send_otp_sms(mobile, otp):
         return True, ""
 
     if provider == "console":
-        logger.info("OTP for %s is %s", mobile, otp)
+        logger.info("OTP for %s is %s (purpose=%s)", mobile, otp, purpose_key)
         return True, ""
 
     if provider == "fast2sms":
-        return _send_fast2sms_otp(mobile, otp)
+        return _send_fast2sms_otp(mobile, otp, purpose=purpose_key)
 
     logger.error("Unsupported OTP_SMS_PROVIDER configured: %s", provider)
     return False, "OTP provider is not configured correctly."

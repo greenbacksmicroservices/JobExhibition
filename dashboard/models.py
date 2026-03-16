@@ -123,6 +123,18 @@ INTERVIEW_ROUND_CHOICES = [
     ("Final", "Final"),
 ]
 
+FEEDBACK_ROLE_CHOICES = [
+    ("candidate", "Candidate"),
+    ("company", "Company"),
+    ("consultancy", "Consultancy"),
+]
+
+FEEDBACK_SOURCE_CHOICES = [
+    ("application", "Application"),
+    ("job", "Job Post"),
+    ("general", "General"),
+]
+
 PLACEMENT_STATUS_CHOICES = [
     ("Pending Approval", "Pending Approval"),
     ("Approved", "Approved"),
@@ -677,6 +689,58 @@ class Interview(models.Model):
 
     def __str__(self) -> str:
         return f"{self.interview_id or self.id} - {self.candidate_name}"
+
+
+class Feedback(models.Model):
+    feedback_id = models.CharField(max_length=20, unique=True, blank=True)
+    role = models.CharField(max_length=20, choices=FEEDBACK_ROLE_CHOICES)
+    source = models.CharField(max_length=20, choices=FEEDBACK_SOURCE_CHOICES, default="general")
+    rating = models.PositiveSmallIntegerField(null=True, blank=True)
+    message = models.TextField(blank=True)
+    context_label = models.CharField(max_length=200, blank=True)
+    candidate = models.ForeignKey(
+        "Candidate",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="feedbacks",
+    )
+    company = models.ForeignKey(
+        "Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="feedbacks",
+    )
+    consultancy = models.ForeignKey(
+        "Consultancy",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="feedbacks",
+    )
+    job = models.ForeignKey(
+        "Job",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="feedbacks",
+    )
+    application = models.ForeignKey(
+        "Application",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="feedbacks",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+
+    def __str__(self) -> str:
+        label = self.get_role_display()
+        return f"{label} Feedback {self.feedback_id or self.id}"
 
 
 class MessageThread(models.Model):

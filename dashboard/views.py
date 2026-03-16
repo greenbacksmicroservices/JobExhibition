@@ -21,6 +21,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import check_password, identify_hasher, make_password
 from django.contrib.auth.models import Group
 from django.core.files.base import ContentFile
+from django.core.exceptions import DisallowedHost
 from django.core.cache import cache
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
@@ -60,6 +61,7 @@ from .models import (
     Consultancy,
     ConsultancyKycDocument,
     EmailVerificationToken,
+    Feedback,
     Interview,
     LoginHistory,
     PasswordResetToken,
@@ -168,6 +170,23 @@ COMMON_SKILL_KEYWORDS = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_sms_otp_purpose(session_key):
+    key = (session_key or "").strip().lower()
+    if key.startswith(OTP_SESSION_PREFIX):
+        return "register"
+    if key == PASSWORD_RESET_OTP_SESSION_KEY:
+        return "forgot_password"
+    if key in {
+        CANDIDATE_DELETE_OTP_SESSION_KEY,
+        COMPANY_DELETE_OTP_SESSION_KEY,
+        CONSULTANCY_DELETE_OTP_SESSION_KEY,
+    }:
+        return "account_delete"
+    if key == LOGIN_OTP_SESSION_KEY:
+        return "login"
+    return "otp"
 
 def _resolve_subscription_segment(plan_type, payment_status, plan_expiry):
     plan_type = (plan_type or "").strip()
@@ -1263,7 +1282,8 @@ def _auto_approve_due_accounts():
 def _issue_session_otp(request, session_key, phone, extra_payload=None):
     clean_phone = (phone or "").strip()
     otp_value = f"{random.randint(100000, 999999)}"
-    is_sent, error_message = send_otp_sms(clean_phone, otp_value)
+    sms_otp_purpose = _resolve_sms_otp_purpose(session_key)
+    is_sent, error_message = send_otp_sms(clean_phone, otp_value, purpose=sms_otp_purpose)
     allow_debug_fallback = bool(getattr(settings, "OTP_ALLOW_DEBUG_FALLBACK", False))
     if not is_sent:
         if not allow_debug_fallback:
@@ -3675,6 +3695,8 @@ def consultancy_jobs_view(request):
             messages.success(request, "Job updated successfully.")
         else:
             messages.success(request, "Job saved successfully.")
+        if not job_id and post_action in {"draft", "publish"}:
+            return redirect(f"{reverse('dashboard:consultancy_feedback')}?job_id={job.job_id}")
         return redirect("dashboard:consultancy_jobs")
 
     if action in {"edit", "view"}:
@@ -3776,6 +3798,102 @@ def consultancy_jobs_view(request):
             "search_query": query_text,
             "metrics_api_url": metrics_api_url,
         },
+    )
+
+
+@consultancy_login_required
+def consultancy_feedback_view(request):
+    consultancy_id = request.session.get("consultancy_id")
+    consultancy = Consultancy.objects.filter(id=consultancy_id).first()
+    if not consultancy:
+        return redirect("dashboard:login")
+
+    jobs_qs = _consultancy_posted_jobs_queryset(consultancy).order_by("-created_at")
+    feedback_job_ids = list(
+        Feedback.objects.filter(consultancy=consultancy, job__isnull=False).values_list("job_id", flat=True)
+    )
+    pending_jobs = jobs_qs.exclude(id__in=feedback_job_ids)
+    selected_job_id = (request.GET.get("job_id") or "").strip()
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "submit_feedback":
+            job_id = (request.POST.get("job_id") or "").strip()
+            rating_value = (request.POST.get("rating") or "").strip()
+            message_text = (request.POST.get("message") or "").strip()
+            rating = int(rating_value) if rating_value.isdigit() else None
+
+            target_job = None
+            if job_id:
+                target_job = jobs_qs.filter(job_id=job_id).first()
+
+            if not target_job:
+                messages.error(request, "Please select a valid job to submit feedback.")
+                return redirect("dashboard:consultancy_feedback")
+
+            if rating is None or not (1 <= rating <= 5):
+                messages.error(request, "Please select a rating between 1 and 5.")
+                return redirect("dashboard:consultancy_feedback")
+
+            exists = Feedback.objects.filter(
+                role="consultancy",
+                consultancy=consultancy,
+                job=target_job,
+            ).exists()
+            if exists:
+                messages.info(request, "Feedback already submitted for this job.")
+                return redirect("dashboard:consultancy_feedback")
+
+            Feedback.objects.create(
+                feedback_id=_generate_prefixed_id("FDB", 1001, Feedback, "feedback_id"),
+                role="consultancy",
+                source="job",
+                rating=rating,
+                message=message_text,
+                context_label=target_job.title or "",
+                consultancy=consultancy,
+                job=target_job,
+            )
+            messages.success(request, "Feedback submitted successfully.")
+            return redirect("dashboard:consultancy_feedback")
+
+    feedbacks = (
+        Feedback.objects.filter(consultancy=consultancy)
+        .select_related("job", "application", "company", "consultancy")
+        .order_by("-created_at")[:100]
+    )
+
+    return render(
+        request,
+        "dashboard/consultancy/consultancy_feedback.html",
+        {
+            "consultancy": consultancy,
+            "pending_jobs": pending_jobs,
+            "selected_job_id": selected_job_id,
+            "feedbacks": feedbacks,
+            "feedbacks_api_url": reverse("dashboard:consultancy_feedbacks_api"),
+        },
+    )
+
+
+@consultancy_login_required
+@require_http_methods(["GET"])
+def api_consultancy_feedbacks(request):
+    consultancy_id = request.session.get("consultancy_id")
+    consultancy = Consultancy.objects.filter(id=consultancy_id).first()
+    if not consultancy:
+        return JsonResponse({"error": "unauthorized"}, status=401)
+
+    feedbacks = (
+        Feedback.objects.filter(consultancy=consultancy)
+        .select_related("job", "application", "company", "consultancy")
+        .order_by("-created_at")[:200]
+    )
+    return JsonResponse(
+        {
+            "feedbacks": [_serialize_feedback(item) for item in feedbacks],
+            "updated_at": timezone.now().isoformat(),
+        }
     )
 
 
@@ -7599,6 +7717,54 @@ def candidate_job_detail_view(request, job_id):
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
         is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+        if action == "submit_feedback":
+            application_id = (request.POST.get("application_id") or "").strip()
+            rating_value = (request.POST.get("rating") or "").strip()
+            message_text = (request.POST.get("message") or "").strip()
+            rating = int(rating_value) if rating_value.isdigit() else None
+
+            target_application = None
+            if application_id:
+                target_application = Application.objects.filter(
+                    application_id=application_id,
+                    candidate_email__iexact=candidate.email,
+                ).first()
+            if not target_application and application:
+                target_application = application
+
+            if not target_application:
+                messages.error(request, "Unable to submit feedback: application not found.")
+                return redirect("dashboard:candidate_job_detail", job_id=job_id)
+
+            if rating is None or not (1 <= rating <= 5):
+                messages.error(request, "Please select a rating between 1 and 5.")
+                return redirect("dashboard:candidate_job_detail", job_id=job_id)
+
+            exists = Feedback.objects.filter(
+                role="candidate",
+                candidate=candidate,
+                application=target_application,
+            ).exists()
+            if exists:
+                messages.info(request, "Feedback already submitted for this application.")
+                return redirect("dashboard:candidate_job_detail", job_id=job_id)
+
+            feedback = Feedback.objects.create(
+                feedback_id=_generate_prefixed_id("FDB", 1001, Feedback, "feedback_id"),
+                role="candidate",
+                source="application",
+                rating=rating,
+                message=message_text,
+                context_label=f"{target_application.job_title} @ {target_application.company}".strip(),
+                candidate=candidate,
+                company=company,
+                consultancy=target_application.consultancy,
+                job=target_application.job or job,
+                application=target_application,
+            )
+            messages.success(request, "Thank you! Feedback submitted successfully.")
+            return redirect("dashboard:candidate_job_detail", job_id=job_id)
+
         if action == "toggle_save":
             existing = CandidateSavedJob.objects.filter(candidate=candidate, job=job).first()
             if existing:
@@ -7683,7 +7849,28 @@ def candidate_job_detail_view(request, job_id):
                     consultancy=consultancy_source,
                 )
                 messages.success(request, "Application submitted successfully.")
+                return redirect(f"{reverse('dashboard:candidate_job_detail', args=[job_id])}?feedback=1&application_id={application.application_id}")
         return redirect("dashboard:candidate_job_detail", job_id=job_id)
+
+    feedback_prompt = (request.GET.get("feedback") or "").strip() == "1"
+    feedback_application = None
+    if feedback_prompt:
+        feedback_application_id = (request.GET.get("application_id") or "").strip()
+        if feedback_application_id:
+            feedback_application = Application.objects.filter(
+                application_id=feedback_application_id,
+                candidate_email__iexact=candidate.email,
+            ).first()
+        if not feedback_application:
+            feedback_application = application
+        if feedback_application:
+            already_submitted = Feedback.objects.filter(
+                role="candidate",
+                candidate=candidate,
+                application=feedback_application,
+            ).exists()
+            if already_submitted:
+                feedback_prompt = False
 
     return render(
         request,
@@ -7701,6 +7888,8 @@ def candidate_job_detail_view(request, job_id):
             "is_saved_job": is_saved_job,
             "saved_jobs_count": saved_jobs_count,
             "chat_thread_id": chat_thread_id,
+            "feedback_prompt": feedback_prompt,
+            "feedback_application": feedback_application,
         },
     )
 
@@ -7750,6 +7939,111 @@ def candidate_saved_jobs_view(request):
         request,
         "dashboard/candidate/candidate_saved_jobs.html",
         {"candidate": candidate, "saved_jobs": saved_entries},
+    )
+
+
+@candidate_login_required
+def candidate_feedback_view(request):
+    candidate_id = request.session.get("candidate_id")
+    candidate = Candidate.objects.filter(id=candidate_id).first()
+    if not candidate:
+        return redirect("dashboard:login")
+
+    applications_qs = Application.objects.filter(
+        candidate_email__iexact=candidate.email,
+    ).order_by("-created_at")
+    feedback_application_ids = list(
+        Feedback.objects.filter(candidate=candidate, application__isnull=False).values_list(
+            "application__application_id",
+            flat=True,
+        )
+    )
+    pending_applications = applications_qs.exclude(application_id__in=feedback_application_ids)
+    selected_application_id = (request.GET.get("application_id") or "").strip()
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "submit_feedback":
+            application_id = (request.POST.get("application_id") or "").strip()
+            rating_value = (request.POST.get("rating") or "").strip()
+            message_text = (request.POST.get("message") or "").strip()
+            rating = int(rating_value) if rating_value.isdigit() else None
+
+            target_application = None
+            if application_id:
+                target_application = applications_qs.filter(application_id=application_id).first()
+
+            if not target_application:
+                messages.error(request, "Please select a valid application to submit feedback.")
+                return redirect("dashboard:candidate_feedback")
+
+            if rating is None or not (1 <= rating <= 5):
+                messages.error(request, "Please select a rating between 1 and 5.")
+                return redirect("dashboard:candidate_feedback")
+
+            exists = Feedback.objects.filter(
+                role="candidate",
+                candidate=candidate,
+                application=target_application,
+            ).exists()
+            if exists:
+                messages.info(request, "Feedback already submitted for this application.")
+                return redirect("dashboard:candidate_feedback")
+
+            company_obj = Company.objects.filter(name__iexact=target_application.company).first()
+            Feedback.objects.create(
+                feedback_id=_generate_prefixed_id("FDB", 1001, Feedback, "feedback_id"),
+                role="candidate",
+                source="application",
+                rating=rating,
+                message=message_text,
+                context_label=f"{target_application.job_title} @ {target_application.company}".strip(),
+                candidate=candidate,
+                company=company_obj,
+                consultancy=target_application.consultancy,
+                job=target_application.job,
+                application=target_application,
+            )
+            messages.success(request, "Feedback submitted successfully.")
+            return redirect("dashboard:candidate_feedback")
+
+    feedbacks = (
+        Feedback.objects.filter(candidate=candidate)
+        .select_related("job", "application", "company", "consultancy")
+        .order_by("-created_at")[:100]
+    )
+
+    return render(
+        request,
+        "dashboard/candidate/candidate_feedback.html",
+        {
+            "candidate": candidate,
+            "pending_applications": pending_applications,
+            "selected_application_id": selected_application_id,
+            "feedbacks": feedbacks,
+            "feedbacks_api_url": reverse("dashboard:candidate_feedbacks_api"),
+        },
+    )
+
+
+@candidate_login_required
+@require_http_methods(["GET"])
+def api_candidate_feedbacks(request):
+    candidate_id = request.session.get("candidate_id")
+    candidate = Candidate.objects.filter(id=candidate_id).first()
+    if not candidate:
+        return JsonResponse({"error": "unauthorized"}, status=401)
+
+    feedbacks = (
+        Feedback.objects.filter(candidate=candidate)
+        .select_related("job", "application", "company", "consultancy")
+        .order_by("-created_at")[:200]
+    )
+    return JsonResponse(
+        {
+            "feedbacks": [_serialize_feedback(item) for item in feedbacks],
+            "updated_at": timezone.now().isoformat(),
+        }
     )
 
 
@@ -8501,6 +8795,8 @@ def company_jobs_view(request):
                 request,
                 "Job created successfully." if is_new_job else "Job updated successfully.",
             )
+        if is_new_job and action in {"draft", "publish"}:
+            return redirect(f"{reverse('dashboard:company_feedback')}?job_id={job.job_id}")
         return redirect("dashboard:company_jobs")
 
     status_map = {
@@ -8553,6 +8849,102 @@ def company_jobs_view(request):
         "edit_job": edit_job,
         "form_mode": "view" if action == "view" else "edit" if action == "edit" else "new" if action == "new" else "list",
     })
+
+
+@company_login_required
+def company_feedback_view(request):
+    company_id = request.session.get("company_id")
+    company = Company.objects.filter(id=company_id).first()
+    if not company:
+        return redirect("dashboard:login")
+
+    jobs_qs = Job.objects.filter(company__iexact=company.name).order_by("-created_at")
+    feedback_job_ids = list(
+        Feedback.objects.filter(company=company, job__isnull=False).values_list("job_id", flat=True)
+    )
+    pending_jobs = jobs_qs.exclude(id__in=feedback_job_ids)
+    selected_job_id = (request.GET.get("job_id") or "").strip()
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "submit_feedback":
+            job_id = (request.POST.get("job_id") or "").strip()
+            rating_value = (request.POST.get("rating") or "").strip()
+            message_text = (request.POST.get("message") or "").strip()
+            rating = int(rating_value) if rating_value.isdigit() else None
+
+            target_job = None
+            if job_id:
+                target_job = jobs_qs.filter(job_id=job_id).first()
+
+            if not target_job:
+                messages.error(request, "Please select a valid job to submit feedback.")
+                return redirect("dashboard:company_feedback")
+
+            if rating is None or not (1 <= rating <= 5):
+                messages.error(request, "Please select a rating between 1 and 5.")
+                return redirect("dashboard:company_feedback")
+
+            exists = Feedback.objects.filter(
+                role="company",
+                company=company,
+                job=target_job,
+            ).exists()
+            if exists:
+                messages.info(request, "Feedback already submitted for this job.")
+                return redirect("dashboard:company_feedback")
+
+            Feedback.objects.create(
+                feedback_id=_generate_prefixed_id("FDB", 1001, Feedback, "feedback_id"),
+                role="company",
+                source="job",
+                rating=rating,
+                message=message_text,
+                context_label=target_job.title or "",
+                company=company,
+                job=target_job,
+            )
+            messages.success(request, "Feedback submitted successfully.")
+            return redirect("dashboard:company_feedback")
+
+    feedbacks = (
+        Feedback.objects.filter(company=company)
+        .select_related("job", "application", "company", "consultancy")
+        .order_by("-created_at")[:100]
+    )
+
+    return render(
+        request,
+        "dashboard/company/company_feedback.html",
+        {
+            "company": company,
+            "pending_jobs": pending_jobs,
+            "selected_job_id": selected_job_id,
+            "feedbacks": feedbacks,
+            "feedbacks_api_url": reverse("dashboard:company_feedbacks_api"),
+        },
+    )
+
+
+@company_login_required
+@require_http_methods(["GET"])
+def api_company_feedbacks(request):
+    company_id = request.session.get("company_id")
+    company = Company.objects.filter(id=company_id).first()
+    if not company:
+        return JsonResponse({"error": "unauthorized"}, status=401)
+
+    feedbacks = (
+        Feedback.objects.filter(company=company)
+        .select_related("job", "application", "company", "consultancy")
+        .order_by("-created_at")[:200]
+    )
+    return JsonResponse(
+        {
+            "feedbacks": [_serialize_feedback(item) for item in feedbacks],
+            "updated_at": timezone.now().isoformat(),
+        }
+    )
 
 
 @company_login_required
@@ -11841,6 +12233,81 @@ def _serialize_job(job):
     }
 
 
+def _serialize_feedback(feedback, request=None):
+    created_at = feedback.created_at
+    if created_at:
+        created_at = timezone.localtime(created_at) if timezone.is_aware(created_at) else created_at
+    created_label = created_at.strftime("%Y-%m-%d %H:%M") if created_at else ""
+
+    candidate_name = feedback.candidate.name if feedback.candidate else ""
+    company_name = feedback.company.name if feedback.company else ""
+    consultancy_name = feedback.consultancy.name if feedback.consultancy else ""
+    job_title = feedback.job.title if feedback.job else ""
+    application_id = feedback.application.application_id if feedback.application else ""
+    application_title = feedback.application.job_title if feedback.application else ""
+    application_company = feedback.application.company if feedback.application else ""
+
+    submitted_by = candidate_name or company_name or consultancy_name or "-"
+    context_label = feedback.context_label or job_title or application_title or "-"
+
+    designation = ""
+    organization = ""
+    profile_image = None
+    if feedback.candidate:
+        designation = feedback.candidate.current_position or ""
+        organization = application_company or feedback.candidate.current_company or ""
+        profile_image = feedback.candidate.profile_image
+    elif feedback.company:
+        designation = feedback.company.contact_position or feedback.company.hr_designation or ""
+        organization = feedback.company.name or ""
+        profile_image = feedback.company.profile_image
+    elif feedback.consultancy:
+        designation = feedback.consultancy.contact_position or feedback.consultancy.owner_designation or ""
+        organization = feedback.consultancy.name or ""
+        profile_image = feedback.consultancy.profile_image
+
+    photo_url = ""
+    if profile_image:
+        try:
+            photo_url = profile_image.url or ""
+        except (ValueError, OSError):
+            photo_url = ""
+    if request and photo_url:
+        try:
+            photo_url = request.build_absolute_uri(photo_url)
+        except DisallowedHost:
+            # Fallback to relative media path if host is not allowed.
+            pass
+
+    company_label = organization or company_name or application_company or ""
+
+    return {
+        "feedback_id": feedback.feedback_id or str(feedback.id),
+        "role": feedback.role,
+        "role_label": feedback.get_role_display(),
+        "source": feedback.source,
+        "source_label": feedback.get_source_display(),
+        "rating": feedback.rating or 0,
+        "message": feedback.message or "",
+        "context_label": context_label,
+        "candidate_name": candidate_name,
+        "company_name": company_label,
+        "consultancy_name": consultancy_name,
+        "job_title": job_title,
+        "job_id": feedback.job.job_id if feedback.job else "",
+        "application_id": application_id,
+        "application_title": application_title,
+        "application_company": application_company,
+        "submitted_by": submitted_by,
+        "created_at": created_label,
+        "name": submitted_by,
+        "display_name": submitted_by,
+        "designation": designation,
+        "organization": organization,
+        "photo_url": photo_url,
+    }
+
+
 def _apply_job_fields(job, data):
     job.title = data.get("title", "").strip()
     job.company = data.get("company", "").strip()
@@ -12428,6 +12895,10 @@ def api_dashboard_metrics(request):
     subscriptions = Subscription.objects.all()
     total_apps = applications.count()
     total_subs = subscriptions.count()
+    success_rate = round(
+        (applications.filter(status__in=SELECTED_STATUSES).count() / max(total_apps, 1)) * 100,
+        2,
+    )
 
     total = max(total_jobs, 1)
     approved_pct = round((approved / total) * 100)
@@ -12589,9 +13060,10 @@ def api_dashboard_metrics(request):
                 "recruiters": recruiter_count,
                 "companies": company_count,
                 "consultancies": consultancy_count,
-                "todays_registrations": today_regs,
-                "revenue_month": revenue_month,
-            },
+            "todays_registrations": today_regs,
+            "revenue_month": revenue_month,
+            "success_rate": success_rate,
+        },
             "trends": {
                 "job_postings": job_trend,
                 "candidate_registrations": candidate_trend,
@@ -12611,6 +13083,43 @@ def api_dashboard_metrics(request):
                 "suspicious_users": suspicious_users,
             },
             "recent_activity": recent_activity,
+        }
+    )
+
+
+@login_required
+def admin_feedbacks_view(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
+
+    feedbacks = (
+        Feedback.objects.select_related("candidate", "company", "consultancy", "job", "application")
+        .order_by("-created_at")[:200]
+    )
+    return render(
+        request,
+        "dashboard/feedbacks.html",
+        {
+            "feedbacks": feedbacks,
+            "feedbacks_api_url": reverse("dashboard:admin_feedbacks_api"),
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_admin_feedbacks(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"error": "unauthorized"}, status=401)
+
+    feedbacks = (
+        Feedback.objects.select_related("candidate", "company", "consultancy", "job", "application")
+        .order_by("-created_at")[:300]
+    )
+    return JsonResponse(
+        {
+            "feedbacks": [_serialize_feedback(item) for item in feedbacks],
+            "updated_at": timezone.now().isoformat(),
         }
     )
 
@@ -12666,5 +13175,49 @@ def api_public_jobs_list(request):
             "total_count": paginator.count,
             "total_pages": paginator.num_pages,
             "current_page": page_obj.number,
+        }
+    )
+
+
+@require_http_methods(["GET"])
+def api_public_metrics(request):
+    jobs_qs = Job.objects.filter(status="Approved")
+    active_jobs = jobs_qs.count()
+    companies = Company.objects.count()
+    job_seekers = Candidate.objects.count()
+
+    applications = Application.objects.all()
+    total_applications = applications.count()
+    successful = applications.filter(status__in=SELECTED_STATUSES).count()
+    success_rate = round((successful / max(total_applications, 1)) * 100, 2)
+
+    return JsonResponse(
+        {
+            "success": True,
+            "active_jobs": active_jobs,
+            "companies": companies,
+            "job_seekers": job_seekers,
+            "success_rate": success_rate,
+            "updated_at": timezone.now().isoformat(),
+        }
+    )
+
+
+@require_http_methods(["GET"])
+def api_public_feedbacks(request):
+    limit = int(request.GET.get("limit") or 12)
+    limit = max(1, min(limit, 50))
+
+    qs = (
+        Feedback.objects.filter(rating__isnull=False)
+        .exclude(message__exact="")
+        .select_related("candidate", "company", "consultancy", "job", "application")
+        .order_by("-created_at")[:limit]
+    )
+    return JsonResponse(
+        {
+            "success": True,
+            "feedbacks": [_serialize_feedback(item, request=request) for item in qs],
+            "updated_at": timezone.now().isoformat(),
         }
     )

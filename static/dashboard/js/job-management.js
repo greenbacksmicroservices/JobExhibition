@@ -22,6 +22,8 @@
   const exportBtn = document.getElementById('exportBtn');
   const toastContainer = document.getElementById('toastContainer');
   const loadingOverlay = document.getElementById('loadingOverlay');
+  const pageSizeStorageKey = 'je_admin_page_size';
+  const pageSizeOptions = [10, 25, 50, 100];
 
   const formModalEl = document.getElementById('jobFormModal');
   const viewModalEl = document.getElementById('jobViewModal');
@@ -45,14 +47,17 @@
   const reportedCountEl = document.getElementById('jobsReportedCount');
 
   const STORAGE_KEY = 'jobex_jobs';
-  const pageSize = 8;
   const pollInterval = 15000;
 
   let currentPage = 1;
   let totalPages = 1;
+  let totalCount = 0;
   let deleteTarget = null;
   let useApi = true;
   let apiWarned = false;
+  let pageSize = 10;
+  let tableInfoEl = null;
+  let pageSizeSelect = null;
 
   if (!canDelete) {
     if (confirmDeleteBtn) {
@@ -354,6 +359,73 @@
     setTimeout(() => toast.remove(), 3000);
   };
 
+  const getStoredPageSize = () => {
+    try {
+      const stored = Number(window.localStorage.getItem(pageSizeStorageKey));
+      return Number.isFinite(stored) && stored > 0 ? stored : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const setStoredPageSize = (value) => {
+    try {
+      window.localStorage.setItem(pageSizeStorageKey, String(value));
+    } catch {
+      // Ignore storage errors.
+    }
+  };
+
+  const initTableFooter = () => {
+    if (!paginationEl) return;
+    const parent = paginationEl.parentElement;
+    if (!parent) return;
+    let footer = parent.querySelector('[data-table-footer]');
+    if (!footer) {
+      footer = document.createElement('div');
+      footer.className = 'table-footer';
+      footer.dataset.tableFooter = 'true';
+      footer.innerHTML = `
+        <div class="table-footer-left">
+          <label class="table-size-label">
+            Show
+            <select class="table-page-size"></select>
+            Entries
+          </label>
+        </div>
+        <div class="table-footer-right">
+          <span class="table-info">Showing 0 to 0 of 0 Entries</span>
+        </div>
+      `;
+      paginationEl.insertAdjacentElement('beforebegin', footer);
+    }
+    pageSizeSelect = footer.querySelector('.table-page-size');
+    tableInfoEl = footer.querySelector('.table-info');
+    if (pageSizeSelect && !pageSizeSelect.dataset.bound) {
+      pageSizeSelect.innerHTML = pageSizeOptions
+        .map((size) => `<option value="${size}">${size}</option>`)
+        .join('');
+      pageSizeSelect.value = String(pageSize);
+      pageSizeSelect.addEventListener('change', () => {
+        const nextSize = Number(pageSizeSelect.value) || 10;
+        if (nextSize === pageSize) return;
+        pageSize = nextSize;
+        setStoredPageSize(pageSize);
+        currentPage = 1;
+        refreshData();
+      });
+      pageSizeSelect.dataset.bound = 'true';
+    }
+  };
+
+  const updateTableInfo = () => {
+    if (!tableInfoEl) return;
+    const total = Number(totalCount) || 0;
+    const start = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const end = total === 0 ? 0 : Math.min(currentPage * pageSize, total);
+    tableInfoEl.textContent = `Showing ${start} to ${end} of ${total} Entries`;
+  };
+
   const getCookie = (name) => {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
@@ -466,10 +538,8 @@
     };
 
     addButton('Prev', Math.max(1, currentPage - 1), currentPage === 1);
-    for (let i = 1; i <= pages; i += 1) {
-      addButton(String(i), i, false, i === currentPage);
-    }
     addButton('Next', Math.min(pages, currentPage + 1), currentPage === pages);
+    updateTableInfo();
   };
 
   const renderTableRows = (rows) => {
@@ -490,7 +560,9 @@
         const status = safeText(job.status);
         const postedDate = safeText(job.posted_date);
         const applicants = safeText(job.applicants ?? 0, '0');
-        const applicationsUrl = `/applications/?search=${encodeURIComponent(job.title || '')}`;
+        const applicationsUrl = `/applications/?job_id=${encodeURIComponent(jobId)}&job_title=${encodeURIComponent(
+          job.title || ''
+        )}`;
         const featured = job.featured ? '<span class="badge info" style="margin-left:6px;">Featured</span>' : '';
         const deleteButton = canDelete
           ? `<button class="action-btn danger" data-action="delete" data-id="${jobId}"><i class="fa-solid fa-trash"></i> Delete</button>`
@@ -528,6 +600,7 @@
 
   const renderLocalTable = () => {
     const filtered = getFilteredJobs();
+    totalCount = filtered.length;
     totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
     currentPage = Math.min(currentPage, totalPages);
     const start = (currentPage - 1) * pageSize;
@@ -538,6 +611,7 @@
       currentPage = page;
       renderLocalTable();
     });
+    updateTableInfo();
     updateStats(computeLocalStats());
   };
 
@@ -569,12 +643,14 @@
       apiWarned = false;
       currentPage = data.page || 1;
       totalPages = data.pages || 1;
+      totalCount = data.count || 0;
       jobs = Array.isArray(data.results) ? data.results : [];
       renderTableRows(jobs);
       renderPagination(totalPages, (nextPage) => {
         currentPage = nextPage;
         fetchJobsFromApi(nextPage);
       });
+      updateTableInfo();
       updateStats(data.stats);
       mergeLocalJobs(jobs);
       return true;
@@ -988,6 +1064,11 @@
     }
   });
 
+  const storedSize = getStoredPageSize();
+  if (storedSize) {
+    pageSize = storedSize;
+  }
+  initTableFooter();
   initStatusFilter();
   refreshData();
 

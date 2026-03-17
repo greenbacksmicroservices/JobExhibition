@@ -22,6 +22,8 @@
   const exportBtn = document.getElementById('exportBtn');
   const toastContainer = document.getElementById('toastContainer');
   const loadingOverlay = document.getElementById('loadingOverlay');
+  const pageSizeStorageKey = 'je_admin_page_size';
+  const pageSizeOptions = [10, 25, 50, 100];
 
   const liveJobsCountEl = document.getElementById('liveJobsCount');
   const applicantCountEl = document.getElementById('applicantCount');
@@ -50,14 +52,19 @@
   const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
 
   const STORAGE_KEY = 'jobex_applications';
-  const pageSize = 8;
   const pollInterval = 15000;
 
   let currentPage = 1;
   let totalPages = 1;
+  let totalCount = 0;
   let deleteTarget = null;
   let useApi = true;
   let apiWarned = false;
+  let pageSize = 10;
+  let tableInfoEl = null;
+  let pageSizeSelect = null;
+  let jobIdFilter = '';
+  let jobTitleFilter = '';
 
   if (!canDelete) {
     if (confirmDeleteBtn) {
@@ -278,6 +285,73 @@
     setTimeout(() => toast.remove(), 3000);
   };
 
+  const getStoredPageSize = () => {
+    try {
+      const stored = Number(window.localStorage.getItem(pageSizeStorageKey));
+      return Number.isFinite(stored) && stored > 0 ? stored : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const setStoredPageSize = (value) => {
+    try {
+      window.localStorage.setItem(pageSizeStorageKey, String(value));
+    } catch {
+      // Ignore storage errors.
+    }
+  };
+
+  const initTableFooter = () => {
+    if (!paginationEl) return;
+    const parent = paginationEl.parentElement;
+    if (!parent) return;
+    let footer = parent.querySelector('[data-table-footer]');
+    if (!footer) {
+      footer = document.createElement('div');
+      footer.className = 'table-footer';
+      footer.dataset.tableFooter = 'true';
+      footer.innerHTML = `
+        <div class="table-footer-left">
+          <label class="table-size-label">
+            Show
+            <select class="table-page-size"></select>
+            Entries
+          </label>
+        </div>
+        <div class="table-footer-right">
+          <span class="table-info">Showing 0 to 0 of 0 Entries</span>
+        </div>
+      `;
+      paginationEl.insertAdjacentElement('beforebegin', footer);
+    }
+    pageSizeSelect = footer.querySelector('.table-page-size');
+    tableInfoEl = footer.querySelector('.table-info');
+    if (pageSizeSelect && !pageSizeSelect.dataset.bound) {
+      pageSizeSelect.innerHTML = pageSizeOptions
+        .map((size) => `<option value="${size}">${size}</option>`)
+        .join('');
+      pageSizeSelect.value = String(pageSize);
+      pageSizeSelect.addEventListener('change', () => {
+        const nextSize = Number(pageSizeSelect.value) || 10;
+        if (nextSize === pageSize) return;
+        pageSize = nextSize;
+        setStoredPageSize(pageSize);
+        currentPage = 1;
+        refreshData();
+      });
+      pageSizeSelect.dataset.bound = 'true';
+    }
+  };
+
+  const updateTableInfo = () => {
+    if (!tableInfoEl) return;
+    const total = Number(totalCount) || 0;
+    const start = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const end = total === 0 ? 0 : Math.min(currentPage * pageSize, total);
+    tableInfoEl.textContent = `Showing ${start} to ${end} of ${total} Entries`;
+  };
+
   const getCookie = (name) => {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
@@ -356,6 +430,10 @@
     if (filterStatus && statusScope === 'all' && filterStatus.value !== 'all') {
       filtered = filtered.filter((app) => app.status === filterStatus.value);
     }
+    if (jobTitleFilter) {
+      const titleNeedle = jobTitleFilter.toLowerCase();
+      filtered = filtered.filter((app) => (app.job_title || '').toLowerCase() === titleNeedle);
+    }
     const keyword = searchInput ? searchInput.value.trim().toLowerCase() : '';
     if (keyword) {
       filtered = filtered.filter((app) => {
@@ -396,10 +474,8 @@
     };
 
     addButton('Prev', Math.max(1, currentPage - 1), currentPage === 1);
-    for (let i = 1; i <= pages; i += 1) {
-      addButton(String(i), i, false, i === currentPage);
-    }
     addButton('Next', Math.min(pages, currentPage + 1), currentPage === pages);
+    updateTableInfo();
   };
 
   const formatSchedule = (app) => {
@@ -448,6 +524,7 @@
 
   const renderLocalTable = () => {
     const filtered = getFilteredApplications();
+    totalCount = filtered.length;
     totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
     currentPage = Math.min(currentPage, totalPages);
     const start = (currentPage - 1) * pageSize;
@@ -458,6 +535,7 @@
       currentPage = page;
       renderLocalTable();
     });
+    updateTableInfo();
     applications = [...localApplications];
     updateStats();
     populateManualSelect();
@@ -467,6 +545,8 @@
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('page_size', String(pageSize));
+    if (jobIdFilter) params.set('job_id', jobIdFilter);
+    if (jobTitleFilter) params.set('job_title', jobTitleFilter);
     const keyword = searchInput ? searchInput.value.trim() : '';
     if (keyword) params.set('search', keyword);
     const status = statusScope !== 'all' ? statusScope : filterStatus ? filterStatus.value : 'all';
@@ -491,12 +571,14 @@
     apiWarned = false;
     currentPage = data.page || 1;
     totalPages = data.pages || 1;
+    totalCount = data.count || 0;
     applications = Array.isArray(data.results) ? data.results : [];
     renderTableRows(applications);
     renderPagination(totalPages, (nextPage) => {
       currentPage = nextPage;
       fetchApplicationsFromApi(nextPage);
     });
+    updateTableInfo();
     updateStats(data.stats);
     populateManualSelect();
     mergeLocalApplications(applications);
@@ -830,7 +912,22 @@
 
   const applyInitialQueryFilters = () => {
     const params = new URLSearchParams(window.location.search || '');
-    const searchValue = (params.get('search') || params.get('job') || '').trim();
+    const jobIdValue = (params.get('job_id') || '').trim();
+    const jobTitleValue = (params.get('job_title') || '').trim();
+    if (jobIdValue) {
+      jobIdFilter = jobIdValue;
+    }
+    if (jobTitleValue) {
+      jobTitleFilter = jobTitleValue;
+    }
+    if (jobIdFilter) {
+      const subtitle = document.querySelector('.page-hero .muted');
+      if (subtitle) {
+        const titleText = jobTitleFilter ? `${jobIdFilter} - ${jobTitleFilter}` : jobIdFilter;
+        subtitle.textContent = `Showing applicants for ${titleText}.`;
+      }
+    }
+    const searchValue = (params.get('search') || params.get('job') || jobTitleValue || '').trim();
     if (searchInput && searchValue) {
       searchInput.value = searchValue;
     }
@@ -913,6 +1010,11 @@
     }
   });
 
+  const storedSize = getStoredPageSize();
+  if (storedSize) {
+    pageSize = storedSize;
+  }
+  initTableFooter();
   initStatusFilter();
   applyInitialQueryFilters();
   refreshData();

@@ -34,6 +34,8 @@
   const toastContainer = document.getElementById('toastContainer');
   const darkToggle = document.getElementById('darkModeToggle');
   const requestsBody = document.getElementById('requestsBody');
+  const pageSizeStorageKey = 'je_admin_page_size';
+  const pageSizeOptions = [10, 25, 50, 100];
 
   const formModalEl = document.getElementById('userFormModal');
   const viewModalEl = document.getElementById('viewModal');
@@ -71,6 +73,10 @@
   let currentPage = 1;
   let totalPages = 1;
   let deleteIds = [];
+  let totalCount = 0;
+  let pageSize = 10;
+  let tableInfoEl = null;
+  let pageSizeSelect = null;
 
   if (!canDelete) {
     if (bulkDeleteBtn) {
@@ -98,6 +104,36 @@
     return 'neutral';
   };
 
+  const normalizePhotoUrl = (value) => {
+    if (!value) return '';
+    const url = String(value).trim();
+    if (!url) return '';
+    
+    // Handle relative URLs
+    if (url.startsWith('/media/') || url.startsWith('/static/')) {
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      return `${protocol}//${host}${url}`;
+    }
+    
+    // Handle absolute URLs
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      // Convert http to https if needed
+      if (window.location.protocol === 'https:' && url.startsWith('http://')) {
+        return `https://${url.slice('http://'.length)}`;
+      }
+      return url;
+    }
+    
+    // Handle URLs without protocol
+    if (url.startsWith('//')) {
+      return `${window.location.protocol}${url}`;
+    }
+    
+    // Default to relative path
+    return url;
+  };
+
   const showLoading = (show) => {
     if (!loadingOverlay) return;
     loadingOverlay.classList.toggle('active', show);
@@ -119,6 +155,73 @@
     const parts = value.split(`; ${name}=`);
     if (parts.length === 2) return parts.pop().split(';').shift();
     return '';
+  };
+
+  const getStoredPageSize = () => {
+    try {
+      const stored = Number(window.localStorage.getItem(pageSizeStorageKey));
+      return Number.isFinite(stored) && stored > 0 ? stored : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const setStoredPageSize = (value) => {
+    try {
+      window.localStorage.setItem(pageSizeStorageKey, String(value));
+    } catch {
+      // Ignore storage errors.
+    }
+  };
+
+  const initTableFooter = () => {
+    if (!paginationEl) return;
+    const parent = paginationEl.parentElement;
+    if (!parent) return;
+    let footer = parent.querySelector('[data-table-footer]');
+    if (!footer) {
+      footer = document.createElement('div');
+      footer.className = 'table-footer';
+      footer.dataset.tableFooter = 'true';
+      footer.innerHTML = `
+        <div class="table-footer-left">
+          <label class="table-size-label">
+            Show
+            <select class="table-page-size"></select>
+            Entries
+          </label>
+        </div>
+        <div class="table-footer-right">
+          <span class="table-info">Showing 0 to 0 of 0 Entries</span>
+        </div>
+      `;
+      paginationEl.insertAdjacentElement('beforebegin', footer);
+    }
+    pageSizeSelect = footer.querySelector('.table-page-size');
+    tableInfoEl = footer.querySelector('.table-info');
+    if (pageSizeSelect && !pageSizeSelect.dataset.bound) {
+      pageSizeSelect.innerHTML = pageSizeOptions
+        .map((size) => `<option value="${size}">${size}</option>`)
+        .join('');
+      pageSizeSelect.value = String(pageSize);
+      pageSizeSelect.addEventListener('change', () => {
+        const nextSize = Number(pageSizeSelect.value) || 10;
+        if (nextSize === pageSize) return;
+        pageSize = nextSize;
+        setStoredPageSize(pageSize);
+        currentPage = 1;
+        fetchList(currentPage);
+      });
+      pageSizeSelect.dataset.bound = 'true';
+    }
+  };
+
+  const updateTableInfo = () => {
+    if (!tableInfoEl) return;
+    const total = Number(totalCount) || 0;
+    const start = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const end = total === 0 ? 0 : Math.min(currentPage * pageSize, total);
+    tableInfoEl.textContent = `Showing ${start} to ${end} of ${total} Entries`;
   };
 
   const fetchJson = async (url, options = {}) => {
@@ -145,7 +248,7 @@
       showLoading(true);
       const params = new URLSearchParams();
       params.set('page', String(page));
-      params.set('page_size', '10');
+      params.set('page_size', String(pageSize));
       params.set('search', searchInput ? searchInput.value.trim() : '');
       params.set('kyc', filterKyc ? filterKyc.value : 'all');
       params.set('status', filterStatus ? filterStatus.value : 'all');
@@ -159,8 +262,10 @@
       }
       currentPage = data.page || 1;
       totalPages = data.pages || 1;
+      totalCount = data.count || 0;
       renderTable(data.results || []);
       renderPagination();
+      updateTableInfo();
     } finally {
       showLoading(false);
     }
@@ -169,7 +274,7 @@
   const renderTable = (rows) => {
     if (!tableBody) return;
     if (!rows.length) {
-      tableBody.innerHTML = '<tr><td colspan="11" class="text-center">No records found</td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="10" class="text-center">No records found</td></tr>';
       if (bulkDeleteBtn) bulkDeleteBtn.disabled = true;
       if (selectAll) selectAll.checked = false;
       return;
@@ -183,6 +288,20 @@
         const resumeBadge = statusClass(resumeLabel);
         const accountBadge = statusClass(row.account_status);
         const plan = row.subscription_plan || 'N/A';
+        const name = row.name || '-';
+        const photoUrl = normalizePhotoUrl(row.photo_url || row.profile_image || row.photo || '');
+        const initial = name.trim() ? name.trim().charAt(0).toUpperCase() : '-';
+        const avatar = photoUrl
+          ? `<img src="${photoUrl}" alt="${name}" loading="lazy" />`
+          : `<span>${initial}</span>`;
+        const userCell = `
+  <div class="user-cell">
+    <div class="avatar" data-initial="${initial}">${avatar}</div>
+    <div class="user-meta">
+      <strong>#${row.id}</strong>
+      <span>${name}</span>
+    </div>
+  </div>`;
         const checked = row.account_status === 'Active' ? 'checked' : '';
         const disabled = row.account_status === 'Blocked' ? 'disabled' : '';
         const verificationCell = hasResume
@@ -197,8 +316,7 @@
         return `
 <tr>
   ${selectCell}
-  <td>#${row.id}</td>
-  <td>${row.name || '-'}</td>
+  <td>${userCell}</td>
   <td>${row.email || '-'}</td>
   <td>${row.phone || '-'}</td>
   <td>${row.location || '-'}</td>
@@ -226,6 +344,7 @@
       .join('');
 
     bindRowEvents();
+    bindAvatarFallbacks();
   };
 
   const renderPagination = () => {
@@ -233,20 +352,142 @@
     paginationEl.innerHTML = '';
     if (totalPages <= 1) return;
 
-    const createButton = (label, page, disabled = false, active = false) => {
-      const btn = document.createElement('button');
-      btn.className = `page-btn${active ? ' active' : ''}`;
-      btn.textContent = label;
-      btn.disabled = disabled;
-      btn.addEventListener('click', () => fetchList(page));
-      paginationEl.appendChild(btn);
-    };
+    const paginationContainer = document.createElement('div');
+    paginationContainer.className = 'pagination-wrapper';
 
-    createButton('Prev', Math.max(1, currentPage - 1), currentPage === 1);
-    for (let i = 1; i <= totalPages; i += 1) {
-      createButton(String(i), i, false, i === currentPage);
+    // Previous button
+    const prevBtn = document.createElement('button');
+    prevBtn.className = 'pagination-btn';
+    prevBtn.type = 'button';
+    prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left"></i> Previous';
+    prevBtn.disabled = currentPage === 1;
+    prevBtn.addEventListener('click', () => {
+      if (currentPage > 1) fetchList(currentPage - 1);
+    });
+    paginationContainer.appendChild(prevBtn);
+
+    // Page numbers container
+    const pageNumbersContainer = document.createElement('div');
+    pageNumbersContainer.className = 'pagination-numbers';
+
+    // Calculate page range to display
+    const maxShowPages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxShowPages / 2));
+    let endPage = Math.min(totalPages, startPage + maxShowPages - 1);
+    if (endPage - startPage + 1 < maxShowPages) {
+      startPage = Math.max(1, endPage - maxShowPages + 1);
     }
-    createButton('Next', Math.min(totalPages, currentPage + 1), currentPage === totalPages);
+
+    // First page and ellipsis
+    if (startPage > 1) {
+      const firstBtn = document.createElement('button');
+      firstBtn.className = 'pagination-btn';
+      firstBtn.textContent = '1';
+      firstBtn.type = 'button';
+      firstBtn.addEventListener('click', () => fetchList(1));
+      pageNumbersContainer.appendChild(firstBtn);
+
+      if (startPage > 2) {
+        const ellipsis = document.createElement('span');
+        ellipsis.className = 'pagination-ellipsis';
+        ellipsis.textContent = '...';
+        pageNumbersContainer.appendChild(ellipsis);
+      }
+    }
+
+    // Page number buttons
+    for (let i = startPage; i <= endPage; i++) {
+      const pageBtn = document.createElement('button');
+      pageBtn.className = `pagination-btn${i === currentPage ? ' active' : ''}`;
+      pageBtn.textContent = String(i);
+      pageBtn.type = 'button';
+      pageBtn.disabled = i === currentPage;
+      pageBtn.addEventListener('click', () => fetchList(i));
+      pageNumbersContainer.appendChild(pageBtn);
+    }
+
+    // Last page and ellipsis
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        const ellipsis = document.createElement('span');
+        ellipsis.className = 'pagination-ellipsis';
+        ellipsis.textContent = '...';
+        pageNumbersContainer.appendChild(ellipsis);
+      }
+
+      const lastBtn = document.createElement('button');
+      lastBtn.className = 'pagination-btn';
+      lastBtn.textContent = String(totalPages);
+      lastBtn.type = 'button';
+      lastBtn.addEventListener('click', () => fetchList(totalPages));
+      pageNumbersContainer.appendChild(lastBtn);
+    }
+
+    paginationContainer.appendChild(pageNumbersContainer);
+
+    // Next button
+    const nextBtn = document.createElement('button');
+    nextBtn.className = 'pagination-btn';
+    nextBtn.type = 'button';
+    nextBtn.innerHTML = 'Next <i class="fa-solid fa-chevron-right"></i>';
+    nextBtn.disabled = currentPage === totalPages;
+    nextBtn.addEventListener('click', () => {
+      if (currentPage < totalPages) fetchList(currentPage + 1);
+    });
+    paginationContainer.appendChild(nextBtn);
+
+    paginationEl.appendChild(paginationContainer);
+    updateTableInfo();
+  };
+
+  const bindAvatarFallbacks = () => {
+    if (!tableBody) return;
+    const avatarDivs = tableBody.querySelectorAll('.avatar');
+    
+    avatarDivs.forEach((avatarDiv) => {
+      if (avatarDiv.dataset.bound) return;
+      avatarDiv.dataset.bound = 'true';
+      
+      const img = avatarDiv.querySelector('img');
+      if (!img) return;
+      
+      // Retry logic for image loading
+      let retryCount = 0;
+      const maxRetries = 2;
+      
+      const handleImageError = () => {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          // Retry after a delay
+          setTimeout(() => {
+            img.src = img.dataset.originalSrc || img.src;
+          }, 500);
+        } else {
+          // Replace with fallback
+          img.style.display = 'none';
+          const span = document.createElement('span');
+          span.className = 'avatar-fallback';
+          span.textContent = avatarDiv.dataset.initial || '-';
+          avatarDiv.appendChild(span);
+        }
+      };
+      
+      img.dataset.originalSrc = img.src;
+      img.addEventListener('error', handleImageError, { once: false });
+      img.addEventListener('load', () => {
+        img.style.display = '';
+      });
+      
+      // Set timeout for image loading
+      const loadTimeout = setTimeout(() => {
+        if (!img.complete) {
+          handleImageError();
+        }
+      }, 3000);
+      
+      img.addEventListener('load', () => clearTimeout(loadTimeout), { once: true });
+      img.addEventListener('error', () => clearTimeout(loadTimeout), { once: true });
+    });
   };
 
   const renderRequestsTable = (rows) => {
@@ -782,6 +1023,12 @@ ${jobsSection}
   if (!hasSubscription && filterPlan) {
     filterPlan.style.display = 'none';
   }
+
+  const storedSize = getStoredPageSize();
+  if (storedSize) {
+    pageSize = storedSize;
+  }
+  initTableFooter();
 
   if (userForm) {
     userForm.addEventListener('submit', handleFormSubmit);

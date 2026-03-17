@@ -530,6 +530,65 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 360);
   };
 
+  const normalizeAccordionState = () => {
+    const sections = Array.from(document.querySelectorAll('.nav-section'));
+    if (!sections.length) return;
+    const activeSection = sections.find((section) => section.querySelector('.nav-sub.active'));
+    sections.forEach((section) => {
+      const shouldOpen = section.classList.contains('open') || Boolean(activeSection && section === activeSection);
+      const toggleButton = section.querySelector('.nav-toggle');
+      const body = section.querySelector('.nav-accordion-body');
+      section.classList.toggle('open', shouldOpen);
+      if (toggleButton) {
+        toggleButton.setAttribute('aria-expanded', String(shouldOpen));
+      }
+      if (body) {
+        body.style.display = shouldOpen ? 'block' : '';
+        body.style.maxHeight = '';
+        body.style.overflow = '';
+      }
+    });
+  };
+
+  // Save and restore sidebar accordion state
+  const saveSidebarState = () => {
+    const sections = Array.from(document.querySelectorAll('.nav-section'));
+    const expandedSections = sections
+      .filter((section) => section.classList.contains('open'))
+      .map((section) => section.querySelector('.nav-toggle')?.getAttribute('data-target'))
+      .filter((target) => target !== null);
+    
+    try {
+      storage.set('sidebar-state', JSON.stringify(expandedSections));
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
+  const restoreSidebarState = () => {
+    try {
+      const savedState = storage.get('sidebar-state');
+      if (!savedState) return;
+      const expandedSections = JSON.parse(savedState) || [];
+      const sections = Array.from(document.querySelectorAll('.nav-section'));
+      
+      sections.forEach((section) => {
+        const target = section.querySelector('.nav-toggle')?.getAttribute('data-target');
+        const shouldBeOpen = expandedSections.includes(target);
+        section.classList.toggle('open', shouldBeOpen);
+        const body = section.querySelector('.nav-accordion-body');
+        if (body) {
+          body.style.display = shouldBeOpen ? 'block' : '';
+        }
+      });
+    } catch {
+      // Ignore parse errors and continue
+    }
+  };
+
+  normalizeAccordionState();
+  restoreSidebarState();
+
   // Main accordion menu items with smooth animation
   accordions.forEach((button) => {
     button.addEventListener('click', (e) => {
@@ -545,20 +604,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const section = button.closest('.nav-section');
       if (!section) return;
 
-      // Close other sections (optional - comment out for allow-all-open behavior)
-      // accordions.forEach(otherButton => {
-      //   const otherSection = otherButton.closest('.nav-section');
-      //   if (otherSection !== section && otherSection.classList.contains('open')) {
-      //     otherSection.classList.remove('open');
-      //     otherButton.setAttribute('aria-expanded', 'false');
-      //   }
-      // });
-
       // Toggle current section
       const isOpen = !section.classList.contains('open');
       animateAccordion(section, isOpen);
       section.classList.toggle('open', isOpen);
       button.setAttribute('aria-expanded', String(isOpen));
+      
+      // Save the sidebar state after toggling
+      saveSidebarState();
     });
   });
 

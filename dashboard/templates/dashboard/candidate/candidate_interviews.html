@@ -53,7 +53,7 @@
           <th>Date</th>
           <th>Time</th>
           <th>Mode</th>
-          <th>Meeting Link</th>
+          <th>Meeting / Location</th>
           <th>Interviewer</th>
           <th>Status</th>
         </tr>
@@ -68,7 +68,9 @@
             <td>{{ interview.interview_time|time:"g:i A"|default:"--" }}</td>
             <td>{{ interview.mode }}</td>
             <td>
-              {% if interview.meeting_link %}
+              {% if interview.mode|lower == 'offline' %}
+                {% firstof interview.location interview.meeting_link "--" %}
+              {% elif interview.meeting_link %}
                 <a class="link-button" href="{{ interview.meeting_link }}" target="_blank" rel="noopener">Join</a>
               {% else %}
                 --

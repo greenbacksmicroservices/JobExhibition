@@ -174,21 +174,7 @@
             </div>
           </div>
 
-          <div class="nav-section">
-            <button class="nav-item nav-toggle" type="button" data-target="cms" aria-expanded="false" aria-controls="cms">
-              <div class="nav-label">
-                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6z"/></svg>
-                <span>CMS</span>
-              </div>
-              <span class="caret">v</span>
-            </button>
-            <div class="nav-accordion-body" id="cms">
-              <a class="nav-sub" href="#">Pages</a>
-              <a class="nav-sub" href="#">FAQ</a>
-              <a class="nav-sub" href="#">Blog / News</a>
-              <a class="nav-sub" href="#">Homepage Sections</a>
-            </div>
-          </div>
+          
 
           <div class="nav-section{% if settings_section %} open{% endif %}">
             <button class="nav-item nav-toggle" type="button" data-target="settings" aria-expanded="{% if settings_section %}true{% else %}false{% endif %}" aria-controls="settings">
@@ -242,17 +228,109 @@
       <main class="main">
         <header class="page-header">
           <div class="topbar">
-            <div>
-              <p class="eyebrow">Admin Panel</p>
-              <h2>Feedbacks Overview</h2>
-              <p class="muted">Live feedback from candidates, companies, and consultancies.</p>
+            <div class="top-actions">
+              <div class="sidebar-control">
+                <button class="sidebar-control-btn" type="button" data-sidebar-toggle aria-label="Toggle sidebar">
+                  <i class="fa-solid fa-bars"></i>
+                  <span>Responsive Collapsible Sidebar</span>
+                </button>
+              </div>
+              <button class="icon-btn fullscreen-toggle" type="button" data-fullscreen-toggle aria-label="Toggle fullscreen">
+                <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+              </button>
+              <button class="icon-btn compact" id="darkModeToggle" aria-label="Toggle dark mode">
+                <i class="fa-solid fa-moon"></i>
+              </button>
+              <a class="icon-btn compact" href="{% url 'dashboard:message_monitor' %}" aria-label="Messages">
+                <i class="fa-solid fa-envelope"></i>
+              </a>
+              <details class="notification-dropdown">
+                <summary class="icon-btn" aria-label="Notifications">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
+                  {% if messages %}<span class="notif-dot"></span>{% endif %}
+                </summary>
+                <div class="notification-menu">
+                  <h4>Notifications</h4>
+                  {% if messages %}
+                  <ul class="notification-list">
+                    {% for message in messages %}
+                    <li>{{ message }}</li>
+                    {% endfor %}
+                  </ul>
+                  {% else %}
+                  <p class="muted">No notifications yet.</p>
+                  {% endif %}
+                </div>
+              </details>
             </div>
-            <div class="page-actions">
-              <span class="muted" id="feedbackUpdatedAt">--</span>
-              <a class="btn ghost" href="{% url 'dashboard:dashboard' %}">Back to Dashboard</a>
-            </div>
+            <details class="profile-dropdown">
+              <summary class="profile-summary">
+                <div class="profile-avatar">{{ request.user.username|default:"A"|first|upper }}</div>
+                <div class="profile-meta">
+                  <strong>{{ request.user.username|default:"Admin" }}</strong>
+                  <span>Platform Administrator</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+              </summary>
+              <div class="profile-menu">
+                {% if request.user.last_login %}
+                <a class="menu-item last-login-info" href="{% url 'dashboard:admin_profile_last_login' %}">
+                  <strong>Last Login</strong>
+                  <span>{{ request.user.last_login|date:"M d, Y H:i" }}</span>
+                </a>
+                {% endif %}
+                <a class="menu-item" href="{% url 'dashboard:admin_profile' %}">
+                  <i class="fa-solid fa-user"></i> View Profile
+                </a>
+                <a class="menu-item" href="{% url 'dashboard:admin_profile_photo' %}">
+                  <i class="fa-solid fa-camera"></i> Update Photo
+                </a>
+                <a class="menu-item" href="{% url 'dashboard:admin_profile_password' %}">
+                  <i class="fa-solid fa-key"></i> Change Password
+                </a>
+                <a class="menu-item logout" href="{% url 'dashboard:logout' %}">
+                  <i class="fa-solid fa-right-from-bracket"></i> Logout
+                </a>
+              </div>
+            </details>
           </div>
         </header>
+
+        <section class="page-hero feedbacks-hero">
+          <div>
+            <p class="eyebrow">Admin Panel</p>
+            <h2>Feedbacks Overview</h2>
+            <p class="muted">Live feedback from candidates, companies, and consultancies.</p>
+          </div>
+          <div class="page-actions">
+            <div class="feedback-updated">
+              <span class="label">Last Updated</span>
+              <span class="muted" id="feedbackUpdatedAt">--</span>
+            </div>
+            <a class="btn ghost" href="{% url 'dashboard:dashboard' %}">Back to Dashboard</a>
+          </div>
+        </section>
+
+        <section class="feedback-summary-grid">
+          <div class="feedback-summary-card">
+            <div class="summary-meta">
+              <span>Total Feedbacks</span>
+              <strong id="feedbackTotalCount">--</strong>
+              <small class="muted">Across all roles</small>
+            </div>
+            <div class="summary-chart">
+              <div class="mini-bars" id="feedbackVolumeBars">
+                <span class="bar" style="--bar: 0.2;"></span>
+                <span class="bar" style="--bar: 0.35;"></span>
+                <span class="bar" style="--bar: 0.45;"></span>
+                <span class="bar" style="--bar: 0.25;"></span>
+                <span class="bar" style="--bar: 0.6;"></span>
+                <span class="bar" style="--bar: 0.4;"></span>
+              </div>
+              <span class="muted">Last 6 days</span>
+            </div>
+          </div>
+        </section>
 
         <section class="card">
           <div class="card-header">
@@ -277,7 +355,7 @@
               <tbody>
                 {% if feedbacks %}
                   {% for item in feedbacks %}
-                  <tr>
+                  <tr data-rating="{{ item.rating|default:0 }}" data-created-at="{{ item.created_at|date:'Y-m-d H:i'|default:'' }}">
                     <td>{{ item.feedback_id|default:item.id }}</td>
                     <td>{{ item.get_role_display }}</td>
                     <td>
@@ -296,7 +374,7 @@
                               {% if designation or organization %}
                                 <span>
                                   {% if designation %}{{ designation }}{% endif %}
-                                  {% if designation and organization %} · {% endif %}
+                                  {% if designation and organization %} &middot; {% endif %}
                                   {% if organization %}{{ organization }}{% endif %}
                                 </span>
                               {% endif %}
@@ -318,7 +396,7 @@
                               {% if designation or organization %}
                                 <span>
                                   {% if designation %}{{ designation }}{% endif %}
-                                  {% if designation and organization %} · {% endif %}
+                                  {% if designation and organization %} &middot; {% endif %}
                                   {% if organization %}{{ organization }}{% endif %}
                                 </span>
                               {% endif %}
@@ -340,7 +418,7 @@
                               {% if designation or organization %}
                                 <span>
                                   {% if designation %}{{ designation }}{% endif %}
-                                  {% if designation and organization %} · {% endif %}
+                                  {% if designation and organization %} &middot; {% endif %}
                                   {% if organization %}{{ organization }}{% endif %}
                                 </span>
                               {% endif %}

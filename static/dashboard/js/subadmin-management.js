@@ -11,6 +11,8 @@
   const roleFilter = document.getElementById('subadminRoleFilter');
   const statusFilter = document.getElementById('subadminStatusFilter');
   const applyFiltersBtn = document.getElementById('subadminApplyFilters');
+  const pageSizeStorageKey = 'je_admin_page_size';
+  const pageSizeOptions = [10, 25, 50];
 
   const form = document.getElementById('subadminForm');
   const idInput = document.getElementById('subadminId');
@@ -38,7 +40,11 @@
 
   let currentPage = 1;
   let totalPages = 1;
+  let totalCount = 0;
   let pendingDeleteId = null;
+  let pageSize = 10;
+  let tableInfoEl = null;
+  let pageSizeSelect = null;
 
   const setLoading = (isVisible) => {
     if (!loadingOverlay) {
@@ -58,6 +64,73 @@
     setTimeout(() => {
       toast.remove();
     }, 3200);
+  };
+
+  const getStoredPageSize = () => {
+    try {
+      const stored = Number(window.localStorage.getItem(pageSizeStorageKey));
+      return Number.isFinite(stored) && stored > 0 ? stored : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const setStoredPageSize = (value) => {
+    try {
+      window.localStorage.setItem(pageSizeStorageKey, String(value));
+    } catch {
+      // Ignore storage errors.
+    }
+  };
+
+  const initTableFooter = () => {
+    if (!paginationEl) return;
+    const parent = paginationEl.parentElement;
+    if (!parent) return;
+    let footer = parent.querySelector('[data-table-footer]');
+    if (!footer) {
+      footer = document.createElement('div');
+      footer.className = 'table-footer';
+      footer.dataset.tableFooter = 'true';
+      footer.innerHTML = `
+        <div class="table-footer-left">
+          <label class="table-size-label">
+            Show
+            <select class="table-page-size"></select>
+            Entries
+          </label>
+        </div>
+        <div class="table-footer-right">
+          <span class="table-info">Showing 0 to 0 of 0 Entries</span>
+        </div>
+      `;
+      paginationEl.insertAdjacentElement('beforebegin', footer);
+    }
+    pageSizeSelect = footer.querySelector('.table-page-size');
+    tableInfoEl = footer.querySelector('.table-info');
+    if (pageSizeSelect && !pageSizeSelect.dataset.bound) {
+      pageSizeSelect.innerHTML = pageSizeOptions
+        .map((size) => `<option value="${size}">${size}</option>`)
+        .join('');
+      pageSizeSelect.value = String(pageSize);
+      pageSizeSelect.addEventListener('change', () => {
+        const nextSize = Number(pageSizeSelect.value) || 10;
+        if (nextSize === pageSize) return;
+        pageSize = nextSize;
+        setStoredPageSize(pageSize);
+        currentPage = 1;
+        fetchList(1);
+      });
+      pageSizeSelect.dataset.bound = 'true';
+    }
+  };
+
+  const updateTableInfo = () => {
+    if (!tableInfoEl) return;
+    const total = Number(totalCount) || 0;
+    const start = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const end = total === 0 ? 0 : Math.min(currentPage * pageSize, total);
+    tableInfoEl.textContent = `Showing ${start} to ${end} of ${total} Entries`;
   };
 
   const getCookie = (name) => {
@@ -165,10 +238,8 @@
     };
 
     addPageBtn('Prev', Math.max(currentPage - 1, 1), currentPage === 1);
-    for (let i = 1; i <= totalPages; i += 1) {
-      addPageBtn(String(i), i, false, i === currentPage);
-    }
     addPageBtn('Next', Math.min(currentPage + 1, totalPages), currentPage === totalPages);
+    updateTableInfo();
   };
 
   const renderRows = (rows) => {
@@ -212,7 +283,7 @@
   const fetchList = async (page = 1) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
-    params.set('page_size', '10');
+    params.set('page_size', String(pageSize));
     params.set('search', searchInput ? searchInput.value.trim() : '');
     params.set('role', roleFilter ? roleFilter.value : 'all');
     params.set('status', statusFilter ? statusFilter.value : 'all');
@@ -228,8 +299,10 @@
 
     currentPage = payload.page || 1;
     totalPages = payload.pages || 1;
+    totalCount = payload.count || 0;
     renderRows(payload.results || []);
     renderPagination();
+    updateTableInfo();
   };
 
   const fetchDetail = async (id) => {
@@ -456,6 +529,11 @@
     if (addBtn) addBtn.disabled = true;
   }
 
+  const storedSize = getStoredPageSize();
+  if (storedSize) {
+    pageSize = storedSize;
+  }
+  initTableFooter();
   resetForm();
   fetchList(1);
 })();

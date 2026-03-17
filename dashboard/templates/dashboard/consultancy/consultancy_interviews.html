@@ -145,7 +145,7 @@
             <td>{{ interview.mode }}</td>
             <td>
               {% if interview.mode|lower == 'offline' %}
-                {{ interview.location|default:'--' }}
+                {% firstof interview.location interview.meeting_link "--" %}
               {% elif interview.meeting_link %}
                 <a class="link-button" href="{{ interview.meeting_link }}" target="_blank" rel="noopener">Open</a>
               {% else %}

@@ -187,6 +187,20 @@
     if (!row || !scheduleModal) return;
     const data = row.dataset;
 
+    const mode = (data.interviewMode || 'Online').trim() || 'Online';
+    const isOffline = mode.toLowerCase() === 'offline';
+    let meetingLink = data.meetingLink || '';
+    let meetingAddress = data.meetingAddress || '';
+    if (isOffline) {
+      if (!meetingAddress && meetingLink) {
+        meetingAddress = meetingLink;
+      }
+    } else {
+      if (!meetingLink && meetingAddress) {
+        meetingLink = meetingAddress;
+      }
+    }
+
     const scheduleTitle = document.getElementById('scheduleModalTitle');
     if (scheduleTitle) {
       scheduleTitle.textContent = `Schedule Interview - ${text(data.name, 'Candidate')}`;
@@ -194,9 +208,9 @@
     setValue('scheduleApplicationId', data.appId);
     setValue('scheduleDate', data.interviewDate);
     setTimeWithPeriod(data.interviewTime);
-    setValue('scheduleMode', data.interviewMode || 'Online');
-    setValue('scheduleLink', data.meetingLink);
-    setValue('scheduleAddress', data.meetingAddress || '');
+    setValue('scheduleMode', mode);
+    setValue('scheduleLink', meetingLink);
+    setValue('scheduleAddress', meetingAddress || '');
     setValue('scheduleInterviewer', data.interviewer);
     setValue('scheduleFeedback', normalizeText(data.interviewFeedback));
     syncScheduleModeUI();

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logging Out...</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600&display=swap');
+
+        :root {
+            --text-main: #ffffff;
+            --text-muted: #b0c4de;
+            --accent: #00d2ff;
+            --card-bg: rgba(255, 255, 255, 0.08);
+            --card-border: rgba(255, 255, 255, 0.15);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            /* Deep Premium Corporate Sky */
+            background: radial-gradient(circle at 50% 100%, #0e267f 0%, #2a5298 40%, #0f172a 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow: hidden;
+            perspective: 1000px; /* For 3D floating effect */
+        }
+
+        /* --- Realistic Floating Glass Documents (Resumes/Job Cards) --- */
+        #document-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .glass-doc {
+            position: absolute;
+            width: 100px;
+            height: 140px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02));
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2), inset 0 0 0 1px rgba(255,255,255,0.1);
+            bottom: -200px;
+            padding: 15px;
+            box-sizing: border-box;
+            animation: floatUp linear infinite;
+        }
+
+        /* Abstract lines inside the glass document to look like text/resume */
+        .doc-line {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            margin-bottom: 8px;
+        }
+        .doc-line.title { width: 70%; height: 6px; background: rgba(0, 210, 255, 0.5); margin-bottom: 12px; }
+        .doc-line.short { width: 40%; }
+        .doc-line.long { width: 90%; }
+
+        @keyframes floatUp {
+            0% {
+                transform: translateY(0) rotateX(10deg) rotateY(0deg) scale(0.8);
+                opacity: 0;
+            }
+            15% { opacity: 1; }
+            85% { opacity: 1; }
+            100% {
+                transform: translateY(-120vh) rotateX(40deg) rotateY(180deg) scale(1.1);
+                opacity: 0;
+            }
+        }
+
+        /* Ambient Glow */
+        .ambient-glow {
+            position: absolute;
+            width: 500px; height: 500px;
+            background: radial-gradient(circle, rgba(0, 210, 255, 0.1) 0%, transparent 60%);
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* --- Main Logout Panel --- */
+        .content {
+            text-align: center;
+            z-index: 10;
+            background: var(--card-bg);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--card-border);
+            padding: 50px 60px;
+            border-radius: 24px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            min-width: 450px;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: cardEntrance 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+
+        .message {
+            font-size: 2.2rem;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 12px;
+            border-right: 2px solid var(--accent);
+            white-space: nowrap;
+            overflow: hidden;
+            width: 0;
+            animation: typing 2.5s steps(30, end) forwards, blink 0.8s infinite;
+        }
+
+        .sub-text {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            font-weight: 300;
+            opacity: 0;
+            animation: fadeIn 1s ease-in 2.5s forwards;
+            letter-spacing: 0.5px;
+        }
+
+        /* Sleek Loading Line */
+        .loader-bar {
+            width: 100%;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.05);
+            margin: 35px auto 30px;
+            position: relative;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .loader-fill {
+            position: absolute;
+            width: 0%;
+            height: 100%;
+            background: var(--accent);
+            box-shadow: 0 0 15px var(--accent);
+            animation: load 4.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        /* Professional Button */
+        .back-link {
+            display: inline-block;
+            color: var(--text-main);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 600;
+            opacity: 0;
+            animation: fadeIn 1s ease-in 3.5s forwards;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 12px 30px;
+            border-radius: 50px;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.05);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .back-link:hover {
+            background: var(--text-main);
+            color: #0f172a;
+            box-shadow: 0 5px 20px rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        @media (max-width: 600px) {
+            .content {
+                min-width: auto;
+                width: min(92vw, 420px);
+                padding: 40px 28px;
+            }
+
+            .message {
+                font-size: 1.7rem;
+            }
+
+            .sub-text {
+                font-size: 1rem;
+            }
+        }
+
+        /* Animations */
+        @keyframes cardEntrance {
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes typing {
+            from { width: 0 }
+            to { width: 100% }
+        }
+        @keyframes blink {
+            50% { border-color: transparent }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes load {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ambient-glow"></div>
+
+    <div id="document-container"></div>
+
+    <div class="content">
+        <div class="message" id="typewriter">Session securely closed.</div>
+
+        <div class="sub-text">Keep building your network. See you soon!</div>
+
+        <div class="loader-bar">
+            <div class="loader-fill"></div>
+        </div>
+
+        <a href="{{ login_url }}" class="back-link">Return to Login</a>
+    </div>
+
+    <script>
+        // --- Generate 3D Realistic Glass Documents (Resumes) ---
+        const container = document.getElementById('document-container');
+
+        // Generate abstract documents floating in the background
+        for (let i = 0; i < 12; i += 1) {
+            const doc = document.createElement('div');
+            doc.classList.add('glass-doc');
+
+            // Adding abstract lines to make it look like a Resume/CV
+            doc.innerHTML = `
+                <div class="doc-line title"></div>
+                <div class="doc-line long"></div>
+                <div class="doc-line long"></div>
+                <div class="doc-line short"></div>
+                <div style="margin-top: 15px;" class="doc-line long"></div>
+                <div class="doc-line short"></div>
+            `;
+
+            // Randomize position, speed, and 3D delay
+            const leftPosition = Math.random() * 90; // 0 to 90% width
+            const duration = 12 + Math.random() * 15; // 12s to 27s
+            const delay = Math.random() * -20; // Negative delay so they are already on screen
+            const size = 0.6 + Math.random() * 0.8; // Different sizes to create depth
+
+            doc.style.left = `${leftPosition}%`;
+            doc.style.animationDuration = `${duration}s`;
+            doc.style.animationDelay = `${delay}s`;
+            // Applying size and initial slight tilt
+            doc.style.transform = `scale(${size}) rotateZ(${Math.random() * 20 - 10}deg)`;
+
+            // Add a subtle blue/cyan tint randomly to some documents
+            if (Math.random() > 0.6) {
+                doc.style.boxShadow = "0 15px 35px rgba(0, 210, 255, 0.1), inset 0 0 0 1px rgba(0, 210, 255, 0.3)";
+            }
+
+            container.appendChild(doc);
+        }
+
+        // --- Typing Message System ---
+        const messages = [
+            "Session securely closed.",
+            "Your profile is logged out.",
+            "Great work today!",
+            "See you next time."
+        ];
+        const randomMsg = messages[Math.floor(Math.random() * messages.length)];
+        document.getElementById('typewriter').innerText = randomMsg;
+
+        // Auto-redirect
+        setTimeout(() => {
+            window.location.href = "{{ login_url }}";
+        }, 5000);
+    </script>
+</body>
+</html>

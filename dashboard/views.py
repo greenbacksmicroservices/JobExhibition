@@ -3292,7 +3292,7 @@ def company_logout_view(request):
         )
     request.session.pop("company_id", None)
     request.session.pop("company_name", None)
-    return redirect("dashboard:login")
+    return render(request, "dashboard/logout.html", {"login_url": reverse("dashboard:login")})
 
 
 def consultancy_login_required(view_func):
@@ -3319,7 +3319,7 @@ def consultancy_logout_view(request):
         )
     request.session.pop("consultancy_id", None)
     request.session.pop("consultancy_name", None)
-    return redirect("dashboard:login")
+    return render(request, "dashboard/logout.html", {"login_url": reverse("dashboard:login")})
 
 
 def candidate_login_required(view_func):
@@ -3346,7 +3346,7 @@ def candidate_logout_view(request):
         )
     request.session.pop("candidate_id", None)
     request.session.pop("candidate_name", None)
-    return redirect("dashboard:login")
+    return render(request, "dashboard/logout.html", {"login_url": reverse("dashboard:login")})
 
 
 @consultancy_login_required
@@ -4308,9 +4308,17 @@ def consultancy_applications_view(request):
             interviewer = (request.POST.get("interviewer") or "").strip()
             interview_feedback = (request.POST.get("interview_feedback") or "").strip()
 
-            effective_meeting_value = meeting_link
-            if (interview_mode or "").strip().lower() == "offline" and meeting_address:
-                effective_meeting_value = meeting_address
+            normalized_mode = (interview_mode or "").strip().lower()
+            effective_link = meeting_link
+            effective_location = meeting_address
+            if normalized_mode == "offline":
+                if not effective_location and effective_link:
+                    effective_location = effective_link
+                effective_link = ""
+            else:
+                if not effective_link and effective_location:
+                    effective_link = effective_location
+                effective_location = ""
 
             app = Application.objects.filter(
                 application_id=application_id,
@@ -4324,7 +4332,8 @@ def consultancy_applications_view(request):
                 interview_date=interview_date,
                 interview_time=interview_time,
                 interview_mode=interview_mode,
-                meeting_link=effective_meeting_value,
+                meeting_link=effective_link,
+                interview_location=effective_location,
                 interviewer=interviewer,
                 interview_feedback=interview_feedback,
                 status="Interview Scheduled",
@@ -4336,8 +4345,8 @@ def consultancy_applications_view(request):
                 existing.interview_date = interview_date
                 existing.interview_time = parse_time(interview_time) if interview_time else None
                 existing.mode = interview_mode or existing.mode
-                existing.meeting_link = meeting_link if interview_mode.lower() != "offline" else ""
-                existing.location = meeting_address if interview_mode.lower() == "offline" else ""
+                existing.meeting_link = effective_link
+                existing.location = effective_location
                 existing.interviewer = interviewer
                 existing.notes = interview_feedback
                 existing.status = "rescheduled" if existing.status in {"scheduled", "rescheduled"} else "scheduled"
@@ -4364,8 +4373,8 @@ def consultancy_applications_view(request):
                     interview_date=interview_date,
                     interview_time=parse_time(interview_time) if interview_time else None,
                     mode=interview_mode or "Online",
-                    meeting_link=meeting_link if interview_mode.lower() != "offline" else "",
-                    location=meeting_address if interview_mode.lower() == "offline" else "",
+                    meeting_link=effective_link,
+                    location=effective_location,
                     interviewer=interviewer,
                     notes=interview_feedback,
                     status="scheduled",
@@ -4459,7 +4468,10 @@ def consultancy_applications_view(request):
                 app.expected_salary = candidate.expected_salary or ""
 
         linked_interview = interview_map.get(app.id)
-        app.interview_location = linked_interview.location if linked_interview else ""
+        existing_location = (getattr(app, "interview_location", "") or "").strip()
+        app.interview_location = existing_location
+        if linked_interview and linked_interview.location:
+            app.interview_location = linked_interview.location
         if linked_interview:
             if not app.interview_mode:
                 app.interview_mode = linked_interview.mode or ""
@@ -4467,6 +4479,9 @@ def consultancy_applications_view(request):
                 app.interviewer = linked_interview.interviewer or ""
             if not app.interview_feedback:
                 app.interview_feedback = linked_interview.notes or ""
+        if not app.interview_location and linked_interview:
+            if (linked_interview.mode or "").strip().lower() == "offline":
+                app.interview_location = linked_interview.meeting_link or ""
         if not app.interview_location and (app.interview_mode or "").strip().lower() == "offline":
             app.interview_location = app.meeting_link or ""
 
@@ -4643,6 +4658,10 @@ def consultancy_interviews_view(request):
             normalized_mode = effective_mode.strip().lower()
             effective_link = meeting_link if normalized_mode != "offline" else ""
             effective_location = location if normalized_mode == "offline" else ""
+            if normalized_mode == "offline" and not effective_location and meeting_link:
+                effective_location = meeting_link
+            if normalized_mode != "offline" and not effective_link and location:
+                effective_link = location
 
             Interview.objects.create(
                 interview_id=_generate_prefixed_id("INT", 1001, Interview, "interview_id"),
@@ -4666,7 +4685,8 @@ def consultancy_interviews_view(request):
                 interview_date=interview_date,
                 interview_time=interview_time.strftime("%H:%M") if interview_time else "",
                 interview_mode=effective_mode,
-                meeting_link=effective_location if normalized_mode == "offline" else effective_link,
+                meeting_link=effective_link,
+                interview_location=effective_location,
                 interviewer=interviewer,
                 interview_feedback=notes,
                 updated_at=timezone.now(),
@@ -9098,9 +9118,17 @@ def company_applications_view(request):
             meeting_address = (request.POST.get("meeting_address") or "").strip()
             interviewer = (request.POST.get("interviewer") or "").strip()
             feedback = (request.POST.get("interview_feedback") or "").strip()
-            effective_meeting_value = meeting_link
-            if (interview_mode or "").strip().lower() == "offline" and meeting_address:
-                effective_meeting_value = meeting_address
+            normalized_mode = (interview_mode or "").strip().lower()
+            effective_link = meeting_link
+            effective_location = meeting_address
+            if normalized_mode == "offline":
+                if not effective_location and effective_link:
+                    effective_location = effective_link
+                effective_link = ""
+            else:
+                if not effective_link and effective_location:
+                    effective_link = effective_location
+                effective_location = ""
             if application_id:
                 Application.objects.filter(
                     company__iexact=company_name,
@@ -9109,7 +9137,8 @@ def company_applications_view(request):
                     interview_date=interview_date,
                     interview_time=interview_time,
                     interview_mode=interview_mode,
-                    meeting_link=effective_meeting_value,
+                    meeting_link=effective_link,
+                    interview_location=effective_location,
                     interviewer=interviewer,
                     interview_feedback=feedback,
                     status="Interview",
@@ -9125,8 +9154,8 @@ def company_applications_view(request):
                         existing.interview_date = interview_date
                         existing.interview_time = parse_time(interview_time) if interview_time else None
                         existing.mode = interview_mode or existing.mode
-                        existing.meeting_link = meeting_link
-                        existing.location = meeting_address
+                        existing.meeting_link = effective_link
+                        existing.location = effective_location
                         existing.interviewer = interviewer
                         existing.notes = feedback
                         existing.status = "rescheduled" if existing.status in ["scheduled", "rescheduled"] else "scheduled"
@@ -9151,8 +9180,8 @@ def company_applications_view(request):
                             interview_date=interview_date,
                             interview_time=parse_time(interview_time) if interview_time else None,
                             mode=interview_mode or "Online",
-                            meeting_link=meeting_link,
-                            location=meeting_address,
+                            meeting_link=effective_link,
+                            location=effective_location,
                             interviewer=interviewer,
                             notes=feedback,
                             status="scheduled",
@@ -9331,7 +9360,10 @@ def company_applications_view(request):
                 app.expected_salary = candidate.expected_salary or ""
 
         linked_interview = interview_map.get(app.id)
-        app.interview_location = linked_interview.location if linked_interview else ""
+        existing_location = (getattr(app, "interview_location", "") or "").strip()
+        app.interview_location = existing_location
+        if linked_interview and linked_interview.location:
+            app.interview_location = linked_interview.location
         if linked_interview:
             if not app.interview_mode:
                 app.interview_mode = linked_interview.mode or ""
@@ -9339,6 +9371,9 @@ def company_applications_view(request):
                 app.interviewer = linked_interview.interviewer or ""
             if not app.interview_feedback:
                 app.interview_feedback = linked_interview.notes or ""
+        if not app.interview_location and linked_interview:
+            if (linked_interview.mode or "").strip().lower() == "offline":
+                app.interview_location = linked_interview.meeting_link or ""
         if not app.interview_location and (app.interview_mode or "").strip().lower() == "offline":
             app.interview_location = app.meeting_link or ""
 
@@ -9783,6 +9818,14 @@ def company_interviews_view(request, section="schedule"):
             panel_interviewers = (request.POST.get("panel_interviewers") or "").strip()
             notes = (request.POST.get("notes") or "").strip()
 
+            normalized_mode = (mode or "").strip().lower()
+            effective_link = meeting_link if normalized_mode != "offline" else ""
+            effective_location = location if normalized_mode == "offline" else ""
+            if normalized_mode == "offline" and not effective_location and meeting_link:
+                effective_location = meeting_link
+            if normalized_mode != "offline" and not effective_link and location:
+                effective_link = location
+
             linked_app = None
             if application_id:
                 linked_app = Application.objects.filter(
@@ -9804,8 +9847,8 @@ def company_interviews_view(request, section="schedule"):
                 interview_time=interview_time,
                 duration_minutes=duration_minutes,
                 mode=mode or "Online",
-                meeting_link=meeting_link,
-                location=location,
+                meeting_link=effective_link,
+                location=effective_location,
                 interviewer=interviewer,
                 panel_interviewers=panel_interviewers,
                 notes=notes,
@@ -9822,7 +9865,8 @@ def company_interviews_view(request, section="schedule"):
                     linked_app.interview_time = interview_time.strftime("%H:%M")
                 linked_app.interviewer = interviewer
                 linked_app.interview_mode = mode
-                linked_app.meeting_link = meeting_link
+                linked_app.meeting_link = effective_link
+                linked_app.interview_location = effective_location
                 linked_app.save(update_fields=[
                     "status",
                     "interview_date",
@@ -9830,6 +9874,7 @@ def company_interviews_view(request, section="schedule"):
                     "interviewer",
                     "interview_mode",
                     "meeting_link",
+                    "interview_location",
                     "updated_at",
                 ])
             messages.success(
@@ -11439,7 +11484,7 @@ def _deny_subadmin_delete_action(request):
     return None
 
 
-def _serialize_user(obj, user_type: str):
+def _serialize_user(obj, user_type: str, request=None):
     plan = getattr(obj, "plan_name", "") or "N/A"
     payload = {
         "id": obj.id,
@@ -11454,6 +11499,20 @@ def _serialize_user(obj, user_type: str):
         "subscription_plan": plan,
         "registered_date": obj.registration_date.strftime("%Y-%m-%d"),
     }
+    photo_url = ""
+    profile_image = getattr(obj, "profile_image", None)
+    if profile_image:
+        try:
+            photo_url = profile_image.url or ""
+        except (ValueError, OSError):
+            photo_url = ""
+    if request and photo_url:
+        try:
+            if request.is_secure():
+                photo_url = request.build_absolute_uri(photo_url)
+        except DisallowedHost:
+            pass
+    payload["photo_url"] = photo_url
     if user_type == "consultancies":
         doc_fields = [
             getattr(obj, "registration_certificate", None),
@@ -11615,7 +11674,7 @@ def api_user_list(request, user_type):
     paginator = Paginator(qs, page_size)
     page_obj = paginator.get_page(page)
 
-    data = [_serialize_user(obj, user_type) for obj in page_obj.object_list]
+    data = [_serialize_user(obj, user_type, request=request) for obj in page_obj.object_list]
     return JsonResponse(
         {
             "results": data,
@@ -11691,7 +11750,7 @@ def api_user_create(request, user_type):
             obj.id_proof = id_proof
 
     obj.save()
-    return JsonResponse({"success": True, "item": _serialize_user(obj, user_type)})
+    return JsonResponse({"success": True, "item": _serialize_user(obj, user_type, request=request)})
 
 
 @login_required
@@ -11759,7 +11818,7 @@ def api_user_update(request, user_type, pk):
             obj.id_proof = id_proof
 
     obj.save()
-    return JsonResponse({"success": True, "item": _serialize_user(obj, user_type)})
+    return JsonResponse({"success": True, "item": _serialize_user(obj, user_type, request=request)})
 
 
 @login_required
@@ -11821,7 +11880,7 @@ def api_user_kyc(request, user_type, pk):
         return JsonResponse({"success": False, "error": "Missing KYC status"}, status=400)
     obj.kyc_status = kyc_status
     obj.save(update_fields=["kyc_status"])
-    return JsonResponse({"success": True, "item": _serialize_user(obj, user_type)})
+    return JsonResponse({"success": True, "item": _serialize_user(obj, user_type, request=request)})
 
 
 @login_required
@@ -12274,7 +12333,8 @@ def _serialize_feedback(feedback, request=None):
             photo_url = ""
     if request and photo_url:
         try:
-            photo_url = request.build_absolute_uri(photo_url)
+            if request.is_secure():
+                photo_url = request.build_absolute_uri(photo_url)
         except DisallowedHost:
             # Fallback to relative media path if host is not allowed.
             pass
@@ -12492,6 +12552,7 @@ def _serialize_application(app):
         "interviewer": app.interviewer,
         "interview_mode": app.interview_mode,
         "meeting_link": app.meeting_link,
+        "interview_location": getattr(app, "interview_location", ""),
         "offer_package": app.offer_package,
         "joining_date": app.joining_date.strftime("%Y-%m-%d") if app.joining_date else "",
         "notes": app.notes,
@@ -12527,6 +12588,7 @@ def _apply_application_fields(app, data):
     app.interviewer = data.get("interviewer", "").strip()
     app.interview_mode = data.get("interview_mode", "").strip()
     app.meeting_link = data.get("meeting_link", "").strip()
+    app.interview_location = data.get("interview_location", data.get("meeting_address", "")).strip()
     app.offer_package = data.get("offer_package", "").strip()
     app.joining_date = parse_date(data.get("joining_date")) if data.get("joining_date") else None
     app.notes = data.get("notes", "").strip()
@@ -12556,6 +12618,13 @@ def api_applications_list(request):
             | Q(notes__icontains=search)
             | Q(current_company__icontains=search)
         )
+    job_id = request.GET.get("job_id", "").strip()
+    job_title = request.GET.get("job_title", "").strip()
+    if job_id:
+        if job_title:
+            qs = qs.filter(Q(job__job_id=job_id) | Q(job_title__iexact=job_title))
+        else:
+            qs = qs.filter(job__job_id=job_id)
     status = request.GET.get("status", "all")
     if status != "all":
         qs = qs.filter(status=status)
@@ -12632,6 +12701,13 @@ def api_applications_export(request):
             | Q(job_title__icontains=search)
             | Q(company__icontains=search)
         )
+    job_id = request.GET.get("job_id", "").strip()
+    job_title = request.GET.get("job_title", "").strip()
+    if job_id:
+        if job_title:
+            qs = qs.filter(Q(job__job_id=job_id) | Q(job_title__iexact=job_title))
+        else:
+            qs = qs.filter(job__job_id=job_id)
     status = request.GET.get("status", "all")
     if status != "all":
         qs = qs.filter(status=status)
@@ -13135,7 +13211,7 @@ def logout_view(request):
             note="subadmin logout" if _is_subadmin_user(request.user) else "logout",
         )
     logout(request)
-    return redirect("dashboard:login")
+    return render(request, "dashboard/logout.html", {"login_url": reverse("dashboard:login")})
 
 
 @require_http_methods(["GET"])

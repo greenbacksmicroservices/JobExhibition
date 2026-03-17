@@ -126,6 +126,19 @@
     }
   };
 
+  const normalizeTimeTo24 = (timeValue) => {
+    if (!timeValue) return '';
+    const raw = String(timeValue).trim();
+    const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+    if (!match) return raw;
+    let hour = parseInt(match[1], 10);
+    const minute = match[2] || '00';
+    const period = match[3].toUpperCase();
+    if (hour === 12) hour = 0;
+    if (period === 'PM') hour += 12;
+    return `${String(hour).padStart(2, '0')}:${minute}`;
+  };
+
   const syncScheduleModeUI = () => {
     const modeSelect = document.getElementById('scheduleMode');
     const linkInput = document.getElementById('scheduleLink');
@@ -275,16 +288,30 @@
     if (!row || !scheduleModal) return;
     const data = row.dataset;
 
+    const mode = (data.interviewMode || 'Online').trim() || 'Online';
+    const isOffline = mode.toLowerCase() === 'offline';
+    let meetingLink = data.meetingLink || '';
+    let meetingAddress = data.meetingAddress || '';
+    if (isOffline) {
+      if (!meetingAddress && meetingLink) {
+        meetingAddress = meetingLink;
+      }
+    } else {
+      if (!meetingLink && meetingAddress) {
+        meetingLink = meetingAddress;
+      }
+    }
+
     const scheduleTitle = document.getElementById('scheduleModalTitle');
     if (scheduleTitle) {
       scheduleTitle.textContent = `Schedule Interview - ${text(data.name, 'Candidate')}`;
     }
     setValue('scheduleApplicationId', data.appId);
     setValue('scheduleDate', data.interviewDate);
-    setValue('scheduleTime', data.interviewTime);
-    setValue('scheduleMode', data.interviewMode || 'Online');
-    setValue('scheduleLink', data.meetingLink);
-    setValue('scheduleAddress', data.meetingAddress || '');
+    setValue('scheduleTime', normalizeTimeTo24(data.interviewTime));
+    setValue('scheduleMode', mode);
+    setValue('scheduleLink', meetingLink);
+    setValue('scheduleAddress', meetingAddress || '');
     setValue('scheduleInterviewer', data.interviewer);
     setValue('scheduleFeedback', normalizeText(data.interviewFeedback));
     syncScheduleModeUI();

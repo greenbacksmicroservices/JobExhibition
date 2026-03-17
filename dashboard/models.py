@@ -513,6 +513,7 @@ class Application(models.Model):
     interviewer = models.CharField(max_length=200, blank=True)
     interview_mode = models.CharField(max_length=20, blank=True)
     meeting_link = models.CharField(max_length=255, blank=True)
+    interview_location = models.CharField(max_length=255, blank=True)
     offer_package = models.CharField(max_length=120, blank=True)
     joining_date = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)

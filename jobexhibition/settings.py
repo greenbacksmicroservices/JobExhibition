@@ -111,6 +111,17 @@ def _env_first(keys, default=""):
     return default
 
 
+def _env_smtp_password(key, default=""):
+    """
+    Normalize SMTP app passwords.
+
+    Many providers display app passwords grouped by spaces (for readability),
+    while SMTP auth expects the compact token.
+    """
+    raw_value = _env_str(key, default)
+    return "".join(raw_value.split())
+
+
 def _is_placeholder_secret(value):
     normalized = (value or "").strip().lower()
     if normalized in {
@@ -221,13 +232,12 @@ MIDDLEWARE = [
     'dashboard.middleware.MySQLConnectionRecoveryMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    "corsheaders.middleware.CorsMiddleware",
-    "django.middleware.common.CommonMiddleware",
 ]
 
 ROOT_URLCONF = 'jobexhibition.urls'
@@ -415,7 +425,7 @@ EMAIL_BACKEND = _env_str("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailB
 EMAIL_HOST = _env_str("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = _env_int("EMAIL_PORT", 587)
 EMAIL_HOST_USER = _env_str("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = _env_str("EMAIL_HOST_PASSWORD", "")
+EMAIL_HOST_PASSWORD = _env_smtp_password("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", default=True)
 EMAIL_USE_SSL = _env_bool("EMAIL_USE_SSL", default=False)
 DEFAULT_FROM_EMAIL = _env_str(
@@ -428,7 +438,7 @@ SITE_TITLE = _env_str("SITE_TITLE", "JobExhibition")
 EMAIL_FALLBACK_HOST = _env_str("EMAIL_FALLBACK_HOST", EMAIL_HOST)
 EMAIL_FALLBACK_PORT = _env_int("EMAIL_FALLBACK_PORT", EMAIL_PORT)
 EMAIL_FALLBACK_HOST_USER = _env_str("EMAIL_FALLBACK_HOST_USER", "")
-EMAIL_FALLBACK_HOST_PASSWORD = _env_str("EMAIL_FALLBACK_HOST_PASSWORD", "")
+EMAIL_FALLBACK_HOST_PASSWORD = _env_smtp_password("EMAIL_FALLBACK_HOST_PASSWORD", "")
 EMAIL_FALLBACK_USE_TLS = _env_bool("EMAIL_FALLBACK_USE_TLS", default=EMAIL_USE_TLS)
 EMAIL_FALLBACK_USE_SSL = _env_bool("EMAIL_FALLBACK_USE_SSL", default=EMAIL_USE_SSL)
 EMAIL_FALLBACK_FROM_EMAIL = _env_str("EMAIL_FALLBACK_FROM_EMAIL", "")
@@ -494,11 +504,11 @@ PAYMENT_SERVICE_NODE_ENV = _env_str("NODE_ENV", "development")
 PAYMENT_GATEWAY_PROVIDER = _env_str("PAYMENT_GATEWAY_PROVIDER", "PhonePe")
 PAYMENT_GATEWAY_INITIATE_URL = _env_str(
     "PAYMENT_GATEWAY_INITIATE_URL",
-    "http://localhost:3000/api/payment/initiate",
+    "",
 )
 PAYMENT_GATEWAY_STATUS_URL = _env_str(
     "PAYMENT_GATEWAY_STATUS_URL",
-    "http://localhost:3000/api/payment/status",
+    "",
 )
 PAYMENT_GATEWAY_CALLBACK_SECRET = _env_str("PAYMENT_GATEWAY_CALLBACK_SECRET", "")
 PAYMENT_GATEWAY_TIMEOUT_SECONDS = _env_int("PAYMENT_GATEWAY_TIMEOUT_SECONDS", 20)
@@ -508,8 +518,19 @@ PAYMENT_GATEWAY_DEMO_AUTO_SUCCESS = _env_bool(
 )
 PAYMENT_GATEWAY_INTERNAL_FALLBACK = _env_bool(
     "PAYMENT_GATEWAY_INTERNAL_FALLBACK",
-    default=False,
+    default=True,
 )
+PAYMENT_PUBLIC_BASE_URL = _env_first(
+    [
+        "PAYMENT_PUBLIC_BASE_URL",
+        "PUBLIC_BASE_URL",
+        "APP_BASE_URL",
+        "SITE_BASE_URL",
+    ],
+    "",
+)
+PAYMENT_FORCE_HTTPS_URLS = _env_bool("PAYMENT_FORCE_HTTPS_URLS", default=not DEBUG)
+PAYMENT_ALLOWED_HOSTS = _env_list("PAYMENT_ALLOWED_HOSTS", [])
 
 # PhonePe compatibility keys (direct integration defaults to latest v2 endpoints)
 PHONEPE_BASE_URL = _env_str("PHONEPE_BASE_URL", "https://api.phonepe.com/apis")
@@ -528,9 +549,9 @@ PHONEPE_CLIENT_VERSION = _env_str("PHONEPE_CLIENT_VERSION", "1")
 PHONEPE_ENV = _env_str("PHONEPE_ENV", "UAT")
 MERCHANT_REDIRECT_URL = _env_str("MERCHANT_REDIRECT_URL", "/payment/redirect/")
 MERCHANT_CALLBACK_URL = _env_str("MERCHANT_CALLBACK_URL", "/api/payment/callback/")
-MERCHANT_USERNAME = _env_str("MERCHANT_USERNAME", "your_merchant_username")
-MERCHANT_PASSWORD = _env_str("MERCHANT_PASSWORD", "your_merchant_password")
-PAYMENT_QR_UPI_ID = _env_str("PAYMENT_QR_UPI_ID", _env_str("MERCHANT_USERNAME", "SU2508261540303520112151"))
+MERCHANT_USERNAME = _env_str("MERCHANT_USERNAME", "")
+MERCHANT_PASSWORD = _env_str("MERCHANT_PASSWORD", "")
+PAYMENT_QR_UPI_ID = _env_str("PAYMENT_QR_UPI_ID", _env_str("MERCHANT_USERNAME", ""))
 PAYMENT_QR_PAYEE_NAME = _env_str("PAYMENT_QR_PAYEE_NAME", "Job Exhibition")
 PAYMENT_QR_NOTE_PREFIX = _env_str("PAYMENT_QR_NOTE_PREFIX", "Subscription")
 

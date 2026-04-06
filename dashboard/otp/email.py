@@ -13,17 +13,32 @@ from django.core.mail.backends.smtp import EmailBackend
 logger = logging.getLogger(__name__)
 
 
+def _normalize_smtp_password(value):
+    """Normalize app-password values (supports spaced Gmail app passwords)."""
+    return "".join(str(value or "").split())
+
+
 def _get_primary_smtp_settings():
     """Read primary SMTP settings from Django settings."""
+    username = (getattr(settings, "EMAIL_HOST_USER", "") or "").strip()
+    password = _normalize_smtp_password(getattr(settings, "EMAIL_HOST_PASSWORD", "") or "")
+    use_tls = bool(getattr(settings, "EMAIL_USE_TLS", False))
+    use_ssl = bool(getattr(settings, "EMAIL_USE_SSL", False))
+
+    # SMTP backends generally expect either TLS or SSL, not both.
+    if use_tls and use_ssl:
+        use_ssl = False
+
     return {
         "host": getattr(settings, "EMAIL_HOST", ""),
         "port": int(getattr(settings, "EMAIL_PORT", 0) or 0),
-        "username": (getattr(settings, "EMAIL_HOST_USER", "") or "greenbacksjobexhibition@gmail.com").strip(),
-        "password": getattr(settings, "EMAIL_HOST_PASSWORD", "") or "sbyizwrjutuvcdaq",
-        "use_tls": bool(getattr(settings, "EMAIL_USE_TLS", False)),
-        "use_ssl": bool(getattr(settings, "EMAIL_USE_SSL", False)),
+        "username": username,
+        "password": password,
+        "use_tls": use_tls,
+        "use_ssl": use_ssl,
         "from_email": (
             getattr(settings, "DEFAULT_FROM_EMAIL", "")
+            or username
             or "JobExhibition <no-reply@jobexhibition.com>"
         ),
     }
@@ -32,9 +47,20 @@ def _get_primary_smtp_settings():
 def _get_fallback_smtp_settings(primary_settings):
     """Optional fallback sender account (if configured)."""
     fallback_username = (getattr(settings, "EMAIL_FALLBACK_HOST_USER", "") or "").strip()
-    fallback_password = getattr(settings, "EMAIL_FALLBACK_HOST_PASSWORD", "") or ""
+    fallback_password = _normalize_smtp_password(
+        getattr(settings, "EMAIL_FALLBACK_HOST_PASSWORD", "") or ""
+    )
     if not fallback_username or not fallback_password:
         return None
+
+    use_tls = bool(
+        getattr(settings, "EMAIL_FALLBACK_USE_TLS", primary_settings["use_tls"])
+    )
+    use_ssl = bool(
+        getattr(settings, "EMAIL_FALLBACK_USE_SSL", primary_settings["use_ssl"])
+    )
+    if use_tls and use_ssl:
+        use_ssl = False
 
     return {
         "host": getattr(settings, "EMAIL_FALLBACK_HOST", primary_settings["host"]),
@@ -45,12 +71,8 @@ def _get_fallback_smtp_settings(primary_settings):
         ),
         "username": fallback_username,
         "password": fallback_password,
-        "use_tls": bool(
-            getattr(settings, "EMAIL_FALLBACK_USE_TLS", primary_settings["use_tls"])
-        ),
-        "use_ssl": bool(
-            getattr(settings, "EMAIL_FALLBACK_USE_SSL", primary_settings["use_ssl"])
-        ),
+        "use_tls": use_tls,
+        "use_ssl": use_ssl,
         "from_email": (
             getattr(settings, "EMAIL_FALLBACK_FROM_EMAIL", "")
             or fallback_username
@@ -254,6 +276,7 @@ def send_otp_email(to_email, otp, to_name="User"):
             plain_body=plain_body,
             html_body=html_body,
             from_email=primary["from_email"],
+            smtp_settings=primary,
             inline_logo_path=inline_logo_path,
         )
         if sent_count > 0:

@@ -37,6 +37,28 @@ PHONEPE_V1_DEFAULT_PAY_PATH = "/pg/v1/pay"
 PHONEPE_V1_DEFAULT_STATUS_PATH = "/pg/v1/status/{merchant_id}/{merchant_transaction_id}"
 
 _PHONEPE_OAUTH_TOKEN_CACHE = {}
+_PHONEPE_PLACEHOLDER_VALUES = {
+    "replace-with-merchant-id",
+    "replace-with-salt-key",
+    "replace-with-phonepe-client-id",
+    "replace-with-phonepe-client-secret",
+    "replace-with-callback-secret",
+    "your_merchant_username",
+    "your_merchant_password",
+    "changeme",
+}
+
+
+def _clean_phonepe_secret(value):
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    lowered = raw.lower()
+    if lowered in _PHONEPE_PLACEHOLDER_VALUES:
+        return ""
+    if lowered.startswith("replace-with-"):
+        return ""
+    return raw
 
 
 def _safe_json_payload(raw_value):
@@ -127,18 +149,18 @@ def _phonepe_v2_config(settings):
     oauth_base_url = _normalize_phonepe_v2_oauth_host(getattr(settings, "PHONEPE_OAUTH_BASE_URL", ""), env_label)
     pay_path = _normalize_phonepe_v2_pay_path(getattr(settings, "PHONEPE_PAY_PATH", ""))
     status_template = _normalize_phonepe_v2_status_path(getattr(settings, "PHONEPE_STATUS_PATH", ""))
-    client_id = (
-        getattr(settings, "PHONEPE_CLIENT_ID", "SU2508261540303520112151")
-        or getattr(settings, "PHONEPE_MERCHANT_ID", "SU2508261540303520112151")
-        or getattr(settings, "MERCHANT_ID", "SU2508261540303520112151")
+    client_id = _clean_phonepe_secret(
+        getattr(settings, "PHONEPE_CLIENT_ID", "")
+        or getattr(settings, "PHONEPE_MERCHANT_ID", "")
+        or getattr(settings, "MERCHANT_ID", "")
         or ""
-    ).strip()
-    client_secret = (
+    )
+    client_secret = _clean_phonepe_secret(
         getattr(settings, "PHONEPE_CLIENT_SECRET", "")
         or getattr(settings, "PHONEPE_SALT_KEY", "")
-        or getattr(settings, "SALT_KEY", "75dbd341-4f7f-4120-a056-856f295a3ecb")
+        or getattr(settings, "SALT_KEY", "")
         or ""
-    ).strip()
+    )
     client_version = str(getattr(settings, "PHONEPE_CLIENT_VERSION", "1") or "1").strip()
     return {
         "pg_base_url": pg_base_url,
@@ -152,18 +174,18 @@ def _phonepe_v2_config(settings):
 
 
 def _phonepe_v1_config(settings):
-    merchant_id = (
+    merchant_id = _clean_phonepe_secret(
         getattr(settings, "PHONEPE_MERCHANT_ID", "")
         or getattr(settings, "PHONEPE_CLIENT_ID", "")
         or getattr(settings, "MERCHANT_ID", "")
         or ""
-    ).strip()
-    salt_key = (
+    )
+    salt_key = _clean_phonepe_secret(
         getattr(settings, "PHONEPE_SALT_KEY", "")
         or getattr(settings, "PHONEPE_CLIENT_SECRET", "")
         or getattr(settings, "SALT_KEY", "")
         or ""
-    ).strip()
+    )
     salt_index = str(getattr(settings, "PHONEPE_SALT_INDEX", 1) or 1).strip()
     base_url = (getattr(settings, "PHONEPE_BASE_URL", "") or "").strip().rstrip("/")
     pay_path = _normalize_path(getattr(settings, "PHONEPE_PAY_PATH", PHONEPE_V1_DEFAULT_PAY_PATH), default=PHONEPE_V1_DEFAULT_PAY_PATH)

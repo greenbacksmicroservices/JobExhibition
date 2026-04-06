@@ -218,6 +218,60 @@ def _looks_like_host_target(value):
     return bool(_HOST_TARGET_PATTERN.match((value or "").strip()))
 
 
+def _extract_hostname_from_target(target):
+    value = (target or "").strip()
+    if not value:
+        return ""
+    if value.startswith("//"):
+        value = f"http:{value}"
+    elif value.startswith("/"):
+        return ""
+    elif not value.startswith(("http://", "https://")) and _looks_like_host_target(value):
+        value = f"http://{value}"
+
+    try:
+        parsed = urllib_parse.urlsplit(value)
+    except Exception:
+        return ""
+    return (parsed.hostname or "").strip().lower()
+
+
+def _payment_public_base_url():
+    raw_value = (getattr(settings, "PAYMENT_PUBLIC_BASE_URL", "") or "").strip()
+    if not raw_value:
+        return ""
+
+    value = raw_value
+    if value.startswith("//"):
+        value = f"https:{value}"
+    elif not value.startswith(("http://", "https://")):
+        value = f"https://{value.lstrip('/')}"
+
+    try:
+        parsed = urllib_parse.urlsplit(value)
+    except Exception:
+        logger.warning("Invalid PAYMENT_PUBLIC_BASE_URL ignored: %s", raw_value)
+        return ""
+    if not parsed.netloc:
+        return ""
+    return urllib_parse.urlunsplit((parsed.scheme or "https", parsed.netloc, "", "", ""))
+
+
+def _force_https_url_if_required(target):
+    value = (target or "").strip()
+    if not value:
+        return ""
+    if not bool(getattr(settings, "PAYMENT_FORCE_HTTPS_URLS", False)):
+        return value
+    try:
+        parsed = urllib_parse.urlsplit(value)
+    except Exception:
+        return value
+    if (parsed.scheme or "").lower() != "http":
+        return value
+    return urllib_parse.urlunsplit(("https", parsed.netloc, parsed.path, parsed.query, parsed.fragment))
+
+
 def _allowed_redirect_hosts(request):
     hosts = {"localhost", "127.0.0.1", "[::1]"}
     for raw_host in getattr(settings, "ALLOWED_HOSTS", []) or []:
@@ -225,6 +279,19 @@ def _allowed_redirect_hosts(request):
         if not host or host == "*":
             continue
         hosts.add(host.lstrip(".").split(":", 1)[0])
+    for raw_host in getattr(settings, "PAYMENT_ALLOWED_HOSTS", []) or []:
+        host = (raw_host or "").strip()
+        if not host or host == "*":
+            continue
+        hosts.add(host.lstrip(".").split(":", 1)[0])
+    for value in (
+        getattr(settings, "MERCHANT_REDIRECT_URL", ""),
+        getattr(settings, "MERCHANT_CALLBACK_URL", ""),
+        getattr(settings, "PAYMENT_PUBLIC_BASE_URL", ""),
+    ):
+        host_value = _extract_hostname_from_target(value)
+        if host_value:
+            hosts.add(host_value)
     try:
         request_host = request.get_host()
     except DisallowedHost:
@@ -268,11 +335,31 @@ def _safe_redirect_target(request, target, fallback="dashboard:login"):
 def _safe_absolute_url(request, target, fallback_route):
     selected = _safe_redirect_target(request, target, fallback=fallback_route)
     if selected.startswith(("http://", "https://")):
-        return selected
+        return _force_https_url_if_required(selected)
+
+    normalized = selected if selected.startswith("/") else f"/{selected}"
+    selected_parts = urllib_parse.urlsplit(normalized)
+    selected_path = selected_parts.path or "/"
+
+    public_base = _payment_public_base_url()
+    if public_base:
+        base_parts = urllib_parse.urlsplit(public_base)
+        absolute_url = urllib_parse.urlunsplit(
+            (
+                base_parts.scheme,
+                base_parts.netloc,
+                selected_path,
+                selected_parts.query,
+                selected_parts.fragment,
+            )
+        )
+        return _force_https_url_if_required(absolute_url)
+
     try:
-        return request.build_absolute_uri(selected)
+        absolute_url = request.build_absolute_uri(normalized)
     except Exception:
-        return selected
+        absolute_url = normalized
+    return _force_https_url_if_required(absolute_url)
 
 
 def _sanitize_payment_checkout_url(request, target):

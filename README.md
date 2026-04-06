@@ -102,6 +102,25 @@ export DB_ENGINE=django.db.backends.sqlite3
 
 Use `.env.example` as reference and set all required env vars on VPS.
 
+Critical for OTP + payment on production:
+
+```bash
+# SMTP
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=your-sender@gmail.com
+EMAIL_HOST_PASSWORD=your-gmail-app-password
+
+# Payment public URLs
+PAYMENT_PUBLIC_BASE_URL=https://your-domain.com
+MERCHANT_REDIRECT_URL=https://your-domain.com/payment/redirect/
+MERCHANT_CALLBACK_URL=https://your-domain.com/api/payment/callback/
+
+# Optional safety fallbacks
+PAYMENT_GATEWAY_INTERNAL_FALLBACK=True
+PAYMENT_FORCE_HTTPS_URLS=True
+```
+
 ```bash
 source venv/bin/activate
 pip install -r requirements.txt

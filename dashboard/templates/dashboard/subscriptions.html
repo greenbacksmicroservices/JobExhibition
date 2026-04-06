@@ -10,6 +10,75 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}?v={{ static_asset_version }}" />
     <link rel="stylesheet" href="{% static 'dashboard/css/user-management.css' %}?v={{ static_asset_version }}" />
+    <style>
+      .billing-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .billing-toolbar-controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .billing-toolbar label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        font-weight: 600;
+      }
+      .billing-toolbar select {
+        min-width: 88px;
+      }
+      .billing-pagination {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+      }
+      .billing-pagination .pager {
+        display: inline-flex;
+        gap: 8px;
+      }
+      .payment-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .payment-summary-item {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        background: #f8fafc;
+        padding: 10px 12px;
+      }
+      .payment-summary-item span {
+        display: block;
+        font-size: 12px;
+        color: #64748b;
+        margin-bottom: 3px;
+      }
+      .payment-summary-item strong {
+        font-size: 14px;
+        color: #0f172a;
+        word-break: break-word;
+      }
+      .payment-history-scroll {
+        max-height: 340px;
+        overflow: auto;
+      }
+      .payment-history-table th,
+      .payment-history-table td {
+        white-space: nowrap;
+      }
+    </style>
   </head>
   <body class="user-management subscription-management" data-subscription-page="{{ section|default:'overview' }}">
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -641,18 +710,32 @@
               <h3>Who is Free / Paid</h3>
               <p class="muted">Company-wise subscription visibility</p>
             </div>
-            <div class="card-filters">
-              <select id="planFilter" class="form-select form-select-sm">
-                <option value="all">All Plans</option>
-                <option value="Free">Free</option>
-                <option value="Basic">Basic</option>
-                <option value="Standard">Standard</option>
-                <option value="Gold">Gold</option>
-              </select>
+          </div>
+          <div class="billing-toolbar">
+            <div class="billing-toolbar-controls">
+              <label for="planFilter">
+                Plan Filter
+                <select id="planFilter" class="form-select form-select-sm">
+                  <option value="all">All Plans</option>
+                  <option value="Free">Free</option>
+                  <option value="Basic">Basic</option>
+                  <option value="Standard">Standard</option>
+                  <option value="Gold">Gold</option>
+                </select>
+              </label>
+              <label for="freePaidEntriesSelect">
+                Show Entries
+                <select id="freePaidEntriesSelect" class="form-select form-select-sm">
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
             </div>
           </div>
           <div class="table-responsive">
-            <table class="table table-hover">
+            <table class="table table-hover" id="freePaidHistoryTable">
               <thead class="table-light">
                 <tr>
                   <th>Account</th>
@@ -662,12 +745,20 @@
                   <th>Start Date</th>
                   <th>Expiry Date</th>
                   <th>Status</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody id="freePaidTable">
-                <tr><td colspan="7" class="text-center text-muted py-4">Loading...</td></tr>
+                <tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>
               </tbody>
             </table>
+          </div>
+          <div class="billing-pagination">
+            <span class="muted" id="freePaidEntriesInfo">Showing 0 to 0 of 0 Entries</span>
+            <div class="pager">
+              <button class="btn ghost" type="button" id="freePaidPrevBtn">Previous</button>
+              <button class="btn ghost" type="button" id="freePaidNextBtn">Next</button>
+            </div>
           </div>
         </section>
         {% endif %}
@@ -837,6 +928,48 @@
         </section>
         {% endif %}
       </main>
+    </div>
+
+    <!-- Billing Details Modal -->
+    <div class="modal fade" id="billingDetailsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Subscription &amp; Payment Details</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="payment-summary-grid" id="billingSummaryGrid">
+              <div class="payment-summary-item">
+                <span>Loading</span>
+                <strong>Preparing payment details...</strong>
+              </div>
+            </div>
+            <div class="table-responsive payment-history-scroll">
+              <table class="table table-hover payment-history-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>Payment ID</th>
+                    <th>Plan</th>
+                    <th>Cycle</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Provider</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Month</th>
+                    <th>Year</th>
+                    <th>Gateway Ref</th>
+                  </tr>
+                </thead>
+                <tbody id="billingHistoryModalBody">
+                  <tr><td colspan="11" class="text-center text-muted py-4">No payment history found.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Subscription Form Modal -->

@@ -24,6 +24,9 @@
       {% endif %}
     {% else %}
       <span class="badge info">Open for Application</span>
+      {% if is_premium_candidate %}
+      <span class="badge success">Priority Application Enabled</span>
+      {% endif %}
     {% endif %}
   </div>
 </section>

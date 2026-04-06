@@ -89,6 +89,7 @@
       <tbody>
         {% for app in applications %}
         <tr
+          id="consultancy-application-{{ app.application_id }}"
           data-app-id="{{ app.application_id }}"
           data-name="{{ app.candidate_name|default:''|escapejs }}"
           data-email="{{ app.candidate_email|default:''|escapejs }}"
@@ -122,6 +123,9 @@
             <button type="button" class="link-button" data-action="view-application">
               {{ app.candidate_name|default:"N/A" }}
             </button>
+            {% if app.is_priority_application %}
+            <span class="badge success">Priority</span>
+            {% endif %}
             <div class="muted">{{ app.candidate_email|default:"--" }}</div>
           </td>
           <td>{{ app.job_title|default:"--" }}</td>

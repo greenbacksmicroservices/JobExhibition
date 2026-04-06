@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'metricInterviews',
     'metricSavedJobs',
     'metricRecommendedJobs',
+    'metricRecruiterViews',
     'profileCompletionBar',
   ];
   const shouldPoll = metricTargets.some((id) => document.getElementById(id));
@@ -35,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
       'interviews',
       'saved_jobs',
       'recommended_jobs',
+      'recruiter_views',
     ];
     const max = Math.max(...keys.map((key) => Number(data[key] ?? 0)), 1);
     keys.forEach((key) => {
@@ -58,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateText('metricInterviews', data.interviews ?? 0);
         updateText('metricSavedJobs', data.saved_jobs ?? 0);
         updateText('metricRecommendedJobs', data.recommended_jobs ?? 0);
+        updateText('metricRecruiterViews', data.recruiter_views ?? 0);
         updateProfileBar(data.profile_completion ?? 0);
         updateMetricBars(data);
       })

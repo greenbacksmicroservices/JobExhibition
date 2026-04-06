@@ -9,6 +9,9 @@
     <p class="eyebrow">Candidate Dashboard</p>
     <h2>Welcome back, {{ candidate.name|default:"Candidate" }}</h2>
     <p class="muted">Track applications, interviews, and recommendations in one place.</p>
+    {% if is_premium_candidate %}
+    <span class="badge success">Premium Candidate Active</span>
+    {% endif %}
   </div>
   <div class="page-actions">
     <a class="btn primary" href="{% url 'dashboard:candidate_resume_manager' %}">Update Resume</a>
@@ -85,6 +88,28 @@
     {% endwith %}
   </article>
 </section>
+
+{% if is_premium_candidate and early_job_alerts %}
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Early Job Alerts</h3>
+      <p class="muted">Premium-only early visibility on fresh roles.</p>
+    </div>
+  </div>
+  <div class="activity-list">
+    {% for job in early_job_alerts %}
+    <div class="activity-item">
+      <div>
+        <strong>{{ job.title }}</strong>
+        <span class="muted">{{ job.company }} - {{ job.location|default:"Remote" }}</span>
+      </div>
+      <a class="link-button" href="{% url 'dashboard:candidate_job_detail' job.job_id %}">View</a>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 
 <section class="dashboard-row">
   <article class="card compact-card">

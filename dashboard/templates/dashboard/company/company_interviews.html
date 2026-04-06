@@ -191,7 +191,7 @@
       </thead>
       <tbody>
         {% for interview in upcoming_interviews %}
-        <tr>
+        <tr id="company-interview-{{ interview.id }}">
           <td>
             <strong>{{ interview.candidate_name }}</strong>
             <div class="muted">{{ interview.candidate_email|default:"--" }}</div>
@@ -312,7 +312,7 @@
       </thead>
       <tbody>
         {% for interview in completed_interviews %}
-        <tr>
+        <tr id="company-interview-{{ interview.id }}">
           <td>{{ interview.interview_date|date:"d M Y"|default:"--" }}</td>
           <td>{{ interview.candidate_name }}</td>
           <td>{% if interview.feedback_submitted_at %}Yes{% else %}No{% endif %}</td>
@@ -349,7 +349,7 @@
       </thead>
       <tbody>
         {% for interview in cancelled_interviews %}
-        <tr>
+        <tr id="company-interview-{{ interview.id }}">
           <td>{{ interview.interview_date|date:"d M Y"|default:"--" }}</td>
           <td>{{ interview.candidate_name }}</td>
           <td>

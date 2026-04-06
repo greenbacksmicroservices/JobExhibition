@@ -3,12 +3,117 @@
 
 {% block title %}Subscription{% endblock %}
 
+{% block extra_css %}
+<style>
+  .billing-table-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .billing-table-toolbar label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+  }
+  .billing-table-toolbar select {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 4px 8px;
+    min-width: 72px;
+  }
+  .billing-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .billing-pagination .pager {
+    display: inline-flex;
+    gap: 8px;
+  }
+  .billing-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    background: rgba(15, 23, 42, 0.55);
+  }
+  .billing-modal.active {
+    display: flex;
+  }
+  .billing-modal-card {
+    width: min(820px, 100%);
+    max-height: 92vh;
+    overflow: auto;
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 18px 50px rgba(2, 6, 23, 0.28);
+    border: 1px solid #e5e7eb;
+  }
+  .billing-modal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .billing-modal-close {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    width: 34px;
+    height: 34px;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .billing-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    padding: 16px;
+  }
+  .billing-detail-item {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .billing-detail-item span {
+    display: block;
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 3px;
+  }
+  .billing-detail-item strong {
+    font-size: 14px;
+    color: #0f172a;
+    word-break: break-word;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <section class="page-hero">
   <div>
     <p class="eyebrow">Subscription</p>
     <h2>Candidate Subscription</h2>
-    <p class="muted">Choose Free or Premium plan for better visibility and early job alerts.</p>
+    <p class="muted">Activate premium with payment gateway and unlock advanced candidate visibility features.</p>
+  </div>
+  <div class="page-actions">
+    <span class="badge {% if is_premium %}success{% else %}neutral{% endif %}">
+      {% if is_premium %}Premium Candidate{% else %}Free Candidate{% endif %}
+    </span>
   </div>
 </section>
 
@@ -16,7 +121,13 @@
   <div class="card-header">
     <div>
       <h3>Current Plan</h3>
-      <p class="muted">{{ subscription.plan|default:"Free" }} {% if is_premium %}(Premium Candidate){% else %}(Free Candidate){% endif %}</p>
+      <p class="muted">
+        {{ subscription.plan|default:"Free" }}
+        {% if is_premium %}(Premium Candidate){% else %}(Free Candidate){% endif %}
+      </p>
+      {% if is_premium %}
+      <p class="muted">Recruiter Views: <strong>{{ recruiter_views }}</strong></p>
+      {% endif %}
     </div>
     {% if is_premium and expiry %}
       <span class="badge success">Expiry: {{ expiry|date:"d M Y" }}</span>
@@ -24,6 +135,47 @@
       <span class="badge neutral">Free Access</span>
     {% endif %}
   </div>
+  <div class="info-grid">
+    <div class="info-row">
+      <span class="label">Payment Status</span>
+      <span class="badge {% if subscription.payment_status == 'Paid' %}success{% elif subscription.payment_status == 'Free' %}neutral{% else %}warning{% endif %}">
+        {{ subscription.payment_status|default:"Free" }}
+      </span>
+    </div>
+    <div class="info-row">
+      <span class="label">Start Date</span>
+      <strong>{{ subscription.start_date|date:"d M Y"|default:"--" }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">End Date</span>
+      <strong>{{ subscription.expiry_date|date:"d M Y"|default:"--" }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Auto Renew</span>
+      <strong>{% if subscription.auto_renew %}Enabled{% else %}Disabled{% endif %}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Estimated Monthly Billing</span>
+      <strong>INR {{ subscription.monthly_revenue|default:0 }}</strong>
+    </div>
+  </div>
+  {% if pending_payment %}
+  <div class="analysis-card" style="margin-top: 14px;">
+    <strong>Pending Payment: {{ pending_payment.payment_id }}</strong>
+    <p class="muted">Status: {{ pending_payment.status|title }} | Amount: INR {{ pending_payment.amount }}</p>
+    {% if pending_payment.redirect_url %}
+    <p>
+      <a class="action-btn" href="{{ pending_payment.redirect_url }}">Continue Payment</a>
+    </p>
+    {% endif %}
+    <form method="post" data-loading-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="refresh_payment" />
+      <input type="hidden" name="payment_id" value="{{ pending_payment.payment_id }}" />
+      <button class="btn ghost" type="submit">Refresh Payment Status</button>
+    </form>
+  </div>
+  {% endif %}
 </section>
 
 <section class="plan-grid">
@@ -55,7 +207,7 @@
       <span class="plan-flag">Recommended</span>
     </div>
     <h4 class="plan-tier">Premium Candidate</h4>
-    <div class="plan-cost"><strong>Rs.199</strong><span>/ month</span></div>
+    <div class="plan-cost"><strong>INR 199</strong><span>/ month</span></div>
     <ul class="plan-features">
       <li>Resume boost</li>
       <li>Profile highlighted</li>
@@ -69,9 +221,319 @@
     <form method="post" data-loading-form>
       {% csrf_token %}
       <input type="hidden" name="action" value="upgrade_premium" />
-      <button class="btn primary" type="submit">Activate Premium</button>
+      <button class="btn primary" type="submit">Pay INR 199 &amp; Activate</button>
     </form>
     {% endif %}
   </article>
 </section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Premium Feature Access</h3>
+      <p class="muted">These activate automatically after successful subscription payment.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for feature in premium_features %}
+        <tr>
+          <td>{{ feature.label }}</td>
+          <td>
+            <span class="badge {% if feature.enabled %}success{% else %}neutral{% endif %}">
+              {% if feature.enabled %}Enabled{% else %}Locked{% endif %}
+            </span>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="2" class="muted" style="text-align: center;">No feature data available.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Billing History</h3>
+      <p class="muted">All subscription transactions mapped to your candidate account.</p>
+    </div>
+  </div>
+  <div class="billing-table-toolbar">
+    <label for="billingEntriesSelect">
+      Show Entries
+      <select id="billingEntriesSelect">
+        <option value="10">10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </label>
+  </div>
+  <div class="table-wrap">
+    <table class="table" id="billingHistoryTable">
+      <thead>
+        <tr>
+          <th>Payment ID</th>
+          <th>Plan</th>
+          <th>Cycle</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in payment_history %}
+        <tr data-history-row="1">
+          <td><strong>{{ row.payment_id }}</strong></td>
+          <td>{{ row.plan_code }}</td>
+          <td>{{ row.billing_cycle|title }}</td>
+          <td>INR {{ row.amount }}</td>
+          <td>
+            <span class="badge {% if row.status == 'success' %}success{% elif row.status == 'failed' %}danger{% else %}warning{% endif %}">
+              {{ row.status|title }}
+            </span>
+          </td>
+          <td>{{ row.created_at|date:"d M Y H:i" }}</td>
+          <td>
+            <button
+              class="action-btn"
+              type="button"
+              data-billing-view
+              data-payment-id="{{ row.payment_id }}"
+              data-plan="{{ row.plan_code }}"
+              data-cycle="{{ row.billing_cycle|title }}"
+              data-amount="{{ row.amount }}"
+              data-currency="{{ row.currency|default:'INR' }}"
+              data-status="{{ row.status|title }}"
+              data-provider="{{ row.provider|default:'PhonePe' }}"
+              data-order-id="{{ row.gateway_order_id|default:'-' }}"
+              data-gateway-payment-id="{{ row.gateway_payment_id|default:'-' }}"
+              data-reference="{{ row.gateway_reference|default:'-' }}"
+              data-created-at="{{ row.created_at|date:'d M Y H:i:s' }}"
+              data-created-date="{{ row.created_at|date:'d M Y' }}"
+              data-created-time="{{ row.created_at|date:'H:i:s' }}"
+              data-month="{{ row.created_at|date:'F' }}"
+              data-year="{{ row.created_at|date:'Y' }}"
+              data-paid-at="{{ row.paid_at|date:'d M Y H:i:s'|default:'-' }}"
+              data-updated-at="{{ row.updated_at|date:'d M Y H:i:s'|default:'-' }}"
+              data-expires-at="{{ row.expires_at|date:'d M Y H:i:s'|default:'-' }}"
+              data-callback-verified="{% if row.callback_verified %}Yes{% else %}No{% endif %}"
+            >
+              View
+            </button>
+            {% if row.status == "pending" or row.status == "initiated" %}
+            {% if row.redirect_url %}
+            <a class="action-btn" href="{{ row.redirect_url }}" style="display:inline-flex; margin-bottom:6px;">Continue</a>
+            {% endif %}
+            <form method="post" data-loading-form>
+              {% csrf_token %}
+              <input type="hidden" name="action" value="refresh_payment" />
+              <input type="hidden" name="payment_id" value="{{ row.payment_id }}" />
+              <button class="action-btn" type="submit">Refresh</button>
+            </form>
+            {% else %}
+            <span class="muted">-</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr data-empty-row="1">
+          <td colspan="7" class="muted" style="text-align: center;">No subscription transactions yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="billing-pagination">
+    <span class="muted" id="billingEntriesInfo">Showing 0 to 0 of 0 Entries</span>
+    <div class="pager">
+      <button class="btn ghost" type="button" id="billingPrevBtn">Previous</button>
+      <button class="btn ghost" type="button" id="billingNextBtn">Next</button>
+    </div>
+  </div>
+</section>
+
+<div class="billing-modal" id="billingDetailModal" aria-hidden="true">
+  <div class="billing-modal-card">
+    <div class="billing-modal-head">
+      <h4>Payment Details</h4>
+      <button type="button" class="billing-modal-close" id="billingDetailCloseBtn" aria-label="Close">x</button>
+    </div>
+    <div class="billing-detail-grid" id="billingDetailGrid"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    const table = document.getElementById('billingHistoryTable');
+    const entriesSelect = document.getElementById('billingEntriesSelect');
+    const info = document.getElementById('billingEntriesInfo');
+    const prevBtn = document.getElementById('billingPrevBtn');
+    const nextBtn = document.getElementById('billingNextBtn');
+    const modal = document.getElementById('billingDetailModal');
+    const closeBtn = document.getElementById('billingDetailCloseBtn');
+    const detailGrid = document.getElementById('billingDetailGrid');
+    if (!table || !entriesSelect || !info || !prevBtn || !nextBtn || !modal || !closeBtn || !detailGrid) return;
+
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr[data-history-row="1"]'));
+    const emptyRow = tbody.querySelector('tr[data-empty-row="1"]');
+    let currentPage = 1;
+    let pageSize = Number(entriesSelect.value || 10);
+
+    const updatePager = function () {
+      const total = rows.length;
+      if (!total) {
+        info.textContent = 'Showing 0 to 0 of 0 Entries';
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        if (emptyRow) emptyRow.style.display = '';
+        return;
+      }
+      if (emptyRow) emptyRow.style.display = 'none';
+      const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+      if (currentPage > totalPages) currentPage = totalPages;
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = Math.min(startIndex + pageSize, total);
+      rows.forEach((row, idx) => {
+        row.style.display = idx >= startIndex && idx < endIndex ? '' : 'none';
+      });
+      info.textContent = 'Showing ' + (startIndex + 1) + ' to ' + endIndex + ' of ' + total + ' Entries';
+      prevBtn.disabled = currentPage <= 1;
+      nextBtn.disabled = currentPage >= totalPages;
+    };
+
+    const renderDetails = function (dataset) {
+      const items = [
+        ['Payment ID', dataset.paymentId],
+        ['Plan', dataset.plan],
+        ['Billing Cycle', dataset.cycle],
+        ['Amount', 'INR ' + (dataset.amount || '0')],
+        ['Currency', dataset.currency],
+        ['Status', dataset.status],
+        ['Provider', dataset.provider],
+        ['Gateway Order ID', dataset.orderId],
+        ['Gateway Payment ID', dataset.gatewayPaymentId],
+        ['Gateway Reference', dataset.reference],
+        ['Payment Date', dataset.createdDate],
+        ['Payment Time', dataset.createdTime],
+        ['Payment Month', dataset.month],
+        ['Payment Year', dataset.year],
+        ['Created At', dataset.createdAt],
+        ['Updated At', dataset.updatedAt],
+        ['Paid At', dataset.paidAt],
+        ['Expires At', dataset.expiresAt],
+        ['Callback Verified', dataset.callbackVerified]
+      ];
+      detailGrid.innerHTML = items.map(function (item) {
+        return '<div class="billing-detail-item"><span>' + item[0] + '</span><strong>' + (item[1] || '-') + '</strong></div>';
+      }).join('');
+    };
+
+    table.addEventListener('click', function (event) {
+      const button = event.target.closest('[data-billing-view]');
+      if (!button) return;
+      renderDetails(button.dataset);
+      modal.classList.add('active');
+      modal.setAttribute('aria-hidden', 'false');
+    });
+
+    closeBtn.addEventListener('click', function () {
+      modal.classList.remove('active');
+      modal.setAttribute('aria-hidden', 'true');
+    });
+    modal.addEventListener('click', function (event) {
+      if (event.target === modal) {
+        modal.classList.remove('active');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+    });
+    entriesSelect.addEventListener('change', function () {
+      pageSize = Number(entriesSelect.value || 10);
+      currentPage = 1;
+      updatePager();
+    });
+    prevBtn.addEventListener('click', function () {
+      if (currentPage > 1) {
+        currentPage -= 1;
+        updatePager();
+      }
+    });
+    nextBtn.addEventListener('click', function () {
+      const totalPages = Math.max(Math.ceil(rows.length / pageSize), 1);
+      if (currentPage < totalPages) {
+        currentPage += 1;
+        updatePager();
+      }
+    });
+
+    updatePager();
+  })();
+</script>
+{% if payment_popup_message %}
+<script>
+  (function () {
+    const msg = "{{ payment_popup_message|escapejs }}";
+    if (!msg) return;
+    const toast = document.createElement('div');
+    toast.textContent = msg;
+    toast.style.position = 'fixed';
+    toast.style.top = '16px';
+    toast.style.right = '16px';
+    toast.style.zIndex = '1200';
+    toast.style.maxWidth = '360px';
+    const isError = /failed|error/i.test(msg);
+    toast.style.background = isError ? '#dc2626' : '#059669';
+    toast.style.color = '#fff';
+    toast.style.padding = '12px 14px';
+    toast.style.borderRadius = '10px';
+    toast.style.boxShadow = '0 10px 24px rgba(0,0,0,0.2)';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4200);
+  })();
+</script>
+{% endif %}
+{% if pending_payment %}
+<script>
+  (function () {
+    const paymentId = "{{ pending_payment.payment_id }}";
+    let lastStatus = "{{ pending_payment.status }}";
+    const endpoint = "{% url 'dashboard:api_payment_status' pending_payment.payment_id %}";
+    const poll = function () {
+      fetch(endpoint, { credentials: 'same-origin' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!data || !data.success || !data.payment) return;
+          const nextStatus = (data.payment.status || '').toLowerCase();
+          if (nextStatus && nextStatus !== lastStatus) {
+            lastStatus = nextStatus;
+            if (nextStatus === 'success' || nextStatus === 'failed') {
+              const msg = nextStatus === 'success'
+                ? 'Payment successful. Subscription activated.'
+                : 'Payment failed. Please retry.';
+              window.alert(msg);
+              window.location.reload();
+            }
+          }
+        })
+        .catch(() => {});
+    };
+    setInterval(poll, 20000);
+  })();
+</script>
+{% endif %}
 {% endblock %}

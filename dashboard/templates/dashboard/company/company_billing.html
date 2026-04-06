@@ -3,201 +3,195 @@
 
 {% block title %}Billing & Subscription{% endblock %}
 
+{% block extra_css %}
+<style>
+  .billing-table-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .billing-table-toolbar label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+  }
+  .billing-table-toolbar select {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 4px 8px;
+    min-width: 72px;
+  }
+  .billing-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .billing-pagination .pager {
+    display: inline-flex;
+    gap: 8px;
+  }
+  .billing-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    background: rgba(15, 23, 42, 0.55);
+  }
+  .billing-modal.active {
+    display: flex;
+  }
+  .billing-modal-card {
+    width: min(820px, 100%);
+    max-height: 92vh;
+    overflow: auto;
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 18px 50px rgba(2, 6, 23, 0.28);
+    border: 1px solid #e5e7eb;
+  }
+  .billing-modal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .billing-modal-close {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    width: 34px;
+    height: 34px;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .billing-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    padding: 16px;
+  }
+  .billing-detail-item {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .billing-detail-item span {
+    display: block;
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 3px;
+  }
+  .billing-detail-item strong {
+    font-size: 14px;
+    color: #0f172a;
+    word-break: break-word;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <section class="page-hero company-hero">
   <div>
     <p class="eyebrow">Subscription</p>
     <h2>Billing & Subscription</h2>
-    <p class="muted">Manage your subscription plan and billing information.</p>
+    <p class="muted">Upgrade plans, track payments, and control monthly job quota in real time.</p>
   </div>
 </section>
 
-<div class="card" style="max-width: 600px; margin: 0 auto;">
+<section class="card section-block">
   <div class="card-header">
-    <h3>Current Plan</h3>
-  </div>
-  <div style="padding: 30px; text-align: center; border-bottom: 1px solid #e5e7eb;">
-    <p style="color: #6b7280; font-size: 13px; margin-bottom: 8px;">Your Current Subscription</p>
-    <h2 style="font-size: 32px; margin: 16px 0;">{{ company.plan_type|default:company.plan_name }}</h2>
-    <p style="font-size: 14px; color: #374151;">Valid until <strong>{{ company.plan_expiry|date:"d M Y"|default:"12 Mar 2026" }}</strong></p>
-  </div>
-  <div style="padding: 30px;">
-    <div class="info-grid" style="gap: 16px; margin-bottom: 20px;">
-      <div class="info-row">
-        <span class="label">Plan Status</span>
-        <span class="badge success">Active</span>
-      </div>
-      <div class="info-row">
-        <span class="label">Renewal Date</span>
-        <strong>{{ company.plan_expiry|date:"d M Y"|default:"12 Mar 2026" }}</strong>
-      </div>
-      <div class="info-row">
-        <span class="label">Payment Status</span>
-        <span class="badge success">Paid</span>
-      </div>
-      <div class="info-row">
-        <span class="label">Next Billing</span>
-        <strong>INR 5,999</strong>
-      </div>
-    </div>
-    <div style="display: flex; gap: 10px;">
-      <button class="btn primary">Upgrade Plan</button>
-      <button class="btn ghost">View Invoice</button>
-    </div>
-  </div>
-</div>
-
-<section class="section-block" style="margin-top: 24px;">
-  <div class="section-header">
     <div>
-      <h3>Recruiter / Consultancy Plans</h3>
-      <p class="muted">Compare plans and upgrade when needed.</p>
+      <h3>Current Plan</h3>
+      <p class="muted">{{ subscription.plan|default:"Free" }} {% if is_active_subscription %}(Active){% else %}(Inactive/Free){% endif %}</p>
+    </div>
+    {% if subscription.expiry_date %}
+    <span class="badge {% if is_active_subscription %}success{% else %}warning{% endif %}">
+      Expiry: {{ subscription.expiry_date|date:"d M Y" }}
+    </span>
+    {% else %}
+    <span class="badge neutral">No expiry</span>
+    {% endif %}
+  </div>
+  <div class="info-grid">
+    <div class="info-row">
+      <span class="label">Payment Status</span>
+      <span class="badge {% if subscription.payment_status == 'Paid' %}success{% elif subscription.payment_status == 'Free' %}neutral{% else %}warning{% endif %}">
+        {{ subscription.payment_status|default:"Free" }}
+      </span>
+    </div>
+    <div class="info-row">
+      <span class="label">Start Date</span>
+      <strong>{{ subscription.start_date|date:"d M Y"|default:"--" }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">End Date</span>
+      <strong>{{ subscription.expiry_date|date:"d M Y"|default:"--" }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Auto Renew</span>
+      <strong>{% if subscription.auto_renew %}Enabled{% else %}Disabled{% endif %}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Estimated Monthly Billing</span>
+      <strong>INR {{ subscription.monthly_revenue|default:0 }}</strong>
     </div>
   </div>
-  <div class="plan-grid">
-    <article class="plan-card">
-      <div class="plan-header">
-        <span class="plan-tag free">Free Plan</span>
-        <span class="plan-tier">Starter (Free Forever)</span>
-      </div>
-      <p class="plan-desc">Best for new users to try the platform.</p>
-      <div class="plan-cost">
-        <strong>INR 0</strong>
-        <span class="muted">No billing required</span>
-      </div>
-      <ul class="plan-features">
-        <li><span>Job Posts</span><strong>3 Free Jobs (Lifetime)</strong></li>
-        <li><span>Job Validity</span><strong>15 days</strong></li>
-        <li><span>Resume View</span><strong>View only</strong></li>
-        <li><span>Resume Download</span><strong>No</strong></li>
-        <li><span>Candidate Chat</span><strong>No</strong></li>
-        <li><span>Auto Match</span><strong>No</strong></li>
-        <li><span>Interview Scheduler</span><strong>No</strong></li>
-        <li><span>Support</span><strong>Email only</strong></li>
-        <li><span>Branding</span><strong>Job Exhibition branding</strong></li>
-      </ul>
-      <div class="plan-note">Upgrade trigger: After 3rd job -> "Please subscribe to post new job".</div>
-    </article>
-
-    <article class="plan-card">
-      <div class="plan-header">
-        <span class="plan-tag basic">Basic Plan</span>
-        <span class="plan-tier">Basic Recruiter</span>
-      </div>
-      <p class="plan-desc">For small companies and local consultancies.</p>
-      <div class="plan-cost">
-        <strong>INR 999 / month</strong>
-        <span class="muted">INR 2,499 / 3 months</span>
-      </div>
-      <ul class="plan-features">
-        <li><span>Job Posts</span><strong>10 / month</strong></li>
-        <li><span>Job Validity</span><strong>30 days</strong></li>
-        <li><span>Resume View</span><strong>Yes</strong></li>
-        <li><span>Resume Download</span><strong>No</strong></li>
-        <li><span>Candidate Chat</span><strong>Limited</strong></li>
-        <li><span>Interview Scheduling</span><strong>No</strong></li>
-        <li><span>Auto Match</span><strong>No</strong></li>
-        <li><span>Shortlisting</span><strong>Manual</strong></li>
-        <li><span>Support</span><strong>Email</strong></li>
-      </ul>
-    </article>
-
-    <article class="plan-card recommended">
-      <div class="plan-header">
-        <span class="plan-tag standard">Standard Plan</span>
-        <span class="plan-flag">Most Recommended</span>
-      </div>
-      <p class="plan-desc">Best value for growing hiring teams.</p>
-      <div class="plan-cost">
-        <strong>INR 2,499 / month</strong>
-        <span class="muted">INR 6,999 / 3 months</span>
-      </div>
-      <ul class="plan-features">
-        <li><span>Job Posts</span><strong>30 / month</strong></li>
-        <li><span>Job Validity</span><strong>45 days</strong></li>
-        <li><span>Resume View</span><strong>Yes</strong></li>
-        <li><span>Resume Download</span><strong>Limited (100)</strong></li>
-        <li><span>Candidate Chat</span><strong>Yes</strong></li>
-        <li><span>Interview Scheduling</span><strong>Yes</strong></li>
-        <li><span>Auto Match Candidates</span><strong>Yes</strong></li>
-        <li><span>Candidate Ranking</span><strong>Yes</strong></li>
-        <li><span>Featured Job</span><strong>3 / month</strong></li>
-        <li><span>Support</span><strong>Priority Email</strong></li>
-      </ul>
-    </article>
-
-    <article class="plan-card">
-      <div class="plan-header">
-        <span class="plan-tag premium">Premium / Gold</span>
-        <span class="plan-tier">Enterprise Plan</span>
-      </div>
-      <p class="plan-desc">High volume hiring with advanced automation.</p>
-      <div class="plan-cost">
-        <strong>INR 4,999 / month</strong>
-        <span class="muted">INR 12,999 / 3 months</span>
-      </div>
-      <ul class="plan-features">
-        <li><span>Job Posts</span><strong>Unlimited</strong></li>
-        <li><span>Job Validity</span><strong>60 days</strong></li>
-        <li><span>Resume View</span><strong>Unlimited</strong></li>
-        <li><span>Resume Download</span><strong>Unlimited</strong></li>
-        <li><span>Candidate Chat</span><strong>Unlimited</strong></li>
-        <li><span>Interview Scheduler</span><strong>Advanced</strong></li>
-        <li><span>Auto Match</span><strong>AI-based</strong></li>
-        <li><span>Candidate Pool Manager</span><strong>Yes</strong></li>
-        <li><span>Featured Jobs</span><strong>Unlimited</strong></li>
-        <li><span>Company Branding</span><strong>Highlighted</strong></li>
-        <li><span>Analytics Dashboard</span><strong>Advanced</strong></li>
-        <li><span>Support</span><strong>WhatsApp + Email</strong></li>
-        <li><span>Dedicated Account Manager</span><strong>Yes</strong></li>
-      </ul>
-    </article>
+  {% if pending_payment %}
+  <div class="analysis-card" style="margin-top: 14px;">
+    <strong>Pending Payment: {{ pending_payment.payment_id }}</strong>
+    <p class="muted">Amount: INR {{ pending_payment.amount }} | Status: {{ pending_payment.status|title }}</p>
+    {% if pending_payment.redirect_url %}
+    <p>
+      <a class="action-btn" href="{{ pending_payment.redirect_url }}">Continue Payment</a>
+    </p>
+    {% endif %}
+    <form method="post" data-loading-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="refresh_payment" />
+      <input type="hidden" name="payment_id" value="{{ pending_payment.payment_id }}" />
+      <button class="btn ghost" type="submit">Refresh Payment Status</button>
+    </form>
   </div>
+  {% endif %}
 </section>
 
-<section class="section-block">
-  <div class="section-header">
+<section class="card section-block">
+  <div class="card-header">
     <div>
-      <h3>Add-ons / Pay-Per-Use</h3>
-      <p class="muted">These add-ons can be used with any plan.</p>
+      <h3>Monthly Job Quota</h3>
+      <p class="muted">Plan driven posting limit for current month.</p>
     </div>
   </div>
-  <div class="card">
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Add-on</th>
-            <th>Price</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Job Boost (7 days)</td>
-            <td>INR 199</td>
-          </tr>
-          <tr>
-            <td>Featured Job</td>
-            <td>INR 299</td>
-          </tr>
-          <tr>
-            <td>Resume Download Pack (50)</td>
-            <td>INR 499</td>
-          </tr>
-          <tr>
-            <td>Unlock Contact Details</td>
-            <td>INR 99</td>
-          </tr>
-          <tr>
-            <td>WhatsApp Alert to Candidates</td>
-            <td>INR 149</td>
-          </tr>
-          <tr>
-            <td>Extra Job Post</td>
-            <td>INR 199</td>
-          </tr>
-        </tbody>
-      </table>
+  <div class="info-grid">
+    <div class="info-row">
+      <span class="label">Plan</span>
+      <strong>{{ posting_quota.plan|default:"Free" }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Used</span>
+      <strong>{{ posting_quota.used|default:0 }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Limit</span>
+      <strong>{% if posting_quota.limit == None %}Unlimited{% else %}{{ posting_quota.limit }}{% endif %}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Remaining</span>
+      <strong>{% if posting_quota.remaining == None %}Unlimited{% else %}{{ posting_quota.remaining }}{% endif %}</strong>
     </div>
   </div>
 </section>
@@ -205,69 +199,336 @@
 <section class="section-block">
   <div class="section-header">
     <div>
-      <h3>Candidate Subscription (Optional - Future)</h3>
-      <p class="muted">Optional plans for candidates on the platform.</p>
+      <h3>Available Subscription Plans</h3>
+      <p class="muted">Pay securely and activate instantly after payment confirmation.</p>
     </div>
   </div>
   <div class="plan-grid">
-    <article class="plan-card">
+    {% for plan in plans %}
+    <article class="plan-card {% if current_plan and current_plan.plan_code == plan.plan_code %}recommended{% endif %}">
       <div class="plan-header">
-        <span class="plan-tag candidate">Free Candidate</span>
+        <span class="plan-tag">{{ plan.plan_code }}</span>
+        {% if current_plan and current_plan.plan_code == plan.plan_code %}
+        <span class="plan-flag">Current</span>
+        {% endif %}
+      </div>
+      <h4 class="plan-tier">{{ plan.name }}</h4>
+      <div class="plan-cost">
+        <strong>INR {{ plan.price_monthly|default:0 }} / month</strong>
+        <span class="muted">INR {{ plan.price_quarterly|default:0 }} / 3 months</span>
       </div>
       <ul class="plan-features">
-        <li><span>Apply to Jobs</span><strong>Yes</strong></li>
-        <li><span>Create Profile</span><strong>Yes</strong></li>
-        <li><span>Upload Resume</span><strong>Yes</strong></li>
+        <li><span>Job Posts</span><strong>{{ plan.job_posts|default:"--" }}</strong></li>
+        <li><span>Job Validity</span><strong>{{ plan.job_validity|default:"--" }}</strong></li>
+        <li><span>Resume View</span><strong>{{ plan.resume_view|default:"--" }}</strong></li>
+        <li><span>Resume Download</span><strong>{{ plan.resume_download|default:"--" }}</strong></li>
+        <li><span>Candidate Chat</span><strong>{{ plan.candidate_chat|default:"--" }}</strong></li>
+        <li><span>Support</span><strong>{{ plan.support|default:"--" }}</strong></li>
       </ul>
-    </article>
-    <article class="plan-card">
-      <div class="plan-header">
-        <span class="plan-tag candidate">Premium Candidate</span>
-        <span class="plan-tier">INR 199 / month</span>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        {% if plan.plan_code == "Free" %}
+        <form method="post" data-loading-form>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="activate_free" />
+          <button class="btn ghost" type="submit">Activate Free</button>
+        </form>
+        {% else %}
+        <form method="post" data-loading-form>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="buy_plan" />
+          <input type="hidden" name="plan_code" value="{{ plan.plan_code }}" />
+          <input type="hidden" name="billing_cycle" value="monthly" />
+          <button class="btn primary" type="submit">Pay Monthly</button>
+        </form>
+        <form method="post" data-loading-form>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="buy_plan" />
+          <input type="hidden" name="plan_code" value="{{ plan.plan_code }}" />
+          <input type="hidden" name="billing_cycle" value="quarterly" />
+          <button class="btn ghost" type="submit">Pay Quarterly</button>
+        </form>
+        {% endif %}
       </div>
-      <ul class="plan-features">
-        <li><span>Resume Boost</span><strong>Yes</strong></li>
-        <li><span>Profile Highlighted</span><strong>Yes</strong></li>
-        <li><span>Early Job Alerts</span><strong>Yes</strong></li>
-        <li><span>See Recruiter Views</span><strong>Yes</strong></li>
-        <li><span>Priority Applications</span><strong>Yes</strong></li>
-      </ul>
     </article>
+    {% empty %}
+    <article class="plan-card">
+      <h4 class="plan-tier">No plans found</h4>
+      <p class="muted">Ask admin to create plans in Subscription Control Center.</p>
+    </article>
+    {% endfor %}
   </div>
 </section>
 
-<div class="card" style="margin-top: 20px;">
+<section class="card section-block">
   <div class="card-header">
-    <h3>Billing History</h3>
+    <div>
+      <h3>Billing History</h3>
+      <p class="muted">Payment transactions linked to your company account.</p>
+    </div>
+  </div>
+  <div class="billing-table-toolbar">
+    <label for="billingEntriesSelect">
+      Show Entries
+      <select id="billingEntriesSelect">
+        <option value="10">10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </label>
   </div>
   <div class="table-wrap">
-    <table class="table">
+    <table class="table" id="billingHistoryTable">
       <thead>
         <tr>
-          <th>Invoice ID</th>
-          <th>Date</th>
+          <th>Payment ID</th>
+          <th>Plan</th>
+          <th>Cycle</th>
           <th>Amount</th>
           <th>Status</th>
+          <th>Date</th>
           <th>Action</th>
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td><strong>#INV-2026-001</strong></td>
-          <td>12 Feb 2026</td>
-          <td>INR 5,999</td>
-          <td><span class="badge success">Paid</span></td>
-          <td><button class="action-btn">Download</button></td>
+        {% for row in payment_history %}
+        <tr data-history-row="1">
+          <td><strong>{{ row.payment_id }}</strong></td>
+          <td>{{ row.plan_code }}</td>
+          <td>{{ row.billing_cycle|title }}</td>
+          <td>INR {{ row.amount }}</td>
+          <td>
+            <span class="badge {% if row.status == 'success' %}success{% elif row.status == 'failed' %}danger{% else %}warning{% endif %}">
+              {{ row.status|title }}
+            </span>
+          </td>
+          <td>{{ row.created_at|date:"d M Y H:i" }}</td>
+          <td>
+            <button
+              class="action-btn"
+              type="button"
+              data-billing-view
+              data-payment-id="{{ row.payment_id }}"
+              data-plan="{{ row.plan_code }}"
+              data-cycle="{{ row.billing_cycle|title }}"
+              data-amount="{{ row.amount }}"
+              data-currency="{{ row.currency|default:'INR' }}"
+              data-status="{{ row.status|title }}"
+              data-provider="{{ row.provider|default:'PhonePe' }}"
+              data-order-id="{{ row.gateway_order_id|default:'-' }}"
+              data-gateway-payment-id="{{ row.gateway_payment_id|default:'-' }}"
+              data-reference="{{ row.gateway_reference|default:'-' }}"
+              data-created-at="{{ row.created_at|date:'d M Y H:i:s' }}"
+              data-created-date="{{ row.created_at|date:'d M Y' }}"
+              data-created-time="{{ row.created_at|date:'H:i:s' }}"
+              data-month="{{ row.created_at|date:'F' }}"
+              data-year="{{ row.created_at|date:'Y' }}"
+              data-paid-at="{{ row.paid_at|date:'d M Y H:i:s'|default:'-' }}"
+              data-updated-at="{{ row.updated_at|date:'d M Y H:i:s'|default:'-' }}"
+              data-expires-at="{{ row.expires_at|date:'d M Y H:i:s'|default:'-' }}"
+              data-callback-verified="{% if row.callback_verified %}Yes{% else %}No{% endif %}"
+            >
+              View
+            </button>
+            {% if row.status == "pending" or row.status == "initiated" %}
+            {% if row.redirect_url %}
+            <a class="action-btn" href="{{ row.redirect_url }}" style="display:inline-flex; margin-bottom:6px;">Continue</a>
+            {% endif %}
+            <form method="post" data-loading-form>
+              {% csrf_token %}
+              <input type="hidden" name="action" value="refresh_payment" />
+              <input type="hidden" name="payment_id" value="{{ row.payment_id }}" />
+              <button class="action-btn" type="submit">Refresh</button>
+            </form>
+            {% else %}
+            <span class="muted">-</span>
+            {% endif %}
+          </td>
         </tr>
-        <tr>
-          <td><strong>#INV-2026-002</strong></td>
-          <td>02 Jan 2026</td>
-          <td>INR 5,999</td>
-          <td><span class="badge success">Paid</span></td>
-          <td><button class="action-btn">Download</button></td>
+        {% empty %}
+        <tr data-empty-row="1">
+          <td colspan="7" class="muted" style="text-align:center;">No billing records yet.</td>
         </tr>
+        {% endfor %}
       </tbody>
     </table>
   </div>
+  <div class="billing-pagination">
+    <span class="muted" id="billingEntriesInfo">Showing 0 to 0 of 0 Entries</span>
+    <div class="pager">
+      <button class="btn ghost" type="button" id="billingPrevBtn">Previous</button>
+      <button class="btn ghost" type="button" id="billingNextBtn">Next</button>
+    </div>
+  </div>
+</section>
+
+<div class="billing-modal" id="billingDetailModal" aria-hidden="true">
+  <div class="billing-modal-card">
+    <div class="billing-modal-head">
+      <h4>Payment Details</h4>
+      <button type="button" class="billing-modal-close" id="billingDetailCloseBtn" aria-label="Close">x</button>
+    </div>
+    <div class="billing-detail-grid" id="billingDetailGrid"></div>
+  </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    const table = document.getElementById('billingHistoryTable');
+    const entriesSelect = document.getElementById('billingEntriesSelect');
+    const info = document.getElementById('billingEntriesInfo');
+    const prevBtn = document.getElementById('billingPrevBtn');
+    const nextBtn = document.getElementById('billingNextBtn');
+    const modal = document.getElementById('billingDetailModal');
+    const closeBtn = document.getElementById('billingDetailCloseBtn');
+    const detailGrid = document.getElementById('billingDetailGrid');
+    if (!table || !entriesSelect || !info || !prevBtn || !nextBtn || !modal || !closeBtn || !detailGrid) return;
+
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr[data-history-row="1"]'));
+    const emptyRow = tbody.querySelector('tr[data-empty-row="1"]');
+    let currentPage = 1;
+    let pageSize = Number(entriesSelect.value || 10);
+
+    const updatePager = function () {
+      const total = rows.length;
+      if (!total) {
+        info.textContent = 'Showing 0 to 0 of 0 Entries';
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        if (emptyRow) emptyRow.style.display = '';
+        return;
+      }
+      if (emptyRow) emptyRow.style.display = 'none';
+      const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+      if (currentPage > totalPages) currentPage = totalPages;
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = Math.min(startIndex + pageSize, total);
+      rows.forEach((row, idx) => {
+        row.style.display = idx >= startIndex && idx < endIndex ? '' : 'none';
+      });
+      info.textContent = 'Showing ' + (startIndex + 1) + ' to ' + endIndex + ' of ' + total + ' Entries';
+      prevBtn.disabled = currentPage <= 1;
+      nextBtn.disabled = currentPage >= totalPages;
+    };
+
+    const renderDetails = function (dataset) {
+      const items = [
+        ['Payment ID', dataset.paymentId],
+        ['Plan', dataset.plan],
+        ['Billing Cycle', dataset.cycle],
+        ['Amount', 'INR ' + (dataset.amount || '0')],
+        ['Currency', dataset.currency],
+        ['Status', dataset.status],
+        ['Provider', dataset.provider],
+        ['Gateway Order ID', dataset.orderId],
+        ['Gateway Payment ID', dataset.gatewayPaymentId],
+        ['Gateway Reference', dataset.reference],
+        ['Payment Date', dataset.createdDate],
+        ['Payment Time', dataset.createdTime],
+        ['Payment Month', dataset.month],
+        ['Payment Year', dataset.year],
+        ['Created At', dataset.createdAt],
+        ['Updated At', dataset.updatedAt],
+        ['Paid At', dataset.paidAt],
+        ['Expires At', dataset.expiresAt],
+        ['Callback Verified', dataset.callbackVerified]
+      ];
+      detailGrid.innerHTML = items.map(function (item) {
+        return '<div class="billing-detail-item"><span>' + item[0] + '</span><strong>' + (item[1] || '-') + '</strong></div>';
+      }).join('');
+    };
+
+    table.addEventListener('click', function (event) {
+      const button = event.target.closest('[data-billing-view]');
+      if (!button) return;
+      renderDetails(button.dataset);
+      modal.classList.add('active');
+      modal.setAttribute('aria-hidden', 'false');
+    });
+    closeBtn.addEventListener('click', function () {
+      modal.classList.remove('active');
+      modal.setAttribute('aria-hidden', 'true');
+    });
+    modal.addEventListener('click', function (event) {
+      if (event.target === modal) {
+        modal.classList.remove('active');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+    });
+    entriesSelect.addEventListener('change', function () {
+      pageSize = Number(entriesSelect.value || 10);
+      currentPage = 1;
+      updatePager();
+    });
+    prevBtn.addEventListener('click', function () {
+      if (currentPage > 1) {
+        currentPage -= 1;
+        updatePager();
+      }
+    });
+    nextBtn.addEventListener('click', function () {
+      const totalPages = Math.max(Math.ceil(rows.length / pageSize), 1);
+      if (currentPage < totalPages) {
+        currentPage += 1;
+        updatePager();
+      }
+    });
+
+    updatePager();
+  })();
+</script>
+{% if payment_popup_message %}
+<script>
+  (function () {
+    const msg = "{{ payment_popup_message|escapejs }}";
+    if (!msg) return;
+    const toast = document.createElement('div');
+    toast.textContent = msg;
+    toast.style.position = 'fixed';
+    toast.style.top = '16px';
+    toast.style.right = '16px';
+    toast.style.zIndex = '1200';
+    toast.style.maxWidth = '360px';
+    const isError = /failed|error/i.test(msg);
+    toast.style.background = isError ? '#dc2626' : '#059669';
+    toast.style.color = '#fff';
+    toast.style.padding = '12px 14px';
+    toast.style.borderRadius = '10px';
+    toast.style.boxShadow = '0 10px 24px rgba(0,0,0,0.2)';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4200);
+  })();
+</script>
+{% endif %}
+{% if pending_payment %}
+<script>
+  (function () {
+    let lastStatus = "{{ pending_payment.status }}";
+    const endpoint = "{% url 'dashboard:api_payment_status' pending_payment.payment_id %}";
+    const poll = function () {
+      fetch(endpoint, { credentials: 'same-origin' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!data || !data.success || !data.payment) return;
+          const nextStatus = (data.payment.status || '').toLowerCase();
+          if (nextStatus && nextStatus !== lastStatus) {
+            lastStatus = nextStatus;
+            if (nextStatus === 'success' || nextStatus === 'failed') {
+              const msg = nextStatus === 'success'
+                ? 'Payment successful. Subscription activated.'
+                : 'Payment failed. Please retry.';
+              window.alert(msg);
+              window.location.reload();
+            }
+          }
+        })
+        .catch(() => {});
+    };
+    setInterval(poll, 20000);
+  })();
+</script>
+{% endif %}
 {% endblock %}

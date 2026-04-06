@@ -61,7 +61,7 @@
       <tbody>
         {% if interviews %}
           {% for interview in interviews %}
-          <tr>
+          <tr id="candidate-interview-{{ interview.id }}">
             <td><strong>{{ interview.company }}</strong></td>
             <td>{{ interview.job_title }}</td>
             <td>{{ interview.interview_date|date:"d M Y"|default:"--" }}</td>

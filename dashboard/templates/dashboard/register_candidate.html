@@ -44,7 +44,7 @@
       100% { transform: translateY(-115vh) rotate(15deg); opacity: 0; }
     }
     .register-card {
-      width: min(1040px, 100%);
+      width: min(1140px, 100%);
       margin: 0 auto;
       background: rgba(255, 255, 255, 0.93);
       border-radius: 26px;
@@ -148,6 +148,22 @@
       grid-template-columns: 1fr auto;
       gap: 8px;
       align-items: end;
+    }
+    .otp-inline-status {
+      min-height: 18px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #64748b;
+    }
+    .otp-inline-status.is-success {
+      color: #166534;
+    }
+    .otp-inline-status.is-error {
+      color: #be123c;
+    }
+    .otp-inline-status.is-info {
+      color: #4338ca;
     }
     .btn-secondary {
       border: 1px solid #4f46e5;
@@ -358,7 +374,7 @@
       {% endfor %}
     {% endif %}
 
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" data-suggestions-endpoint="{% url 'dashboard:candidate_registration_suggestions_api' %}" data-registration-otp-url="{% url 'dashboard:send_registration_otp' %}">
       {% csrf_token %}
 
       <section class="section">
@@ -380,22 +396,22 @@
           </div>
           <div class="field">
             <label>City / Current Location</label>
-            <input type="text" name="location" value="{{ form_data.location|default:'' }}" />
+            <input type="text" name="location" value="{{ form_data.location|default:'' }}" list="candidate_location_list" data-suggest-field="location" />
           </div>
         </div>
         <div class="grid-2">
           <div class="field">
             <label>Password</label>
             <div class="password-input">
-              <input type="password" id="candidate_password" name="password" required />
+              <input type="password" id="candidate_password" name="password" autocomplete="new-password" placeholder="Create password" required />
               <button class="password-toggle" type="button" data-password-toggle="candidate_password">Show</button>
             </div>
-            <small>Use upper, lower, number, special character.</small>
+            <small></small>
           </div>
           <div class="field">
             <label>Confirm Password</label>
             <div class="password-input">
-              <input type="password" id="candidate_confirm_password" name="confirm_password" required />
+              <input type="password" id="candidate_confirm_password" name="confirm_password" autocomplete="new-password" placeholder="Confirm password" required />
               <button class="password-toggle" type="button" data-password-toggle="candidate_confirm_password">Show</button>
             </div>
           </div>
@@ -426,7 +442,7 @@
           </div>
           <div class="field">
             <label>Preferred Job Location</label>
-            <input type="text" name="preferred_job_location" value="{{ form_data.preferred_job_location|default:'' }}" />
+            <input type="text" name="preferred_job_location" value="{{ form_data.preferred_job_location|default:'' }}" list="candidate_preferred_location_list" data-suggest-field="preferred_job_location" />
           </div>
         </div>
         <div class="field">
@@ -440,7 +456,7 @@
         <div class="grid-2">
           <div class="field">
             <label>Current Job Title</label>
-            <input type="text" name="current_job_title" value="{{ form_data.current_job_title|default:'' }}" />
+            <input type="text" name="current_job_title" value="{{ form_data.current_job_title|default:'' }}" list="candidate_job_title_list" data-suggest-field="current_job_title" />
           </div>
           <div class="field">
             <label>Total Experience (years)</label>
@@ -483,7 +499,7 @@
           </div>
           <div class="field">
             <label>University</label>
-            <input type="text" name="university" value="{{ form_data.university|default:'' }}" />
+            <input type="text" name="university" value="{{ form_data.university|default:'' }}" list="candidate_university_list" data-suggest-field="university" />
           </div>
         </div>
         <div class="grid-2">
@@ -503,7 +519,7 @@
         <div class="grid-2">
           <div class="field">
             <label>Primary Skills</label>
-            <input type="text" name="primary_skills" value="{{ form_data.primary_skills|default:'' }}" placeholder="Python, SQL, Excel" />
+            <input type="text" name="primary_skills" value="{{ form_data.primary_skills|default:'' }}" placeholder="Python, SQL, Excel" list="candidate_primary_skills_list" data-suggest-field="primary_skills" />
           </div>
           <div class="field">
             <label>Secondary Skills</label>
@@ -552,16 +568,18 @@
           <div class="field otp-row">
             <div>
               <label>Email OTP</label>
+              <div class="otp-inline-status" data-otp-status-for="email_otp" aria-live="polite"></div>
               <input type="text" name="email_otp" value="{{ form_data.email_otp|default:'' }}" placeholder="Enter OTP" inputmode="numeric" autocomplete="one-time-code" data-otp-flow="candidate" data-otp-channel="email" data-otp-verify-url="{% url 'dashboard:verify_registration_otp' %}" required />
             </div>
-            <button class="btn-secondary" type="submit" name="action" value="send_email_otp" formnovalidate>Send OTP</button>
+            <button class="btn-secondary" type="button" data-otp-send-button data-otp-send-channel="email" data-otp-target="email_otp">Send OTP</button>
           </div>
           <div class="field otp-row">
             <div>
               <label>Mobile OTP</label>
+              <div class="otp-inline-status" data-otp-status-for="mobile_otp" aria-live="polite"></div>
               <input type="text" name="mobile_otp" value="{{ form_data.mobile_otp|default:'' }}" placeholder="Enter OTP" inputmode="numeric" autocomplete="one-time-code" data-otp-flow="candidate" data-otp-channel="sms" data-otp-verify-url="{% url 'dashboard:verify_registration_otp' %}" required />
             </div>
-            <button class="btn-secondary" type="submit" name="action" value="send_otp" formnovalidate>Send OTP</button>
+            <button class="btn-secondary" type="button" data-otp-send-button data-otp-send-channel="sms" data-otp-target="mobile_otp">Send OTP</button>
           </div>
         </div>
         <div class="grid-2">
@@ -576,11 +594,11 @@
       <section class="section">
         <h3>Agreement & Policy</h3>
         <div class="field check-row">
-          <input type="checkbox" id="candidate_agreement" name="candidate_agreement" required />
+          <input type="checkbox" id="candidate_agreement" name="candidate_agreement" {% if form_data.candidate_agreement %}checked{% endif %} required />
           <label for="candidate_agreement">I agree to <span class="terms-link" onclick="openModal('candidateAgreementModal')">Candidate Agreement</span></label>
         </div>
         <div class="field check-row">
-          <input type="checkbox" id="candidate_terms" name="terms_accepted" required />
+          <input type="checkbox" id="candidate_terms" name="terms_accepted" {% if form_data.terms_accepted %}checked{% endif %} required />
           <label for="candidate_terms">I agree to <span class="terms-link" onclick="openModal('candidateTermsModal')">Terms &amp; Conditions</span></label>
         </div>
       </section>
@@ -603,6 +621,12 @@
       </div>
     </div>
   </div>
+
+  <datalist id="candidate_job_title_list"></datalist>
+  <datalist id="candidate_preferred_location_list"></datalist>
+  <datalist id="candidate_location_list"></datalist>
+  <datalist id="candidate_primary_skills_list"></datalist>
+  <datalist id="candidate_university_list"></datalist>
 
   <div class="modal-overlay" id="candidateAgreementModal" aria-hidden="true">
     <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="candidateAgreementTitle">
@@ -864,6 +888,8 @@
   </script>
 
   <script src="{% static 'dashboard/js/password-toggle.js' %}?v={{ static_asset_version }}"></script>
+  <script src="{% static 'dashboard/js/registration-otp-send.js' %}?v={{ static_asset_version }}"></script>
   <script src="{% static 'dashboard/js/otp-verify-ui.js' %}?v={{ static_asset_version }}"></script>
+  <script src="{% static 'dashboard/js/registration-suggestions.js' %}?v={{ static_asset_version }}"></script>
 </body>
 </html>

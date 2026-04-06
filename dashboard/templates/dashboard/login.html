@@ -318,6 +318,35 @@
             font-size: 0.75rem;
             border-top: 1px solid rgba(0, 0, 0, 0.05);
             padding-top: 15px;
+            display: grid;
+            gap: 10px;
+            justify-items: center;
+        }
+
+        .back-site-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-width: 180px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: #e0f2fe;
+            border: 1px solid #bae6fd;
+            color: #075985;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.82rem;
+            transition: 0.2s ease;
+        }
+
+        .back-site-link:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 22px rgba(3, 105, 161, 0.14);
+        }
+        .back-site-link i {
+            font-size: 1rem;
+            line-height: 1;
         }
 
         .btn-link {
@@ -423,7 +452,8 @@
         </div>
 
         <div class="login-note">
-            Secure Login | 2026
+            <div>Secure Login | 2026</div>
+            <a class="back-site-link" href="https://jobexhibition.com/"><i class='bx bx-home' aria-hidden="true"></i><span>Back to website</span></a>
         </div>
     </div>
 

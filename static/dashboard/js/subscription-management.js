@@ -14,6 +14,10 @@
   const expiryFilter = document.getElementById('expiryFilter');
   const subscriptionSearch = document.getElementById('subscriptionSearch');
   const freePaidTable = document.getElementById('freePaidTable');
+  const freePaidEntriesSelect = document.getElementById('freePaidEntriesSelect');
+  const freePaidEntriesInfo = document.getElementById('freePaidEntriesInfo');
+  const freePaidPrevBtn = document.getElementById('freePaidPrevBtn');
+  const freePaidNextBtn = document.getElementById('freePaidNextBtn');
   const expiryTable = document.getElementById('expiryTable');
   const revenueTable = document.getElementById('revenueTable');
   const revenueBars = document.getElementById('revenueBars');
@@ -34,11 +38,14 @@
   const subscriptionFormModalEl = document.getElementById('subscriptionFormModal');
   const subscriptionViewModalEl = document.getElementById('subscriptionViewModal');
   const subscriptionDeleteModalEl = document.getElementById('subscriptionDeleteModal');
+  const billingDetailsModalEl = document.getElementById('billingDetailsModal');
   const subscriptionForm = document.getElementById('subscriptionForm');
   const subscriptionIdInput = document.getElementById('subscriptionId');
   const subscriptionFormTitle = document.getElementById('subscriptionFormTitle');
   const subscriptionViewContent = document.getElementById('subscriptionViewContent');
   const confirmSubscriptionDelete = document.getElementById('confirmSubscriptionDelete');
+  const billingSummaryGrid = document.getElementById('billingSummaryGrid');
+  const billingHistoryModalBody = document.getElementById('billingHistoryModalBody');
   const addonTable = document.getElementById('addonTable');
   const addonViewModalEl = document.getElementById('addonViewModal');
   const addonEditModalEl = document.getElementById('addonEditModal');
@@ -54,6 +61,7 @@
   const subscriptionFormModal = BootstrapModal && subscriptionFormModalEl ? new BootstrapModal(subscriptionFormModalEl, modalOptions) : null;
   const subscriptionViewModal = BootstrapModal && subscriptionViewModalEl ? new BootstrapModal(subscriptionViewModalEl, modalOptions) : null;
   const subscriptionDeleteModal = BootstrapModal && subscriptionDeleteModalEl ? new BootstrapModal(subscriptionDeleteModalEl, modalOptions) : null;
+  const billingDetailsModal = BootstrapModal && billingDetailsModalEl ? new BootstrapModal(billingDetailsModalEl, modalOptions) : null;
   const addonViewModal = BootstrapModal && addonViewModalEl ? new BootstrapModal(addonViewModalEl, modalOptions) : null;
   const addonEditModal = BootstrapModal && addonEditModalEl ? new BootstrapModal(addonEditModalEl, modalOptions) : null;
   const addonDeleteModal = BootstrapModal && addonDeleteModalEl ? new BootstrapModal(addonDeleteModalEl, modalOptions) : null;
@@ -70,6 +78,8 @@
   let plans = [];
   let deleteSubscriptionId = null;
   let activeAddonRow = null;
+  let freePaidPage = 1;
+  let freePaidPageSize = Number(freePaidEntriesSelect ? freePaidEntriesSelect.value : 10) || 10;
 
   const revenueSeries = [];
 
@@ -165,6 +175,48 @@
     return Number.isNaN(number) ? '0' : number.toLocaleString();
   };
 
+  const formatCurrency = (amount, currency = 'INR') => {
+    const value = Number(amount || 0);
+    const printable = Number.isNaN(value) ? '0' : value.toLocaleString();
+    return `${safeText(currency)} ${printable}`;
+  };
+
+  const normalizeLabel = (value) => {
+    const normalized = String(value || '').trim();
+    if (!normalized) return '-';
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  };
+
+  const extractDateParts = (rawValue) => {
+    if (!rawValue) {
+      return {
+        full: '-',
+        date: '-',
+        time: '-',
+        month: '-',
+        year: '-',
+      };
+    }
+    const parsed = new Date(rawValue);
+    if (Number.isNaN(parsed.getTime())) {
+      const safe = safeText(rawValue);
+      return {
+        full: safe,
+        date: safe,
+        time: '-',
+        month: '-',
+        year: '-',
+      };
+    }
+    return {
+      full: parsed.toLocaleString(),
+      date: parsed.toLocaleDateString(),
+      time: parsed.toLocaleTimeString(),
+      month: parsed.toLocaleString(undefined, { month: 'long' }),
+      year: String(parsed.getFullYear()),
+    };
+  };
+
   const computeLocalStats = () => {
     const total = subscriptions.length;
     const paid = subscriptions.filter((item) => item.plan !== 'Free').length;
@@ -215,15 +267,27 @@
   const renderFreePaidTable = () => {
     if (!freePaidTable) return;
     const rows = getFilteredSubscriptions();
-    if (!rows.length) {
-      freePaidTable.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No accounts found.</td></tr>';
+    const total = rows.length;
+    const totalPages = Math.max(Math.ceil(total / freePaidPageSize), 1);
+    if (freePaidPage > totalPages) freePaidPage = totalPages;
+    const startIndex = total ? (freePaidPage - 1) * freePaidPageSize : 0;
+    const endIndex = total ? Math.min(startIndex + freePaidPageSize, total) : 0;
+
+    if (!total) {
+      freePaidTable.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No accounts found.</td></tr>';
+      if (freePaidEntriesInfo) freePaidEntriesInfo.textContent = 'Showing 0 to 0 of 0 Entries';
+      if (freePaidPrevBtn) freePaidPrevBtn.disabled = true;
+      if (freePaidNextBtn) freePaidNextBtn.disabled = true;
       return;
     }
-    freePaidTable.innerHTML = rows
+
+    const pagedRows = rows.slice(startIndex, endIndex);
+    freePaidTable.innerHTML = pagedRows
       .map((sub) => {
         const badge = statusBadge(sub);
         const expiryText = safeText(sub.expiry_date);
         const badgeLabel = badge === 'danger' ? 'Expired' : badge === 'warning' ? 'Expiring' : badge === 'neutral' ? 'No Expiry' : 'Active';
+        const id = escapeHtml(String(sub.id || ''));
         return `
 <tr>
   <td>${safeText(sub.name)}</td>
@@ -233,9 +297,20 @@
   <td>${safeText(sub.start_date)}</td>
   <td>${expiryText}</td>
   <td><span class="badge ${badge}">${badgeLabel}</span></td>
+  <td>
+    <button class="action-btn" type="button" data-free-paid-action="view" data-subscription-id="${id}">
+      <i class="fa-solid fa-eye"></i> View
+    </button>
+  </td>
 </tr>`;
       })
       .join('');
+
+    if (freePaidEntriesInfo) {
+      freePaidEntriesInfo.textContent = `Showing ${startIndex + 1} to ${endIndex} of ${total} Entries`;
+    }
+    if (freePaidPrevBtn) freePaidPrevBtn.disabled = freePaidPage <= 1;
+    if (freePaidNextBtn) freePaidNextBtn.disabled = freePaidPage >= totalPages;
   };
 
   const renderSubscriptionTable = () => {
@@ -309,6 +384,91 @@
           showToast('Delete modal unavailable. Refresh page and try again.', 'danger');
         }
       }
+    });
+  };
+
+  const renderBillingSummary = (subscription) => {
+    if (!billingSummaryGrid) return;
+    const items = [
+      ['Account', subscription.name],
+      ['Account Type', subscription.account_type],
+      ['Plan', subscription.plan],
+      ['Payment Status', subscription.payment_status],
+      ['Start Date', subscription.start_date],
+      ['End Date', subscription.expiry_date],
+      ['Auto Renew', subscription.auto_renew ? 'Enabled' : 'Disabled'],
+      ['Estimated Monthly Billing', formatCurrency(subscription.monthly_revenue, 'INR')],
+      ['Contact', subscription.contact],
+    ];
+    billingSummaryGrid.innerHTML = items
+      .map(
+        ([label, value]) => `
+<div class="payment-summary-item">
+  <span>${label}</span>
+  <strong>${safeText(value || '-')}</strong>
+</div>`,
+      )
+      .join('');
+  };
+
+  const renderBillingHistoryRows = (payments) => {
+    if (!billingHistoryModalBody) return;
+    if (!payments.length) {
+      billingHistoryModalBody.innerHTML =
+        '<tr><td colspan="11" class="text-center text-muted py-4">No payment history found for this subscription.</td></tr>';
+      return;
+    }
+    billingHistoryModalBody.innerHTML = payments
+      .map((payment) => {
+        const dateParts = extractDateParts(payment.created_at);
+        const statusValue = String(payment.status || '').toLowerCase();
+        const statusClass = statusValue === 'success' ? 'success' : statusValue === 'failed' ? 'danger' : 'warning';
+        const gatewayRef = payment.gateway_reference || payment.gateway_order_id || '-';
+        return `
+<tr>
+  <td>${safeText(payment.payment_id)}</td>
+  <td>${safeText(payment.plan_code)}</td>
+  <td>${safeText(normalizeLabel(payment.billing_cycle))}</td>
+  <td>${formatCurrency(payment.amount, payment.currency || 'INR')}</td>
+  <td><span class="badge ${statusClass}">${safeText(normalizeLabel(payment.status))}</span></td>
+  <td>${safeText(payment.provider || '-')}</td>
+  <td>${safeText(dateParts.date)}</td>
+  <td>${safeText(dateParts.time)}</td>
+  <td>${safeText(dateParts.month)}</td>
+  <td>${safeText(dateParts.year)}</td>
+  <td>${safeText(gatewayRef)}</td>
+</tr>`;
+      })
+      .join('');
+  };
+
+  const openBillingDetails = async (subscriptionId) => {
+    if (!subscriptionId) return;
+    setLoading(true);
+    const data = await fetchJson(`/api/subscriptions/${encodeURIComponent(subscriptionId)}/payments/`);
+    setLoading(false);
+    if (!data || !data.success) {
+      showToast(data.error || 'Unable to load payment details.', 'danger');
+      return;
+    }
+
+    renderBillingSummary(data.subscription || {});
+    renderBillingHistoryRows(Array.isArray(data.payments) ? data.payments : []);
+
+    if (billingDetailsModal) {
+      billingDetailsModal.show();
+      return;
+    }
+    showToast('Billing details modal unavailable. Refresh page and try again.', 'danger');
+  };
+
+  const bindFreePaidTable = () => {
+    if (!freePaidTable || freePaidTable.dataset.bound) return;
+    freePaidTable.dataset.bound = 'true';
+    freePaidTable.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-free-paid-action="view"]');
+      if (!button) return;
+      openBillingDetails(button.dataset.subscriptionId);
     });
   };
 
@@ -695,7 +855,34 @@
 
   if (planFilter) {
     planFilter.addEventListener('change', () => {
+      freePaidPage = 1;
       refreshData();
+    });
+  }
+
+  if (freePaidEntriesSelect) {
+    freePaidEntriesSelect.addEventListener('change', () => {
+      freePaidPageSize = Number(freePaidEntriesSelect.value || 10) || 10;
+      freePaidPage = 1;
+      renderFreePaidTable();
+    });
+  }
+
+  if (freePaidPrevBtn) {
+    freePaidPrevBtn.addEventListener('click', () => {
+      if (freePaidPage <= 1) return;
+      freePaidPage -= 1;
+      renderFreePaidTable();
+    });
+  }
+
+  if (freePaidNextBtn) {
+    freePaidNextBtn.addEventListener('click', () => {
+      const totalRows = getFilteredSubscriptions().length;
+      const totalPages = Math.max(Math.ceil(totalRows / freePaidPageSize), 1);
+      if (freePaidPage >= totalPages) return;
+      freePaidPage += 1;
+      renderFreePaidTable();
     });
   }
 
@@ -877,6 +1064,7 @@
   }
 
   bindSubscriptionTable();
+  bindFreePaidTable();
 
   renderRevenue();
   refreshPlans();

@@ -146,6 +146,22 @@
       gap: 8px;
       align-items: end;
     }
+    .otp-inline-status {
+      min-height: 18px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #64748b;
+    }
+    .otp-inline-status.is-success {
+      color: #166534;
+    }
+    .otp-inline-status.is-error {
+      color: #be123c;
+    }
+    .otp-inline-status.is-info {
+      color: #1d4ed8;
+    }
     .btn-secondary {
       border: 1px solid #2563eb;
       color: #1d4ed8;
@@ -366,12 +382,12 @@
       {% endfor %}
     {% endif %}
 
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" data-registration-otp-url="{% url 'dashboard:send_registration_otp' %}">
       {% csrf_token %}
 
       <section class="section">
         <h3>Basic Company Information</h3>
-        <p class="section-note">Company ki basic details li jati hain.</p>
+        <p class="section-note">Company basic details</p>
         <div class="grid-2">
           <div class="field">
             <label>Company Name *</label>
@@ -415,7 +431,7 @@
 
       <section class="section">
         <h3>Contact Information</h3>
-        <p class="section-note">Company se contact karne ke liye details.</p>
+        <p class="section-note">Company Details.</p>
         <div class="grid-2">
           <div class="field">
             <label>Contact Person Name</label>
@@ -429,8 +445,8 @@
         <div class="grid-2">
           <div class="field">
             <label>Official Email ID *</label>
-            <input type="email" name="email" value="{{ form_data.email|default:'' }}" required />
-            <small>Official domain preferred (example: hr@company.com).</small>
+            <input type="email" id="company_email_primary" name="email" value="{{ form_data.email|default:'' }}" required />
+            
           </div>
           <div class="field">
             <label>Mobile Number *</label>
@@ -439,7 +455,7 @@
         </div>
         <div class="grid-2">
           <div class="field">
-            <label>Alternate Phone Number (optional)</label>
+            <label>Alternate Phone Number </label>
             <input type="text" name="alt_phone" value="{{ form_data.alt_phone|default:'' }}" />
           </div>
         </div>
@@ -447,7 +463,7 @@
 
       <section class="section">
         <h3>Company Address</h3>
-        <p class="section-note">Office location ki details.</p>
+        <p class="section-note">Office location details.</p>
         <div class="grid-2">
           <div class="field">
             <label>Address Line 1</label>
@@ -482,10 +498,10 @@
 
       <section class="section">
         <h3>Legal Information</h3>
-        <p class="section-note">Company verification ke liye.</p>
+        <p class="section-note">Company verification</p>
         <div class="grid-2">
           <div class="field">
-            <label>GST Number (optional)</label>
+            <label>GST Number</label>
             <input type="text" name="gst_number" value="{{ form_data.gst_number|default:'' }}" />
           </div>
           <div class="field">
@@ -507,7 +523,7 @@
 
       <section class="section">
         <h3>Account Login Details</h3>
-        <p class="section-note">Portal login ke liye.</p>
+        <p class="section-note">Use this for portal login.</p>
         <div class="grid-2">
           <div class="field">
             <label>Username</label>
@@ -515,7 +531,8 @@
           </div>
           <div class="field">
             <label>Email ID</label>
-            <input type="email" value="{{ form_data.email|default:'' }}" disabled />
+            <input type="email" id="company_email_login" name="email_login" value="{{ form_data.email|default:'' }}" />
+            
           </div>
         </div>
         <div class="grid-2">
@@ -538,7 +555,7 @@
 
       <section class="section">
         <h3>Company Profile Details</h3>
-        <p class="section-note">Company ke bare mein short info.</p>
+        <p class="section-note">some details about company</p>
         <div class="grid-2">
           <div class="field" style="grid-column: 1 / -1;">
             <label>Company Description</label>
@@ -565,21 +582,23 @@
 
       <section class="section">
         <h3>Verification Section</h3>
-        <p class="section-note">Account secure karne ke liye.</p>
+        <p class="section-note">To keep the account secure</p>
         <div class="grid-2">
           <div class="field otp-row">
             <div>
               <label>Email OTP Verification</label>
+              <div class="otp-inline-status" data-otp-status-for="email_otp" aria-live="polite"></div>
               <input type="text" name="email_otp" value="{{ form_data.email_otp|default:'' }}" placeholder="Enter OTP" inputmode="numeric" autocomplete="one-time-code" data-otp-flow="company" data-otp-channel="email" data-otp-verify-url="{% url 'dashboard:verify_registration_otp' %}" required />
             </div>
-            <button class="btn-secondary" type="submit" name="action" value="send_email_otp" formnovalidate>Send OTP</button>
+            <button class="btn-secondary" type="button" data-otp-send-button data-otp-send-channel="email" data-otp-target="email_otp">Send OTP</button>
           </div>
           <div class="field otp-row">
             <div>
               <label>Mobile OTP Verification</label>
+              <div class="otp-inline-status" data-otp-status-for="mobile_otp" aria-live="polite"></div>
               <input type="text" name="mobile_otp" value="{{ form_data.mobile_otp|default:'' }}" placeholder="Enter OTP" inputmode="numeric" autocomplete="one-time-code" data-otp-flow="company" data-otp-channel="sms" data-otp-verify-url="{% url 'dashboard:verify_registration_otp' %}" required />
             </div>
-            <button class="btn-secondary" type="submit" name="action" value="send_otp" formnovalidate>Send OTP</button>
+            <button class="btn-secondary" type="button" data-otp-send-button data-otp-send-channel="sms" data-otp-target="mobile_otp">Send OTP</button>
           </div>
         </div>
         <div class="grid-2">
@@ -894,9 +913,31 @@
         }
       });
     });
+
+    const primaryEmailInput = document.getElementById('company_email_primary');
+    const loginEmailInput = document.getElementById('company_email_login');
+    if (primaryEmailInput && loginEmailInput) {
+      const syncEmail = (source, target) => {
+        target.value = source.value;
+      };
+      primaryEmailInput.addEventListener('input', () => {
+        if (document.activeElement !== loginEmailInput) {
+          syncEmail(primaryEmailInput, loginEmailInput);
+        }
+      });
+      loginEmailInput.addEventListener('input', () => {
+        syncEmail(loginEmailInput, primaryEmailInput);
+      });
+      if (!primaryEmailInput.value && loginEmailInput.value) {
+        syncEmail(loginEmailInput, primaryEmailInput);
+      } else if (!loginEmailInput.value && primaryEmailInput.value) {
+        syncEmail(primaryEmailInput, loginEmailInput);
+      }
+    }
   </script>
 
   <script src="{% static 'dashboard/js/password-toggle.js' %}?v={{ static_asset_version }}"></script>
+  <script src="{% static 'dashboard/js/registration-otp-send.js' %}?v={{ static_asset_version }}"></script>
   <script src="{% static 'dashboard/js/otp-verify-ui.js' %}?v={{ static_asset_version }}"></script>
 </body>
 </html>

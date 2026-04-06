@@ -23,6 +23,16 @@ document.addEventListener('DOMContentLoaded', () => {
     ? fallbackStatusFlow
     : ['Applied', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Selected', 'Offer Received', 'Rejected'];
   let selectedApplicationId = timelineGrid?.dataset.selectedApplication || '';
+  const queryParams = new URLSearchParams(window.location.search);
+  const requestedApplicationId = (queryParams.get('application_id') || '').trim();
+  const requestedMode = (queryParams.get('mode') || '').trim().toLowerCase();
+  const requestedHashApplicationId = (window.location.hash || '').replace('#candidate-app-', '').trim();
+  if (requestedApplicationId) {
+    selectedApplicationId = requestedApplicationId;
+  } else if (requestedHashApplicationId) {
+    selectedApplicationId = requestedHashApplicationId;
+  }
+  let initialFocusHandled = false;
   let timelineVisible = false;
   let applicationsById = new Map();
   let isFetching = false;
@@ -93,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
       : `<button class="action-btn" type="button" data-action="view" data-application-id="${escapeHtml(app.application_id)}">View</button>`;
 
     return `
-      <tr data-application-id="${escapeHtml(app.application_id)}"${isActive ? ' class="candidate-app-row-active"' : ''}>
+      <tr id="candidate-app-${escapeHtml(app.application_id)}" data-application-id="${escapeHtml(app.application_id)}"${isActive ? ' class="candidate-app-row-active"' : ''}>
         <td><strong>${escapeHtml(app.job_title || 'N/A')}</strong></td>
         <td>${escapeHtml(app.company || '--')}</td>
         <td>${escapeHtml(formatDate(app.applied_date))}</td>
@@ -247,6 +257,17 @@ document.addEventListener('DOMContentLoaded', () => {
       renderTimeline(selected || (applications.length ? applications[0] : null));
       if (selectedApplicationId) {
         highlightActiveRow(selectedApplicationId);
+      }
+
+      if (!initialFocusHandled && selectedApplicationId) {
+        const targetRow = document.getElementById(`candidate-app-${selectedApplicationId}`);
+        if (targetRow && (requestedApplicationId || requestedHashApplicationId)) {
+          targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (requestedMode === 'timeline') {
+          setTimelineVisible(true, { scroll: true });
+        }
+        initialFocusHandled = true;
       }
 
       const stamp = data.generated_at ? new Date(data.generated_at) : new Date();

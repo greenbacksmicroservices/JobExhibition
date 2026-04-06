@@ -1,5 +1,7 @@
 import calendar
 import csv
+import hmac
+import hashlib
 import json
 import logging
 import mimetypes
@@ -13,6 +15,9 @@ from itertools import zip_longest
 from pathlib import Path
 from functools import wraps
 from io import BytesIO
+from urllib import error as urllib_error
+from urllib import parse as urllib_parse
+from urllib import request as urllib_request
 
 from django.conf import settings
 from django.contrib import messages
@@ -32,10 +37,21 @@ from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.dateparse import parse_date, parse_time
+from django.utils.dateparse import parse_date, parse_datetime, parse_time
 from django.utils.html import escape
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+
+from jobexhibition.Payment import (
+    INTERNAL_PAYMENT_PROVIDER,
+    PHONEPE_PROVIDER,
+    build_internal_checkout_url,
+    fetch_phonepe_payment_status,
+    initiate_phonepe_payment,
+    is_phonepe_configured,
+    should_fallback_to_internal_gateway,
+)
 
 from .notifications import build_panel_notifications, mark_panel_notifications_seen
 from .models import (
@@ -67,8 +83,10 @@ from .models import (
     PasswordResetToken,
     Message,
     MessageThread,
+    PaymentEventLog,
     Job,
     Subscription,
+    SubscriptionPayment,
     SubscriptionPlan,
     SubscriptionLog,
 )
@@ -169,7 +187,146 @@ COMMON_SKILL_KEYWORDS = [
     "salesforce",
 ]
 
+PLAN_PRIORITY = {
+    "Free": 0,
+    "Basic": 1,
+    "Standard": 2,
+    "Gold": 3,
+}
+PLAN_MONTHLY_JOB_LIMITS = {
+    "Free": 3,
+    "Basic": 10,
+    "Standard": 30,
+    "Gold": None,
+}
+PAYMENT_STATUS_SUCCESS = {"success", "paid", "completed", "captured", "payment_success", "pay_success"}
+PAYMENT_STATUS_FAILURE = {"failed", "failure", "cancelled", "expired", "payment_error", "rejected"}
+PRIORITY_APPLICATION_TAG = "[PRIORITY_APPLICATION]"
+CANDIDATE_PREMIUM_PLAN_CODE = "Basic"
+CANDIDATE_PREMIUM_MONTHLY_PRICE = 199
+
 logger = logging.getLogger(__name__)
+
+
+_HOST_TARGET_PATTERN = re.compile(
+    r"^(?:localhost|(?:\d{1,3}\.){3}\d{1,3}|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9-]{1,63})+)(?::\d{1,5})?(?:/.*)?$",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_host_target(value):
+    return bool(_HOST_TARGET_PATTERN.match((value or "").strip()))
+
+
+def _allowed_redirect_hosts(request):
+    hosts = {"localhost", "127.0.0.1", "[::1]"}
+    for raw_host in getattr(settings, "ALLOWED_HOSTS", []) or []:
+        host = (raw_host or "").strip()
+        if not host or host == "*":
+            continue
+        hosts.add(host.lstrip(".").split(":", 1)[0])
+    try:
+        request_host = request.get_host()
+    except DisallowedHost:
+        request_host = ""
+    if request_host:
+        hosts.add(request_host.split(":", 1)[0])
+    return hosts
+
+
+def _normalized_redirect_target(target):
+    value = (target or "").strip()
+    if not value:
+        return ""
+    if value.startswith("//"):
+        return f"http:{value}"
+    if not value.startswith(("/", "http://", "https://")) and _looks_like_host_target(value):
+        return f"http://{value}"
+    # Treat Django route names like "dashboard:login" as internal redirects.
+    if ":" in value and not value.startswith(("/", "http://", "https://")):
+        try:
+            return reverse(value)
+        except Exception:
+            return ""
+    return value
+
+
+def _safe_redirect_target(request, target, fallback="dashboard:login"):
+    fallback_target = _normalized_redirect_target(fallback) or "/"
+    candidate = _normalized_redirect_target(target)
+    if candidate and url_has_allowed_host_and_scheme(
+        url=candidate,
+        allowed_hosts=_allowed_redirect_hosts(request),
+        require_https=request.is_secure(),
+    ):
+        return candidate
+    if candidate:
+        logger.warning("Blocked unsafe redirect target: %s", candidate)
+    return fallback_target
+
+
+def _safe_absolute_url(request, target, fallback_route):
+    selected = _safe_redirect_target(request, target, fallback=fallback_route)
+    if selected.startswith(("http://", "https://")):
+        return selected
+    try:
+        return request.build_absolute_uri(selected)
+    except Exception:
+        return selected
+
+
+def _sanitize_payment_checkout_url(request, target):
+    value = (target or "").strip()
+    if not value:
+        return ""
+
+    if value.startswith("//"):
+        value = f"{'https' if request.is_secure() else 'http'}:{value}"
+    elif not value.startswith(("/", "http://", "https://")) and _looks_like_host_target(value):
+        value = f"http://{value}"
+
+    if value.startswith("/"):
+        try:
+            value = request.build_absolute_uri(value)
+        except Exception:
+            return ""
+
+    try:
+        parsed = urllib_parse.urlsplit(value)
+    except Exception:
+        logger.warning("Discarded invalid payment checkout URL: %s", value)
+        return ""
+
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in {"http", "https"} or not parsed.netloc:
+        logger.warning("Discarded non-http payment checkout URL: %s", value)
+        return ""
+
+    path_value = parsed.path or "/"
+    # Backward-compatible cleanup for accidental `.../payment/redirect/login/` targets.
+    lowered_path = path_value.lower().rstrip("/")
+    if lowered_path == "/payment/redirect/login":
+        path_value = "/payment/redirect/"
+    # Legacy malformed payment return paths like `/payment/re/company/dashboard/`.
+    if lowered_path == "/payment/re" or lowered_path.startswith("/payment/re/"):
+        path_value = reverse("dashboard:login")
+
+    return urllib_parse.urlunsplit(
+        (
+            scheme,
+            parsed.netloc,
+            path_value,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+
+
+def _redirect_to_payment_checkout_or_fallback(request, checkout_url, fallback_route):
+    resolved_url = _sanitize_payment_checkout_url(request, checkout_url)
+    if resolved_url:
+        return redirect(resolved_url)
+    return redirect(fallback_route)
 
 
 def _resolve_sms_otp_purpose(session_key):
@@ -188,12 +345,146 @@ def _resolve_sms_otp_purpose(session_key):
         return "login"
     return "otp"
 
+def _normalize_plan_code(plan_value):
+    candidate = (plan_value or "").strip().title()
+    legacy_aliases = {
+        "Premium": "Gold",
+        "Enterprise": "Gold",
+        "Starter": "Free",
+    }
+    candidate = legacy_aliases.get(candidate, candidate)
+    if candidate in PLAN_PRIORITY:
+        return candidate
+    return "Free"
+
+
+def _is_paid_subscription_status(status):
+    return (status or "").strip().lower() == "paid"
+
+
+def _latest_subscription_for_account(account_type, email):
+    if not account_type or not email:
+        return None
+    return (
+        Subscription.objects.filter(
+            account_type__iexact=account_type,
+            contact__iexact=email,
+        )
+        .order_by("-expiry_date", "-updated_at", "-id")
+        .first()
+    )
+
+
+def _is_subscription_active(subscription, on_date=None):
+    if not subscription:
+        return False
+    if not _is_paid_subscription_status(subscription.payment_status):
+        return False
+    if _normalize_plan_code(subscription.plan) == "Free":
+        return False
+    local_date = on_date or timezone.localdate()
+    if subscription.expiry_date and subscription.expiry_date < local_date:
+        return False
+    return True
+
+
+def _create_or_touch_subscription(account_type, account_name, account_email):
+    subscription = _latest_subscription_for_account(account_type, account_email)
+    if subscription:
+        updates = []
+        if account_name and subscription.name != account_name:
+            subscription.name = account_name
+            updates.append("name")
+        if account_email and subscription.contact != account_email:
+            subscription.contact = account_email
+            updates.append("contact")
+        if account_type and subscription.account_type != account_type:
+            subscription.account_type = account_type
+            updates.append("account_type")
+        if updates:
+            subscription.save(update_fields=updates)
+        return subscription
+
+    return Subscription.objects.create(
+        subscription_id=_generate_prefixed_id("SUB", 401, Subscription, "subscription_id"),
+        name=account_name or account_email or account_type or "Account",
+        account_type=account_type or "Unknown",
+        plan="Free",
+        payment_status="Free",
+        start_date=timezone.localdate(),
+        expiry_date=None,
+        contact=account_email or "",
+        monthly_revenue=0,
+        auto_renew=False,
+    )
+
+
+def _sync_org_subscription_from_subscription(subscription):
+    if not subscription:
+        return None
+    account_type = (subscription.account_type or "").strip().lower()
+    if account_type == "company":
+        model = Company
+    elif account_type == "consultancy":
+        model = Consultancy
+    else:
+        return None
+
+    obj = None
+    contact = (subscription.contact or "").strip()
+    name = (subscription.name or "").strip()
+    if contact:
+        obj = model.objects.filter(email__iexact=contact).first()
+    if not obj and name:
+        obj = model.objects.filter(name__iexact=name).first()
+    if not obj:
+        return None
+
+    resolved_plan = _normalize_plan_code(subscription.plan)
+    resolved_payment = subscription.payment_status or ("Paid" if resolved_plan != "Free" else "Free")
+    changed = []
+    if obj.plan_type != resolved_plan:
+        obj.plan_type = resolved_plan
+        changed.append("plan_type")
+    if obj.plan_name != resolved_plan:
+        obj.plan_name = resolved_plan
+        changed.append("plan_name")
+    if obj.payment_status != resolved_payment:
+        obj.payment_status = resolved_payment
+        changed.append("payment_status")
+    if obj.plan_start != subscription.start_date:
+        obj.plan_start = subscription.start_date
+        changed.append("plan_start")
+    if obj.plan_expiry != subscription.expiry_date:
+        obj.plan_expiry = subscription.expiry_date
+        changed.append("plan_expiry")
+    if obj.auto_renew != subscription.auto_renew:
+        obj.auto_renew = subscription.auto_renew
+        changed.append("auto_renew")
+    if changed:
+        obj.save(update_fields=changed)
+    return obj
+
+
+def _log_subscription_change(subscription, old_plan, admin_name="System"):
+    previous = _normalize_plan_code(old_plan)
+    latest = _normalize_plan_code(getattr(subscription, "plan", "Free"))
+    if previous == latest:
+        return
+    SubscriptionLog.objects.create(
+        subscription=subscription,
+        old_plan=previous,
+        new_plan=latest,
+        admin_name=admin_name or "System",
+    )
+
+
 def _resolve_subscription_segment(plan_type, payment_status, plan_expiry):
-    plan_type = (plan_type or "").strip()
-    payment_status = (payment_status or "").strip()
-    if payment_status and payment_status != "Paid":
+    resolved_plan = _normalize_plan_code(plan_type)
+    normalized_payment = (payment_status or "").strip()
+    if normalized_payment and not _is_paid_subscription_status(normalized_payment):
         return "non_subscribed"
-    if not plan_type or plan_type.lower() == "free":
+    if resolved_plan == "Free":
         return "non_subscribed"
     if plan_expiry and plan_expiry < timezone.localdate():
         return "non_subscribed"
@@ -201,25 +492,1220 @@ def _resolve_subscription_segment(plan_type, payment_status, plan_expiry):
 
 
 def _resolve_subscription_segment_for_account(account_type, email, plan_type=None, payment_status=None, plan_expiry=None):
-    subscription = None
-    if account_type and email:
-        subscription = (
-            Subscription.objects.filter(
-                account_type__iexact=account_type,
-                contact__iexact=email,
-            )
-            .order_by("-expiry_date", "-updated_at")
-            .first()
-        )
+    subscription = _latest_subscription_for_account(account_type, email)
     if subscription:
-        if subscription.payment_status != "Paid":
-            return "non_subscribed"
-        if (subscription.plan or "").strip().lower() == "free":
-            return "non_subscribed"
-        if subscription.expiry_date and subscription.expiry_date < timezone.localdate():
-            return "non_subscribed"
-        return "subscribed"
+        return "subscribed" if _is_subscription_active(subscription) else "non_subscribed"
     return _resolve_subscription_segment(plan_type, payment_status, plan_expiry)
+
+
+def _resolve_plan_amount(account_type, plan_code, billing_cycle):
+    cycle = (billing_cycle or "monthly").strip().lower()
+    resolved_plan = _normalize_plan_code(plan_code)
+    if resolved_plan == "Free":
+        return 0
+
+    account_label = (account_type or "").strip().lower()
+    if account_label == "candidate" and resolved_plan == CANDIDATE_PREMIUM_PLAN_CODE:
+        if cycle == "quarterly":
+            return CANDIDATE_PREMIUM_MONTHLY_PRICE * 3
+        return CANDIDATE_PREMIUM_MONTHLY_PRICE
+
+    plan_obj = SubscriptionPlan.objects.filter(plan_code__iexact=resolved_plan).first()
+    if plan_obj:
+        if cycle == "quarterly":
+            return plan_obj.price_quarterly or (plan_obj.price_monthly * 3)
+        return plan_obj.price_monthly
+    fallback_price = {
+        "Basic": 999,
+        "Standard": 2499,
+        "Gold": 4999,
+    }.get(resolved_plan, 0)
+    return fallback_price * 3 if cycle == "quarterly" else fallback_price
+
+
+def _month_window(reference_date=None):
+    current = reference_date or timezone.localdate()
+    start = current.replace(day=1)
+    if current.month == 12:
+        next_month = date(current.year + 1, 1, 1)
+    else:
+        next_month = date(current.year, current.month + 1, 1)
+    return start, next_month
+
+
+def _job_post_limit_for_account(
+    account_type,
+    email,
+    fallback_plan_type=None,
+    fallback_payment_status=None,
+    fallback_expiry=None,
+):
+    subscription = _latest_subscription_for_account(account_type, email)
+    if subscription and _is_subscription_active(subscription):
+        plan = _normalize_plan_code(subscription.plan)
+    else:
+        plan = "Free"
+        if _resolve_subscription_segment(fallback_plan_type, fallback_payment_status, fallback_expiry) == "subscribed":
+            plan = _normalize_plan_code(fallback_plan_type)
+    limit = PLAN_MONTHLY_JOB_LIMITS.get(plan, 3)
+    return {
+        "plan": plan,
+        "limit": limit,
+    }
+
+
+def _safe_json_payload(raw_value):
+    if not raw_value:
+        return {}
+    if isinstance(raw_value, (bytes, bytearray)):
+        raw_value = raw_value.decode("utf-8", errors="ignore")
+    if isinstance(raw_value, str):
+        try:
+            return json.loads(raw_value)
+        except json.JSONDecodeError:
+            return {}
+    if isinstance(raw_value, dict):
+        return raw_value
+    return {}
+
+
+def _gateway_post_json(url, payload, timeout_seconds=20):
+    body = json.dumps(payload).encode("utf-8")
+    request_obj = urllib_request.Request(
+        url=url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(request_obj, timeout=timeout_seconds) as response:
+            raw = response.read()
+            parsed = _safe_json_payload(raw)
+            return {
+                "ok": True,
+                "status_code": getattr(response, "status", 200),
+                "data": parsed,
+            }
+    except urllib_error.HTTPError as exc:
+        raw = exc.read() if hasattr(exc, "read") else b""
+        parsed = _safe_json_payload(raw)
+        return {
+            "ok": False,
+            "status_code": getattr(exc, "code", 500),
+            "error": parsed.get("error") or str(exc),
+            "data": parsed,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status_code": 500,
+            "error": str(exc),
+            "data": {},
+        }
+
+
+def _extract_payment_status(payload):
+    if not isinstance(payload, dict):
+        return "pending"
+
+    status_candidates = [
+        payload.get("status"),
+        payload.get("payment_status"),
+        payload.get("paymentStatus"),
+        payload.get("state"),
+        payload.get("result"),
+        payload.get("resultStatus"),
+        payload.get("code"),
+        payload.get("responseCode"),
+    ]
+    nested_payload = payload.get("data")
+    if isinstance(nested_payload, dict):
+        status_candidates.extend(
+            [
+                nested_payload.get("status"),
+                nested_payload.get("payment_status"),
+                nested_payload.get("paymentStatus"),
+                nested_payload.get("state"),
+                nested_payload.get("result"),
+                nested_payload.get("resultStatus"),
+                nested_payload.get("code"),
+                nested_payload.get("responseCode"),
+            ]
+        )
+
+    normalized = ""
+    for item in status_candidates:
+        value = (item or "").strip().lower()
+        if value:
+            normalized = value
+            break
+    if normalized in PAYMENT_STATUS_SUCCESS:
+        return "success"
+    if normalized in PAYMENT_STATUS_FAILURE:
+        return "failed"
+    if normalized in {"pending", "initiated", "processing", "created"}:
+        return "pending"
+    return "pending"
+
+
+_PAYMENT_EXPIRY_KEYS = {
+    "expireat",
+    "expiresat",
+    "expires_at",
+    "expire_at",
+    "expiry",
+    "expirytime",
+    "expiry_time",
+}
+
+
+def _safe_json_blob(value):
+    if value is None:
+        return {}
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode("utf-8", errors="ignore")
+    if isinstance(value, str):
+        parsed = _safe_json_payload(value)
+        if isinstance(parsed, (dict, list)):
+            return parsed
+        return {"raw": value[:8000]}
+    if isinstance(value, (int, float, bool)):
+        return {"value": value}
+    return {"value": str(value)}
+
+
+def _coerce_datetime_value(value):
+    if value in [None, ""]:
+        return None
+
+    numeric_value = None
+    if isinstance(value, (int, float)):
+        numeric_value = float(value)
+    elif isinstance(value, str):
+        raw_value = value.strip()
+        if not raw_value:
+            return None
+        if re.fullmatch(r"-?\d+(\.\d+)?", raw_value):
+            numeric_value = float(raw_value)
+        else:
+            parsed = parse_datetime(raw_value)
+            if not parsed:
+                return None
+            if timezone.is_naive(parsed):
+                parsed = timezone.make_aware(parsed, timezone.utc)
+            return parsed
+    else:
+        return None
+
+    if not numeric_value or numeric_value <= 0:
+        return None
+    # PhonePe expiry is typically milliseconds epoch.
+    if numeric_value > 10_000_000_000:
+        numeric_value = numeric_value / 1000.0
+    try:
+        return timezone.datetime.fromtimestamp(numeric_value, tz=timezone.utc)
+    except Exception:
+        return None
+
+
+def _extract_gateway_expiry_at(payload):
+    if not isinstance(payload, dict):
+        return None
+
+    queue = [payload]
+    visited = set()
+    while queue:
+        current = queue.pop(0)
+        if not isinstance(current, dict):
+            continue
+        current_id = id(current)
+        if current_id in visited:
+            continue
+        visited.add(current_id)
+        for key, value in current.items():
+            normalized_key = (str(key) if key is not None else "").strip().lower().replace("-", "_")
+            if normalized_key in _PAYMENT_EXPIRY_KEYS:
+                parsed = _coerce_datetime_value(value)
+                if parsed:
+                    return parsed
+            if isinstance(value, dict):
+                queue.append(value)
+    return None
+
+
+def _sync_payment_expiry_from_payloads(payment, *payloads):
+    if not payment:
+        return False
+    for payload in payloads:
+        normalized = payload if isinstance(payload, dict) else _safe_json_blob(payload)
+        if not isinstance(normalized, dict):
+            continue
+        parsed_expiry = _extract_gateway_expiry_at(normalized)
+        if parsed_expiry and payment.expires_at != parsed_expiry:
+            payment.expires_at = parsed_expiry
+            return True
+    return False
+
+
+def _is_payment_checkout_expired(payment):
+    if not payment:
+        return False
+    expiry_at = payment.expires_at
+    if not expiry_at:
+        gateway_payload = payment.gateway_response if isinstance(payment.gateway_response, dict) else {}
+        response_payload = gateway_payload.get("response") if isinstance(gateway_payload.get("response"), dict) else {}
+        expiry_at = _extract_gateway_expiry_at(response_payload) or _extract_gateway_expiry_at(gateway_payload)
+    if not expiry_at:
+        return False
+    return expiry_at <= timezone.now()
+
+
+def _compact_headers(headers, max_items=80):
+    compact = {}
+    if not headers:
+        return compact
+    header_items = headers.items() if hasattr(headers, "items") else []
+    for index, (key, value) in enumerate(header_items):
+        if index >= max_items:
+            break
+        compact[str(key)[:120]] = str(value)[:2000]
+    return compact
+
+
+def _record_payment_event(
+    payment,
+    event_type,
+    source="",
+    request_payload=None,
+    response_payload=None,
+    headers=None,
+    status_code=None,
+    success=None,
+    error_message="",
+    gateway_status="",
+    note="",
+):
+    if not payment:
+        return
+
+    normalized_status_code = None
+    try:
+        if status_code not in [None, ""]:
+            parsed_status = int(status_code)
+            if parsed_status > 0:
+                normalized_status_code = parsed_status
+    except (TypeError, ValueError):
+        normalized_status_code = None
+
+    try:
+        PaymentEventLog.objects.create(
+            payment=payment,
+            event_type=(event_type or "event").strip()[:40],
+            source=(source or "").strip()[:40],
+            gateway_status=(gateway_status or "").strip().lower()[:20],
+            status_code=normalized_status_code,
+            success=success if isinstance(success, bool) else None,
+            request_payload=_safe_json_blob(request_payload),
+            response_payload=_safe_json_blob(response_payload),
+            headers=_compact_headers(headers),
+            error_message=(error_message or "").strip()[:6000],
+            note=(note or "").strip()[:255],
+        )
+    except Exception as exc:
+        logger.warning(
+            "Payment event logging failed for %s (%s): %s",
+            getattr(payment, "payment_id", "unknown"),
+            event_type,
+            exc,
+        )
+
+
+def _build_payment_return_url(request):
+    configured = (getattr(settings, "MERCHANT_REDIRECT_URL", "") or "").strip()
+    return _safe_absolute_url(request, configured, "dashboard:payment_redirect")
+
+
+def _build_payment_callback_url(request):
+    configured = (getattr(settings, "MERCHANT_CALLBACK_URL", "") or "").strip()
+    return _safe_absolute_url(request, configured, "dashboard:api_payment_callback")
+
+
+def _build_payment_qr_payload(payment):
+    if not payment:
+        return ""
+    upi_id = (getattr(settings, "PAYMENT_QR_UPI_ID", "") or "").strip()
+    payee_name = (getattr(settings, "PAYMENT_QR_PAYEE_NAME", "") or "Job Exhibition").strip()
+    note_prefix = (getattr(settings, "PAYMENT_QR_NOTE_PREFIX", "") or "Subscription").strip()
+    if not upi_id:
+        return ""
+    query = urllib_parse.urlencode(
+        {
+            "pa": upi_id,
+            "pn": payee_name,
+            "am": f"{float(payment.amount or 0):.2f}",
+            "cu": payment.currency or "INR",
+            "tn": f"{note_prefix} {payment.payment_id}",
+            "tr": payment.payment_id,
+        }
+    )
+    return f"upi://pay?{query}"
+
+
+def _switch_payment_to_internal_checkout(payment, request, fallback_reason):
+    payment.status = "pending"
+    payment.provider = INTERNAL_PAYMENT_PROVIDER
+    payment.redirect_url = build_internal_checkout_url(request, payment.payment_id)
+    payment.gateway_response = {
+        **(payment.gateway_response or {}),
+        "internal_fallback": {
+            "reason": fallback_reason,
+            "created_at": timezone.now().isoformat(),
+        },
+    }
+    payment.save(
+        update_fields=[
+            "status",
+            "provider",
+            "redirect_url",
+            "gateway_response",
+            "updated_at",
+        ]
+    )
+    _record_payment_event(
+        payment=payment,
+        event_type="fallback_internal",
+        source="system",
+        request_payload={"payment_id": payment.payment_id},
+        response_payload=payment.gateway_response,
+        success=True,
+        error_message=fallback_reason,
+        gateway_status=payment.status,
+        note="Switched to internal checkout fallback.",
+    )
+    return {
+        "success": True,
+        "status": "pending",
+        "payment": payment,
+        "redirect_url": payment.redirect_url,
+        "error": fallback_reason,
+    }
+
+
+def _resolve_subscription_period_days(billing_cycle):
+    return 90 if (billing_cycle or "").strip().lower() == "quarterly" else 30
+
+
+def _activate_subscription_from_payment(payment, actor_name="System"):
+    if not payment:
+        return None
+    account_type = (payment.account_type or "").strip().title()
+    plan_code = _normalize_plan_code(payment.plan_code)
+    billing_cycle = (payment.billing_cycle or "monthly").strip().lower()
+    start_date = timezone.localdate()
+    expiry_date = None if plan_code == "Free" else start_date + timezone.timedelta(days=_resolve_subscription_period_days(billing_cycle))
+    monthly_revenue = payment.amount
+    if billing_cycle == "quarterly":
+        monthly_revenue = int(round(payment.amount / 3)) if payment.amount else 0
+
+    subscription = payment.subscription
+    if not subscription:
+        subscription = _create_or_touch_subscription(account_type, payment.account_name, payment.account_email)
+
+    old_plan = subscription.plan or "Free"
+    subscription.name = payment.account_name or subscription.name
+    subscription.account_type = account_type or subscription.account_type
+    subscription.plan = plan_code
+    subscription.payment_status = "Paid" if plan_code != "Free" else "Free"
+    subscription.start_date = start_date
+    subscription.expiry_date = expiry_date
+    subscription.contact = payment.account_email or subscription.contact
+    subscription.monthly_revenue = monthly_revenue if plan_code != "Free" else 0
+    subscription.auto_renew = plan_code != "Free"
+    subscription.save()
+
+    if payment.subscription_id != subscription.id:
+        payment.subscription = subscription
+    payment.status = "success"
+    payment.paid_at = payment.paid_at or timezone.now()
+    payment.callback_verified = payment.callback_verified or True
+    payment.save(update_fields=["subscription", "status", "paid_at", "callback_verified", "updated_at"])
+
+    _log_subscription_change(subscription, old_plan, admin_name=actor_name)
+    _sync_org_subscription_from_subscription(subscription)
+    return subscription
+
+
+def _mark_subscription_free(account_type, account_name, account_email, actor_name="System"):
+    subscription = _create_or_touch_subscription(account_type, account_name, account_email)
+    old_plan = subscription.plan or "Free"
+    subscription.plan = "Free"
+    subscription.payment_status = "Free"
+    subscription.start_date = timezone.localdate()
+    subscription.expiry_date = None
+    subscription.monthly_revenue = 0
+    subscription.auto_renew = False
+    subscription.name = account_name or subscription.name
+    subscription.contact = account_email or subscription.contact
+    subscription.save()
+    _log_subscription_change(subscription, old_plan, admin_name=actor_name)
+    _sync_org_subscription_from_subscription(subscription)
+    return subscription
+
+
+def _create_subscription_payment(
+    account_type,
+    account_name,
+    account_email,
+    plan_code,
+    billing_cycle,
+    amount,
+    subscription=None,
+):
+    return SubscriptionPayment.objects.create(
+        payment_id=_generate_prefixed_id("PAY", 5001, SubscriptionPayment, "payment_id"),
+        subscription=subscription,
+        account_type=account_type,
+        account_name=account_name or "",
+        account_email=account_email or "",
+        plan_code=_normalize_plan_code(plan_code),
+        billing_cycle=(billing_cycle or "monthly").strip().lower(),
+        amount=max(int(amount or 0), 0),
+        currency="INR",
+        status="initiated",
+        provider=getattr(settings, "PAYMENT_GATEWAY_PROVIDER", "PhonePe") or "PhonePe",
+    )
+
+
+def _initiate_gateway_payment(request, payment, account_id_value=""):
+    gateway_url = (getattr(settings, "PAYMENT_GATEWAY_INITIATE_URL", "") or "").strip()
+    callback_url = _build_payment_callback_url(request)
+    redirect_url = _build_payment_return_url(request)
+    timeout_seconds = max(int(getattr(settings, "PAYMENT_GATEWAY_TIMEOUT_SECONDS", 20) or 20), 5)
+    internal_fallback_enabled = bool(getattr(settings, "PAYMENT_GATEWAY_INTERNAL_FALLBACK", True))
+    account_key = re.sub(r"[^a-zA-Z0-9_-]+", "", str(account_id_value or payment.account_email or payment.account_name or payment.payment_id))
+
+    payload = {
+        "amount": int(payment.amount or 0),
+        "userId": account_key or payment.payment_id,
+        "paymentId": payment.payment_id,
+        "merchantOrderId": payment.payment_id,
+        "planCode": payment.plan_code,
+        "billingCycle": payment.billing_cycle,
+        "accountType": payment.account_type,
+        "accountEmail": payment.account_email,
+        "accountName": payment.account_name,
+        "callbackUrl": callback_url,
+        "redirectUrl": redirect_url,
+    }
+
+    if is_phonepe_configured(settings):
+        phonepe_response = initiate_phonepe_payment(
+            settings=settings,
+            payment=payment,
+            account_id_value=account_key or payment.payment_id,
+            redirect_url=redirect_url,
+            callback_url=callback_url,
+            timeout_seconds=timeout_seconds,
+        )
+        merged_response = phonepe_response.get("response") if isinstance(phonepe_response.get("response"), dict) else {}
+        payment.provider = PHONEPE_PROVIDER
+        payment.gateway_response = {
+            "request": payload,
+            "response": merged_response,
+            "status_code": "",
+            "ok": phonepe_response.get("ok", False),
+            "error": phonepe_response.get("error", ""),
+            "provider": PHONEPE_PROVIDER,
+        }
+        payment.gateway_order_id = phonepe_response.get("gateway_order_id") or payment.gateway_order_id
+        payment.gateway_payment_id = phonepe_response.get("gateway_payment_id") or payment.gateway_payment_id
+        payment.gateway_reference = phonepe_response.get("gateway_reference") or payment.gateway_reference
+        payment.redirect_url = _sanitize_payment_checkout_url(
+            request,
+            phonepe_response.get("redirect_url") or payment.redirect_url or "",
+        )
+        _sync_payment_expiry_from_payloads(payment, merged_response, phonepe_response)
+
+        resolved_status = (phonepe_response.get("status") or "pending").strip().lower()
+        if not phonepe_response.get("ok") and resolved_status == "pending":
+            if getattr(settings, "PAYMENT_GATEWAY_DEMO_AUTO_SUCCESS", False):
+                resolved_status = "success"
+            else:
+                phonepe_error = (phonepe_response.get("error") or "").strip()
+                if internal_fallback_enabled and should_fallback_to_internal_gateway(phonepe_error):
+                    return _switch_payment_to_internal_checkout(
+                        payment,
+                        request,
+                        phonepe_error or "PhonePe connection issue. Switched to internal checkout.",
+                    )
+                resolved_status = "failed"
+
+        payment.status = resolved_status
+        if resolved_status == "success":
+            payment.paid_at = timezone.now()
+            payment.callback_verified = True
+        payment.save(
+            update_fields=[
+                "provider",
+                "gateway_response",
+                "gateway_order_id",
+                "gateway_payment_id",
+                "gateway_reference",
+                "redirect_url",
+                "status",
+                "paid_at",
+                "callback_verified",
+                "expires_at",
+                "updated_at",
+            ]
+        )
+        _record_payment_event(
+            payment=payment,
+            event_type="initiate",
+            source=PHONEPE_PROVIDER,
+            request_payload=payload,
+            response_payload=merged_response,
+            status_code=200 if phonepe_response.get("ok") else 502,
+            success=bool(phonepe_response.get("ok")),
+            error_message=phonepe_response.get("error", ""),
+            gateway_status=resolved_status,
+            note="PhonePe checkout initiation.",
+        )
+
+        if resolved_status == "success":
+            _activate_subscription_from_payment(payment, actor_name="PhonePe Gateway")
+        if resolved_status == "pending" and not payment.redirect_url:
+            if internal_fallback_enabled:
+                return _switch_payment_to_internal_checkout(
+                    payment,
+                    request,
+                    "PhonePe response had no checkout URL. Switched to internal checkout.",
+                )
+            payment.status = "failed"
+            payment.gateway_response = {
+                **(payment.gateway_response or {}),
+                "error": "PhonePe response did not include checkout URL.",
+            }
+            payment.save(update_fields=["status", "gateway_response", "updated_at"])
+            resolved_status = "failed"
+        return {
+            "success": resolved_status in {"pending", "success"},
+            "status": resolved_status,
+            "payment": payment,
+            "redirect_url": payment.redirect_url,
+            "error": phonepe_response.get("error", ""),
+        }
+
+    if not gateway_url:
+        if getattr(settings, "PAYMENT_GATEWAY_DEMO_AUTO_SUCCESS", False):
+            payment.status = "success"
+            payment.paid_at = timezone.now()
+            payment.gateway_response = {"demo_mode": True, "payload": payload}
+            payment.callback_verified = True
+            payment.save(update_fields=["status", "paid_at", "gateway_response", "callback_verified", "updated_at"])
+            _record_payment_event(
+                payment=payment,
+                event_type="initiate",
+                source="demo",
+                request_payload=payload,
+                response_payload=payment.gateway_response,
+                success=True,
+                gateway_status=payment.status,
+                note="Demo auto success mode.",
+            )
+            _activate_subscription_from_payment(payment, actor_name="Payment Demo")
+            return {"success": True, "status": "success", "payment": payment, "redirect_url": ""}
+        if internal_fallback_enabled:
+            return _switch_payment_to_internal_checkout(
+                payment,
+                request,
+                "Payment gateway URL not configured. Switched to internal checkout.",
+            )
+        return {"success": False, "error": "Payment gateway URL is not configured.", "payment": payment}
+
+    response = _gateway_post_json(gateway_url, payload, timeout_seconds=timeout_seconds)
+    merged_response = response.get("data") if isinstance(response.get("data"), dict) else {}
+    payment.gateway_response = {
+        "request": payload,
+        "response": merged_response,
+        "status_code": response.get("status_code"),
+        "ok": response.get("ok", False),
+        "error": response.get("error", ""),
+    }
+    nested = merged_response.get("data") if isinstance(merged_response.get("data"), dict) else {}
+    payment.gateway_order_id = (
+        merged_response.get("merchantOrderId")
+        or merged_response.get("orderId")
+        or nested.get("merchantOrderId")
+        or nested.get("orderId")
+        or payment.gateway_order_id
+    )
+    payment.gateway_payment_id = (
+        merged_response.get("transactionId")
+        or merged_response.get("paymentId")
+        or nested.get("transactionId")
+        or nested.get("paymentId")
+        or payment.gateway_payment_id
+    )
+    payment.gateway_reference = (
+        merged_response.get("referenceId")
+        or merged_response.get("reference")
+        or nested.get("referenceId")
+        or nested.get("reference")
+        or payment.gateway_reference
+    )
+    payment.redirect_url = _sanitize_payment_checkout_url(
+        request,
+        (
+            merged_response.get("redirectUrl")
+            or merged_response.get("paymentUrl")
+            or merged_response.get("checkoutUrl")
+            or nested.get("redirectUrl")
+            or nested.get("paymentUrl")
+            or nested.get("checkoutUrl")
+            or payment.redirect_url
+            or ""
+        ),
+    )
+    _sync_payment_expiry_from_payloads(payment, merged_response, nested)
+
+    resolved_status = _extract_payment_status(merged_response)
+    if not response.get("ok") and resolved_status == "pending":
+        if getattr(settings, "PAYMENT_GATEWAY_DEMO_AUTO_SUCCESS", False):
+            resolved_status = "success"
+        else:
+            gateway_error = (response.get("error") or "").strip()
+            if internal_fallback_enabled and should_fallback_to_internal_gateway(gateway_error):
+                return _switch_payment_to_internal_checkout(
+                    payment,
+                    request,
+                    gateway_error or "Gateway connection issue. Switched to internal checkout.",
+                )
+            resolved_status = "failed"
+    payment.status = resolved_status
+    if resolved_status == "success":
+        payment.paid_at = timezone.now()
+        payment.callback_verified = True
+    payment.save(
+        update_fields=[
+            "gateway_response",
+            "gateway_order_id",
+            "gateway_payment_id",
+            "gateway_reference",
+            "redirect_url",
+            "status",
+            "paid_at",
+            "callback_verified",
+            "expires_at",
+            "updated_at",
+        ]
+    )
+    _record_payment_event(
+        payment=payment,
+        event_type="initiate",
+        source=(payment.provider or "gateway"),
+        request_payload=payload,
+        response_payload=merged_response,
+        status_code=response.get("status_code"),
+        success=bool(response.get("ok")),
+        error_message=response.get("error", ""),
+        gateway_status=resolved_status,
+        note="Generic gateway checkout initiation.",
+    )
+
+    if resolved_status == "success":
+        _activate_subscription_from_payment(payment, actor_name="Payment Gateway")
+    if resolved_status == "pending" and not payment.redirect_url and internal_fallback_enabled:
+        return _switch_payment_to_internal_checkout(
+            payment,
+            request,
+            "Gateway response had no checkout URL. Switched to internal checkout.",
+        )
+    return {
+        "success": resolved_status in {"pending", "success"},
+        "status": resolved_status,
+        "payment": payment,
+        "redirect_url": payment.redirect_url,
+        "error": response.get("error", ""),
+    }
+
+
+def _recent_payments_for_account(account_type, email, limit=10):
+    if not account_type or not email:
+        return SubscriptionPayment.objects.none()
+    return SubscriptionPayment.objects.filter(
+        account_type__iexact=account_type,
+        account_email__iexact=email,
+    ).order_by("-created_at")[:limit]
+
+
+def _pending_payment_for_account(account_type, email):
+    if not account_type or not email:
+        return None
+    pending_qs = SubscriptionPayment.objects.filter(
+        account_type__iexact=account_type,
+        account_email__iexact=email,
+        status__in=["initiated", "pending"],
+    ).order_by("-created_at")
+    pending_payment = pending_qs.first()
+    if not pending_payment:
+        return None
+    if _is_payment_checkout_expired(pending_payment):
+        pending_payment.status = "expired"
+        pending_payment.redirect_url = ""
+        pending_payment.gateway_response = {
+            **(pending_payment.gateway_response or {}),
+            "auto_expiry": {
+                "reason": "Checkout session expired.",
+                "marked_at": timezone.now().isoformat(),
+            },
+        }
+        pending_payment.save(update_fields=["status", "redirect_url", "gateway_response", "updated_at"])
+        _record_payment_event(
+            payment=pending_payment,
+            event_type="auto_expire",
+            source=(pending_payment.provider or "gateway"),
+            request_payload={"payment_id": pending_payment.payment_id},
+            response_payload=pending_payment.gateway_response,
+            success=True,
+            gateway_status=pending_payment.status,
+            note="Auto-marked expired due checkout expiry.",
+        )
+        return pending_qs.exclude(pk=pending_payment.pk).first()
+    return pending_payment
+
+
+def _recover_pending_payment_without_checkout(request, payment, account_id_value=""):
+    if not payment:
+        return {
+            "success": False,
+            "status": "failed",
+            "payment": None,
+            "redirect_url": "",
+            "error": "Payment record not found.",
+        }
+
+    normalized_redirect = _sanitize_payment_checkout_url(request, payment.redirect_url or "")
+    if normalized_redirect and normalized_redirect != (payment.redirect_url or "").strip():
+        payment.redirect_url = normalized_redirect
+        payment.save(update_fields=["redirect_url", "updated_at"])
+
+    current_status = (payment.status or "").strip().lower()
+    if current_status not in {"initiated", "pending"}:
+        return {
+            "success": current_status == "success",
+            "status": current_status or "failed",
+            "payment": payment,
+            "redirect_url": normalized_redirect,
+            "error": "",
+        }
+
+    checkout_expired = _is_payment_checkout_expired(payment)
+    if normalized_redirect and not checkout_expired:
+        return {
+            "success": True,
+            "status": current_status,
+            "payment": payment,
+            "redirect_url": normalized_redirect,
+            "error": "",
+        }
+
+    previous_payment_id = payment.payment_id
+    recovery_reason = (
+        "Expired checkout URL for pending payment."
+        if checkout_expired
+        else "Missing checkout URL for pending payment."
+    )
+    recovery_action = (
+        "Expired checkout link detected. Reissued new payment id."
+        if checkout_expired
+        else "Reissued new payment id."
+    )
+    payment.status = "expired"
+    if checkout_expired:
+        payment.redirect_url = ""
+    payment.gateway_response = {
+        **(payment.gateway_response or {}),
+        "checkout_recovery": {
+            "reason": recovery_reason,
+            "action": recovery_action,
+            "performed_at": timezone.now().isoformat(),
+        },
+    }
+    payment.save(update_fields=["status", "redirect_url", "gateway_response", "updated_at"])
+    _record_payment_event(
+        payment=payment,
+        event_type="recovery",
+        source="system",
+        request_payload={"payment_id": previous_payment_id},
+        response_payload=payment.gateway_response,
+        success=True,
+        gateway_status=payment.status,
+        note=recovery_reason,
+    )
+
+    replacement = _create_subscription_payment(
+        account_type=payment.account_type,
+        account_name=payment.account_name,
+        account_email=payment.account_email,
+        plan_code=payment.plan_code,
+        billing_cycle=payment.billing_cycle,
+        amount=payment.amount,
+        subscription=payment.subscription,
+    )
+    initiation = _initiate_gateway_payment(request, replacement, account_id_value=account_id_value)
+    replacement.refresh_from_db()
+
+    replacement_redirect = _sanitize_payment_checkout_url(
+        request,
+        replacement.redirect_url or (initiation.get("redirect_url") or "").strip(),
+    )
+    if replacement_redirect and replacement_redirect != (replacement.redirect_url or "").strip():
+        replacement.redirect_url = replacement_redirect
+        replacement.save(update_fields=["redirect_url", "updated_at"])
+
+    return {
+        "success": bool(initiation.get("success")),
+        "status": (initiation.get("status") or replacement.status or "failed").strip().lower(),
+        "payment": replacement,
+        "redirect_url": replacement_redirect,
+        "error": initiation.get("error", ""),
+        "replaced_payment_id": previous_payment_id,
+    }
+
+
+def _candidate_recruiter_views_count(candidate):
+    if not candidate or not candidate.email:
+        return 0
+    return Application.objects.filter(candidate_email__iexact=candidate.email).exclude(status="Applied").count()
+
+
+def _candidate_is_premium(candidate):
+    if not candidate:
+        return False
+    subscription = _latest_subscription_for_account("Candidate", candidate.email)
+    return _is_subscription_active(subscription)
+
+
+def _is_priority_application(application):
+    notes = (getattr(application, "internal_notes", "") or "").strip()
+    return PRIORITY_APPLICATION_TAG in notes
+
+
+def _billing_redirect_name_for_account(account_type):
+    account = (account_type or "").strip().lower()
+    if account == "candidate":
+        return "dashboard:candidate_subscription"
+    if account == "company":
+        return "dashboard:company_billing"
+    if account == "consultancy":
+        return "dashboard:consultancy_subscription"
+    return "dashboard:subscriptions"
+
+
+def _resolve_subscription_actor_from_request(request):
+    candidate_id = request.session.get("candidate_id")
+    if candidate_id:
+        candidate = Candidate.objects.filter(id=candidate_id).first()
+        if candidate:
+            return {
+                "account_type": "Candidate",
+                "account": candidate,
+                "account_id": candidate.id,
+                "name": candidate.name,
+                "email": candidate.email,
+            }
+
+    company_id = request.session.get("company_id")
+    if company_id:
+        company = Company.objects.filter(id=company_id).first()
+        if company:
+            return {
+                "account_type": "Company",
+                "account": company,
+                "account_id": company.id,
+                "name": company.name,
+                "email": company.email,
+            }
+
+    consultancy_id = request.session.get("consultancy_id")
+    if consultancy_id:
+        consultancy = Consultancy.objects.filter(id=consultancy_id).first()
+        if consultancy:
+            return {
+                "account_type": "Consultancy",
+                "account": consultancy,
+                "account_id": consultancy.id,
+                "name": consultancy.name,
+                "email": consultancy.email,
+            }
+
+    if request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser):
+        post_account_type = (request.POST.get("account_type") or request.GET.get("account_type") or "").strip().title()
+        post_email = (request.POST.get("account_email") or request.GET.get("account_email") or "").strip()
+        post_name = (request.POST.get("account_name") or request.GET.get("account_name") or "").strip()
+        if post_account_type and post_email:
+            return {
+                "account_type": post_account_type,
+                "account": None,
+                "account_id": post_email,
+                "name": post_name or post_email,
+                "email": post_email,
+            }
+
+    return None
+
+
+def _refresh_payment_status_from_gateway(payment):
+    if not payment:
+        return None
+    if payment.status == "success":
+        return payment
+    if (payment.provider or "").strip() == INTERNAL_PAYMENT_PROVIDER:
+        return payment
+
+    timeout_seconds = max(int(getattr(settings, "PAYMENT_GATEWAY_TIMEOUT_SECONDS", 20) or 20), 5)
+    provider_name = (payment.provider or "").strip().lower()
+    if provider_name in {"phonepe", "phone pe"} and is_phonepe_configured(settings):
+        status_response = fetch_phonepe_payment_status(
+            settings=settings,
+            payment=payment,
+            timeout_seconds=timeout_seconds,
+        )
+        merged_response = status_response.get("response") if isinstance(status_response.get("response"), dict) else {}
+        resolved_status = (status_response.get("status") or "pending").strip().lower()
+        payment.gateway_order_id = status_response.get("gateway_order_id") or payment.gateway_order_id
+        payment.gateway_payment_id = status_response.get("gateway_payment_id") or payment.gateway_payment_id
+        payment.gateway_reference = status_response.get("gateway_reference") or payment.gateway_reference
+        payment.gateway_response = {
+            **(payment.gateway_response or {}),
+            "phonepe_status_check": {
+                "response": merged_response,
+                "ok": status_response.get("ok", False),
+                "error": status_response.get("error", ""),
+            },
+        }
+        _sync_payment_expiry_from_payloads(payment, merged_response, status_response)
+        if resolved_status == "success":
+            payment.status = "success"
+            payment.paid_at = payment.paid_at or timezone.now()
+            payment.callback_verified = True
+        elif resolved_status == "failed":
+            payment.status = "failed"
+        payment.save(
+            update_fields=[
+                "gateway_order_id",
+                "gateway_payment_id",
+                "gateway_reference",
+                "gateway_response",
+                "status",
+                "paid_at",
+                "callback_verified",
+                "expires_at",
+                "updated_at",
+            ]
+        )
+        _record_payment_event(
+            payment=payment,
+            event_type="status_check",
+            source=PHONEPE_PROVIDER,
+            request_payload={"payment_id": payment.payment_id},
+            response_payload=merged_response,
+            status_code=200 if status_response.get("ok") else 502,
+            success=bool(status_response.get("ok")),
+            error_message=status_response.get("error", ""),
+            gateway_status=resolved_status,
+            note="PhonePe status sync.",
+        )
+        if payment.status == "success":
+            _activate_subscription_from_payment(payment, actor_name="PhonePe Status Sync")
+        return payment
+
+    status_url = (getattr(settings, "PAYMENT_GATEWAY_STATUS_URL", "") or "").strip()
+    if not status_url:
+        return payment
+
+    payload = {
+        "paymentId": payment.payment_id,
+        "merchantOrderId": payment.gateway_order_id or payment.payment_id,
+        "referenceId": payment.gateway_reference or "",
+        "accountEmail": payment.account_email,
+    }
+    response = _gateway_post_json(
+        status_url,
+        payload,
+        timeout_seconds=timeout_seconds,
+    )
+    merged_response = response.get("data") if isinstance(response.get("data"), dict) else {}
+    resolved_status = _extract_payment_status(merged_response)
+    expiry_changed = _sync_payment_expiry_from_payloads(payment, merged_response)
+    if resolved_status == "pending":
+        if expiry_changed:
+            payment.save(update_fields=["expires_at", "updated_at"])
+        _record_payment_event(
+            payment=payment,
+            event_type="status_check",
+            source=(payment.provider or "gateway"),
+            request_payload=payload,
+            response_payload=merged_response,
+            status_code=response.get("status_code"),
+            success=bool(response.get("ok")),
+            error_message=response.get("error", ""),
+            gateway_status=resolved_status,
+            note="Generic status poll pending.",
+        )
+        return payment
+
+    payment.status = resolved_status
+    payment.gateway_response = {
+        **(payment.gateway_response or {}),
+        "status_check": {
+            "request": payload,
+            "response": merged_response,
+            "ok": response.get("ok", False),
+            "status_code": response.get("status_code"),
+        },
+    }
+    if resolved_status == "success":
+        payment.paid_at = payment.paid_at or timezone.now()
+        payment.callback_verified = True
+    payment.save(update_fields=["status", "gateway_response", "paid_at", "callback_verified", "expires_at", "updated_at"])
+    _record_payment_event(
+        payment=payment,
+        event_type="status_check",
+        source=(payment.provider or "gateway"),
+        request_payload=payload,
+        response_payload=merged_response,
+        status_code=response.get("status_code"),
+        success=bool(response.get("ok")),
+        error_message=response.get("error", ""),
+        gateway_status=resolved_status,
+        note="Generic status poll.",
+    )
+    if resolved_status == "success":
+        _activate_subscription_from_payment(payment, actor_name="Payment Status Sync")
+    return payment
+
+
+def _subscription_plan_catalog():
+    plans = list(SubscriptionPlan.objects.all())
+    if not plans:
+        return [
+            {
+                "name": "Free Plan",
+                "plan_code": "Free",
+                "price_monthly": 0,
+                "price_quarterly": 0,
+                "job_posts": "3 / month",
+                "job_validity": "15 days",
+                "resume_view": "Basic",
+                "resume_download": "No",
+                "candidate_chat": "No",
+                "interview_scheduler": "No",
+                "auto_match": "No",
+                "shortlisting": "Manual",
+                "candidate_ranking": "No",
+                "candidate_pool_manager": "No",
+                "featured_jobs": "No",
+                "company_branding": "Standard",
+                "analytics_dashboard": "Basic",
+                "support": "Email",
+                "dedicated_account_manager": "No",
+            },
+            {
+                "name": "Basic Plan",
+                "plan_code": "Basic",
+                "price_monthly": 999,
+                "price_quarterly": 2499,
+                "job_posts": "10 / month",
+                "job_validity": "30 days",
+                "resume_view": "Yes",
+                "resume_download": "No",
+                "candidate_chat": "Limited",
+                "interview_scheduler": "No",
+                "auto_match": "No",
+                "shortlisting": "Manual",
+                "candidate_ranking": "No",
+                "candidate_pool_manager": "No",
+                "featured_jobs": "No",
+                "company_branding": "Standard",
+                "analytics_dashboard": "Basic",
+                "support": "Email",
+                "dedicated_account_manager": "No",
+            },
+            {
+                "name": "Standard Plan",
+                "plan_code": "Standard",
+                "price_monthly": 2499,
+                "price_quarterly": 6999,
+                "job_posts": "30 / month",
+                "job_validity": "45 days",
+                "resume_view": "Yes",
+                "resume_download": "Limited",
+                "candidate_chat": "Yes",
+                "interview_scheduler": "Yes",
+                "auto_match": "Yes",
+                "shortlisting": "Yes",
+                "candidate_ranking": "Yes",
+                "candidate_pool_manager": "Yes",
+                "featured_jobs": "3 / month",
+                "company_branding": "Enhanced",
+                "analytics_dashboard": "Advanced",
+                "support": "Priority",
+                "dedicated_account_manager": "No",
+            },
+            {
+                "name": "Gold Plan",
+                "plan_code": "Gold",
+                "price_monthly": 4999,
+                "price_quarterly": 12999,
+                "job_posts": "Unlimited",
+                "job_validity": "60 days",
+                "resume_view": "Unlimited",
+                "resume_download": "Unlimited",
+                "candidate_chat": "Unlimited",
+                "interview_scheduler": "Advanced",
+                "auto_match": "AI",
+                "shortlisting": "Yes",
+                "candidate_ranking": "Yes",
+                "candidate_pool_manager": "Yes",
+                "featured_jobs": "Unlimited",
+                "company_branding": "Highlighted",
+                "analytics_dashboard": "Enterprise",
+                "support": "WhatsApp + Email",
+                "dedicated_account_manager": "Yes",
+            },
+        ]
+
+    normalized_plans = []
+    for plan in plans:
+        normalized_plans.append(
+            {
+                "name": plan.name,
+                "plan_code": _normalize_plan_code(plan.plan_code),
+                "price_monthly": plan.price_monthly,
+                "price_quarterly": plan.price_quarterly,
+                "job_posts": plan.job_posts,
+                "job_validity": plan.job_validity,
+                "resume_view": plan.resume_view,
+                "resume_download": plan.resume_download,
+                "candidate_chat": plan.candidate_chat,
+                "interview_scheduler": plan.interview_scheduler,
+                "auto_match": plan.auto_match,
+                "shortlisting": plan.shortlisting,
+                "candidate_ranking": plan.candidate_ranking,
+                "candidate_pool_manager": plan.candidate_pool_manager,
+                "featured_jobs": plan.featured_jobs,
+                "company_branding": plan.company_branding,
+                "analytics_dashboard": plan.analytics_dashboard,
+                "support": plan.support,
+                "dedicated_account_manager": plan.dedicated_account_manager,
+            }
+        )
+    normalized_plans.sort(key=lambda item: PLAN_PRIORITY.get(item["plan_code"], 999))
+    return normalized_plans
 
 
 def _active_advertisement_for(audience, segment=""):
@@ -1062,21 +2548,21 @@ def welcome_view(request):
     # Check what type of user is logging in
     user_type = (request.GET.get("type") or request.COOKIES.get("welcome_type") or "candidate").strip().lower()
     next_url = request.GET.get("next") or request.COOKIES.get("welcome_next", "")
+    default_next = "dashboard:candidate_job_search"
 
     # If no next URL is provided, determine it based on user type
     if not next_url:
         if user_type == "company":
-            next_url = "dashboard:company_dashboard"
+            default_next = "dashboard:company_dashboard"
         elif user_type == "consultancy":
-            next_url = "dashboard:consultancy_dashboard"
+            default_next = "dashboard:consultancy_dashboard"
         elif user_type == "subadmin":
-            next_url = "dashboard:subadmin_dashboard"
+            default_next = "dashboard:subadmin_dashboard"
         elif user_type == "admin":
-            next_url = "dashboard:dashboard"
-        else:  # candidate
-            next_url = "dashboard:candidate_job_search"
+            default_next = "dashboard:dashboard"
+        next_url = default_next
 
-    next_url = reverse(next_url) if isinstance(next_url, str) and ":" in next_url else next_url
+    next_url = _safe_redirect_target(request, next_url, fallback=default_next)
 
     display_name = ""
     if request.user.is_authenticated:
@@ -1403,6 +2889,36 @@ def _validate_registration_email_otp(request, flow_key, email, otp_value):
 
 def _clear_registration_email_otp(request, flow_key):
     _clear_session_otp(request, f"{OTP_SESSION_PREFIX}{flow_key}_email")
+
+
+def _store_consultancy_registration_documents(consultancy, upload_map):
+    if not consultancy or not upload_map:
+        return 0
+
+    stored_count = 0
+    document_specs = [
+        ("registration_certificate", "Registration Certificate", "incorporation"),
+        ("gst_certificate", "GST Certificate", "gst"),
+        ("pan_card", "PAN Card", "other"),
+        ("address_proof", "Address Proof", "address"),
+    ]
+    for field_name, title, doc_type in document_specs:
+        upload = upload_map.get(field_name)
+        if not upload:
+            continue
+        try:
+            if hasattr(upload, "seek"):
+                upload.seek(0)
+        except Exception:
+            pass
+        ConsultancyKycDocument.objects.create(
+            consultancy=consultancy,
+            document_title=title,
+            document_type=doc_type,
+            document_file=upload,
+        )
+        stored_count += 1
+    return stored_count
 
 
 def _client_ip(request):
@@ -2040,6 +3556,18 @@ def register_options_view(request):
 
 def login_view(request):
     _auto_approve_due_accounts()
+    force_login = (request.GET.get("force_login") or request.GET.get("fresh") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if force_login:
+        if request.user.is_authenticated:
+            logout(request)
+        for session_key in ("company_id", "company_name", "consultancy_id", "consultancy_name", "candidate_id", "candidate_name"):
+            request.session.pop(session_key, None)
+        _clear_session_otp(request, LOGIN_OTP_SESSION_KEY)
+
     # If already authenticated as admin, redirect to dashboard
     if request.user.is_authenticated:
         if _is_subadmin_user(request.user):
@@ -2866,6 +4394,7 @@ def company_register_view(request):
                 messages.info(request, f"Verification link: {verify_url}")
 
         _clear_registration_otp(request, flow_key)
+        _clear_registration_email_otp(request, flow_key)
         _set_registration_captcha(request, flow_key)
         return redirect("dashboard:login")
 
@@ -2877,68 +4406,254 @@ def company_register_view(request):
 
 
 def consultancy_register_view(request):
+    flow_key = "consultancy"
+    form_data = {}
+    captcha_question = _get_registration_captcha_question(request, flow_key)
+
     if request.method == "POST":
+        action = (request.POST.get("action") or "register").strip().lower()
         name = (request.POST.get("name") or "").strip()
-        email = (request.POST.get("email") or "").strip()
+        email = (request.POST.get("email") or "").strip().lower()
         password = request.POST.get("password") or ""
+        confirm_password = request.POST.get("confirm_password") or ""
         phone = (request.POST.get("phone") or "").strip()
-        if not name or not email or not phone or not password:
-            messages.error(request, "Name, email, phone, and password are required.")
-        elif Consultancy.objects.filter(name__iexact=name).exists() or Consultancy.objects.filter(email__iexact=email).exists():
-            messages.error(request, "Consultancy with this name or email already exists.")
-        else:
-            consultancy_types = request.POST.getlist("consultancy_types")
-            address_line1 = (request.POST.get("address_line1") or "").strip()
-            address_line2 = (request.POST.get("address_line2") or "").strip()
-            city = (request.POST.get("city") or "").strip()
-            state = (request.POST.get("state") or "").strip()
-            pin_code = (request.POST.get("pin_code") or "").strip()
-            country = (request.POST.get("country") or "").strip()
-            full_address = ", ".join(part for part in [address_line1, address_line2, city, state, pin_code, country] if part)
-            location = (request.POST.get("location") or "").strip() or city
-            Consultancy.objects.create(
-                name=name,
-                email=email,
-                password=_hash_password(password),
-                phone=phone,
-                location=location,
-                contact_position=(request.POST.get("owner_designation") or request.POST.get("contact_position") or "").strip(),
-                company_type=(request.POST.get("company_type") or "").strip(),
-                registration_number=(request.POST.get("registration_number") or "").strip(),
-                gst_number=(request.POST.get("gst_number") or "").strip(),
-                year_established=_parse_int(request.POST.get("year_established")),
-                website_url=(request.POST.get("website_url") or "").strip(),
-                alt_phone=(request.POST.get("alt_phone") or "").strip(),
-                office_landline=(request.POST.get("office_landline") or "").strip(),
-                address_line1=address_line1,
-                address_line2=address_line2,
-                city=city,
-                state=state,
-                pin_code=pin_code,
-                country=country,
-                address=full_address,
-                owner_name=(request.POST.get("owner_name") or "").strip(),
-                owner_designation=(request.POST.get("owner_designation") or "").strip(),
-                owner_phone=(request.POST.get("owner_phone") or "").strip(),
-                owner_email=(request.POST.get("owner_email") or "").strip(),
-                owner_pan=(request.POST.get("owner_pan") or "").strip(),
-                owner_aadhaar=(request.POST.get("owner_aadhaar") or "").strip(),
-                consultancy_type=", ".join(t.strip() for t in consultancy_types if t.strip()),
-                industries_served=(request.POST.get("industries_served") or "").strip(),
-                service_charges=(request.POST.get("service_charges") or "").strip(),
-                areas_of_operation=(request.POST.get("areas_of_operation") or "").strip(),
-                registration_certificate=request.FILES.get("registration_certificate"),
-                gst_certificate=request.FILES.get("gst_certificate"),
-                pan_card=request.FILES.get("pan_card"),
-                address_proof=request.FILES.get("address_proof"),
-                profile_image=request.FILES.get("logo_upload") or request.FILES.get("profile_image"),
-                account_type="Consultancy",
-                account_status="Active",
-                kyc_status="Pending",
+        mobile_otp = (request.POST.get("mobile_otp") or "").strip()
+        email_otp = (request.POST.get("email_otp") or "").strip()
+        captcha_answer = (request.POST.get("captcha_answer") or "").strip()
+        consultancy_types = request.POST.getlist("consultancy_types")
+        address_line1 = (request.POST.get("address_line1") or "").strip()
+        address_line2 = (request.POST.get("address_line2") or "").strip()
+        city = (request.POST.get("city") or "").strip()
+        state = (request.POST.get("state") or "").strip()
+        pin_code = (request.POST.get("pin_code") or "").strip()
+        country = (request.POST.get("country") or "").strip()
+        company_type = (request.POST.get("company_type") or "").strip()
+        registration_number = (request.POST.get("registration_number") or "").strip()
+        gst_number = (request.POST.get("gst_number") or "").strip()
+        year_established = _parse_int(request.POST.get("year_established"))
+        website_url = (request.POST.get("website_url") or "").strip()
+        alt_phone = (request.POST.get("alt_phone") or "").strip()
+        office_landline = (request.POST.get("office_landline") or "").strip()
+        owner_name = (request.POST.get("owner_name") or "").strip()
+        owner_designation = (request.POST.get("owner_designation") or "").strip()
+        owner_phone = (request.POST.get("owner_phone") or "").strip()
+        owner_email = (request.POST.get("owner_email") or "").strip().lower()
+        owner_pan = (request.POST.get("owner_pan") or "").strip()
+        owner_aadhaar = (request.POST.get("owner_aadhaar") or "").strip()
+        industries_served = (request.POST.get("industries_served") or "").strip()
+        service_charges = (request.POST.get("service_charges") or "").strip()
+        areas_of_operation = (request.POST.get("areas_of_operation") or "").strip()
+        consultancy_agreement = request.POST.get("consultancy_agreement") == "on"
+        terms_accepted = request.POST.get("terms_accepted") == "on"
+        location = (request.POST.get("location") or "").strip() or city
+        contact_position = (request.POST.get("owner_designation") or request.POST.get("contact_position") or "").strip()
+        full_address = ", ".join(part for part in [address_line1, address_line2, city, state, pin_code, country] if part)
+        registration_certificate = request.FILES.get("registration_certificate")
+        gst_certificate = request.FILES.get("gst_certificate")
+        pan_card = request.FILES.get("pan_card")
+        address_proof = request.FILES.get("address_proof")
+        profile_image = request.FILES.get("logo_upload") or request.FILES.get("profile_image")
+
+        form_data = {
+            "name": name,
+            "email": email,
+            "phone": phone,
+            "mobile_otp": mobile_otp,
+            "email_otp": email_otp,
+            "captcha_answer": captcha_answer,
+            "company_type": company_type,
+            "registration_number": registration_number,
+            "gst_number": gst_number,
+            "year_established": year_established,
+            "website_url": website_url,
+            "alt_phone": alt_phone,
+            "office_landline": office_landline,
+            "location": location,
+            "address_line1": address_line1,
+            "address_line2": address_line2,
+            "city": city,
+            "state": state,
+            "pin_code": pin_code,
+            "country": country,
+            "owner_name": owner_name,
+            "owner_designation": owner_designation,
+            "owner_phone": owner_phone,
+            "owner_email": owner_email,
+            "owner_pan": owner_pan,
+            "owner_aadhaar": owner_aadhaar,
+            "consultancy_types": consultancy_types,
+            "industries_served": industries_served,
+            "service_charges": service_charges,
+            "areas_of_operation": areas_of_operation,
+            "consultancy_agreement": consultancy_agreement,
+            "terms_accepted": terms_accepted,
+        }
+
+        if action == "send_email_otp":
+            if not email:
+                messages.error(request, "Please enter email before requesting OTP.")
+            elif not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+                messages.error(request, "Enter a valid email address.")
+            else:
+                otp_value, otp_error = _issue_registration_email_otp(request, flow_key, email)
+                if otp_error:
+                    messages.error(request, otp_error)
+                else:
+                    messages.success(request, "OTP sent successfully to your email address.")
+                    _maybe_show_debug_otp(request, otp_value, "Email")
+            captcha_question = _set_registration_captcha(request, flow_key)
+            return render(
+                request,
+                "dashboard/register_consultancy.html",
+                {"form_data": form_data, "captcha_question": captcha_question},
             )
-            messages.success(request, "Consultancy registered successfully. Please wait for admin approval.")
-            return redirect("dashboard:login")
-    return render(request, "dashboard/register_consultancy.html")
+
+        if action == "send_otp":
+            if not phone:
+                messages.error(request, "Please enter mobile number before requesting OTP.")
+            elif not re.match(r"^\+?\d{10,15}$", phone):
+                messages.error(request, "Enter a valid mobile number (10 to 15 digits).")
+            else:
+                otp_value, otp_error = _issue_registration_otp(request, flow_key, phone)
+                if otp_error:
+                    messages.error(request, otp_error)
+                else:
+                    messages.success(request, "OTP sent successfully to your mobile number.")
+                    _maybe_show_debug_otp(request, otp_value, "SMS")
+            captcha_question = _set_registration_captcha(request, flow_key)
+            return render(
+                request,
+                "dashboard/register_consultancy.html",
+                {"form_data": form_data, "captcha_question": captcha_question},
+            )
+
+        errors = []
+        required_fields = {
+            "Consultancy name": name,
+            "Official email": email,
+            "Mobile number": phone,
+            "Company type": company_type,
+            "Create password": password,
+            "Confirm password": confirm_password,
+            "Owner/Director name": owner_name,
+        }
+        missing_fields = [label for label, value in required_fields.items() if not value]
+        if missing_fields:
+            errors.append("Please fill required fields: " + ", ".join(missing_fields) + ".")
+
+        if email and not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            errors.append("Enter a valid official email address.")
+        if owner_email and not re.match(r"[^@]+@[^@]+\.[^@]+", owner_email):
+            errors.append("Owner email format is invalid.")
+        if phone and not re.match(r"^\+?\d{10,15}$", phone):
+            errors.append("Enter a valid mobile number (10 to 15 digits).")
+
+        if password != confirm_password:
+            errors.append("Password and confirm password do not match.")
+        errors.extend(_password_strength_errors(password))
+
+        if Consultancy.objects.filter(name__iexact=name).exists():
+            errors.append("Consultancy with this name already exists.")
+        if Consultancy.objects.filter(email__iexact=email).exists():
+            errors.append("Consultancy with this email already exists.")
+        if phone and Consultancy.objects.filter(phone=phone).exists():
+            errors.append("This mobile number is already used by another consultancy account.")
+
+        if not consultancy_types:
+            errors.append("Please select at least one consultancy type.")
+
+        mobile_otp_valid = _validate_registration_otp(request, flow_key, phone, mobile_otp)
+        if not mobile_otp_valid:
+            errors.append("Invalid or expired mobile OTP. Please request a new OTP.")
+
+        email_otp_valid = _validate_registration_email_otp(request, flow_key, email, email_otp)
+        if not email_otp_valid:
+            errors.append("Invalid or expired email OTP. Please request a new OTP.")
+
+        if not _validate_registration_captcha(request, flow_key, captcha_answer):
+            errors.append("Invalid CAPTCHA answer.")
+
+        if not consultancy_agreement:
+            errors.append("You must agree to the Consultancy Agreement.")
+        if not terms_accepted:
+            errors.append("You must agree to Terms & Conditions.")
+
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+            captcha_question = _set_registration_captcha(request, flow_key)
+            return render(
+                request,
+                "dashboard/register_consultancy.html",
+                {"form_data": form_data, "captcha_question": captcha_question},
+            )
+
+        consultancy = Consultancy.objects.create(
+            name=name,
+            email=email,
+            password=_hash_password(password),
+            phone=phone,
+            location=location,
+            contact_position=contact_position,
+            company_type=company_type,
+            registration_number=registration_number,
+            gst_number=gst_number,
+            year_established=year_established,
+            website_url=website_url,
+            alt_phone=alt_phone,
+            office_landline=office_landline,
+            address_line1=address_line1,
+            address_line2=address_line2,
+            city=city,
+            state=state,
+            pin_code=pin_code,
+            country=country,
+            address=full_address,
+            owner_name=owner_name,
+            owner_designation=owner_designation,
+            owner_phone=owner_phone,
+            owner_email=owner_email,
+            owner_pan=owner_pan,
+            owner_aadhaar=owner_aadhaar,
+            consultancy_type=", ".join(t.strip() for t in consultancy_types if t.strip()),
+            industries_served=industries_served,
+            service_charges=service_charges,
+            areas_of_operation=areas_of_operation,
+            registration_certificate=registration_certificate,
+            gst_certificate=gst_certificate,
+            pan_card=pan_card,
+            address_proof=address_proof,
+            profile_image=profile_image,
+            account_type="Consultancy",
+            account_status="Active",
+            kyc_status="Pending",
+        )
+        uploaded_count = _store_consultancy_registration_documents(
+            consultancy,
+            {
+                "registration_certificate": registration_certificate,
+                "gst_certificate": gst_certificate,
+                "pan_card": pan_card,
+                "address_proof": address_proof,
+            },
+        )
+        if uploaded_count:
+            messages.info(
+                request,
+                f"{uploaded_count} document(s) were also added to your consultancy KYC panel.",
+            )
+
+        messages.success(request, "Consultancy registered successfully. Please wait for admin approval.")
+        _clear_registration_otp(request, flow_key)
+        _clear_registration_email_otp(request, flow_key)
+        _set_registration_captcha(request, flow_key)
+        return redirect("dashboard:login")
+
+    return render(
+        request,
+        "dashboard/register_consultancy.html",
+        {"form_data": form_data, "captcha_question": captcha_question},
+    )
 
 
 def candidate_register_view(request):
@@ -2957,6 +4672,8 @@ def candidate_register_view(request):
         mobile_otp = (request.POST.get("mobile_otp") or "").strip()
         email_otp = (request.POST.get("email_otp") or "").strip()
         captcha_answer = (request.POST.get("captcha_answer") or "").strip()
+        candidate_agreement = request.POST.get("candidate_agreement") == "on"
+        terms_accepted = request.POST.get("terms_accepted") == "on"
 
         date_of_birth_raw = (request.POST.get("date_of_birth") or "").strip()
         gender = (request.POST.get("gender") or "").strip()
@@ -3010,6 +4727,8 @@ def candidate_register_view(request):
             "mobile_otp": mobile_otp,
             "email_otp": email_otp,
             "captcha_answer": captcha_answer,
+            "candidate_agreement": candidate_agreement,
+            "terms_accepted": terms_accepted,
         }
 
         if action == "send_email_otp":
@@ -3066,11 +4785,21 @@ def candidate_register_view(request):
         if Candidate.objects.filter(phone=phone).exists():
             errors.append("This mobile number is already used by another candidate account.")
 
-        if not _validate_registration_otp(request, flow_key, phone, mobile_otp):
+        mobile_otp_valid = _validate_registration_otp(request, flow_key, phone, mobile_otp)
+        if not mobile_otp_valid:
             errors.append("Invalid or expired mobile OTP. Please request a new OTP.")
+
+        email_otp_valid = _validate_registration_email_otp(request, flow_key, email, email_otp)
+        if not email_otp_valid:
+            errors.append("Invalid or expired email OTP. Please request a new OTP.")
 
         if not _validate_registration_captcha(request, flow_key, captcha_answer):
             errors.append("Invalid CAPTCHA answer.")
+
+        if not candidate_agreement:
+            errors.append("You must agree to the Candidate Agreement.")
+        if not terms_accepted:
+            errors.append("You must agree to Terms & Conditions.")
 
         profile_photo = request.FILES.get("profile_photo")
         primary_resume = request.FILES.get("resume")
@@ -3186,7 +4915,6 @@ def candidate_register_view(request):
 
         _clear_registration_otp(request, flow_key)
         _clear_registration_email_otp(request, flow_key)
-        _clear_registration_email_otp(request, flow_key)
         _set_registration_captcha(request, flow_key)
         return redirect("dashboard:login")
 
@@ -3197,6 +4925,190 @@ def candidate_register_view(request):
     )
 
 
+@require_http_methods(["GET"])
+def candidate_registration_suggestions_api(request):
+    field = (request.GET.get("field") or "").strip().lower()
+    query = (request.GET.get("q") or "").strip()
+    normalized_query = query.lower()
+
+    field_aliases = {
+        "location": "preferred_job_location",
+    }
+    resolved_field = field_aliases.get(field, field)
+    allowed_fields = {"current_job_title", "preferred_job_location", "primary_skills", "university"}
+    if resolved_field not in allowed_fields:
+        return JsonResponse({"suggestions": []})
+
+    fallback = {
+        "current_job_title": [
+            "Software Engineer",
+            "Python Developer",
+            "Data Analyst",
+            "Frontend Developer",
+            "Backend Developer",
+            "HR Executive",
+            "Sales Manager",
+            "Digital Marketing Executive",
+        ],
+        "preferred_job_location": [
+            "Bengaluru",
+            "Hyderabad",
+            "Pune",
+            "Mumbai",
+            "Delhi NCR",
+            "Chennai",
+            "Kolkata",
+            "Remote",
+        ],
+        "primary_skills": [
+            "Python",
+            "Django",
+            "JavaScript",
+            "React",
+            "SQL",
+            "Power BI",
+            "Excel",
+            "Communication",
+        ],
+        "university": [
+            "Delhi University",
+            "Mumbai University",
+            "Anna University",
+            "Pune University",
+            "JNTU Hyderabad",
+            "Bangalore University",
+        ],
+    }
+
+    suggestions = []
+    seen = set()
+
+    def add_suggestion(value):
+        cleaned = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not cleaned:
+            return
+        lowered = cleaned.lower()
+        if normalized_query and normalized_query not in lowered:
+            return
+        if lowered in seen:
+            return
+        seen.add(lowered)
+        suggestions.append(cleaned)
+
+    for item in fallback.get(resolved_field, []):
+        add_suggestion(item)
+
+    if resolved_field == "current_job_title":
+        job_titles = Job.objects.exclude(title="").values_list("title", flat=True)
+        if normalized_query:
+            job_titles = job_titles.filter(title__icontains=query)
+        for value in job_titles.order_by("-created_at")[:60]:
+            add_suggestion(value)
+
+        candidate_positions = Candidate.objects.exclude(current_position="").values_list("current_position", flat=True)
+        if normalized_query:
+            candidate_positions = candidate_positions.filter(current_position__icontains=query)
+        for value in candidate_positions[:40]:
+            add_suggestion(value)
+
+    elif resolved_field == "preferred_job_location":
+        job_locations = Job.objects.exclude(location="").values_list("location", flat=True)
+        if normalized_query:
+            job_locations = job_locations.filter(location__icontains=query)
+        for value in job_locations.order_by("-created_at")[:60]:
+            add_suggestion(value)
+
+        candidate_locations = Candidate.objects.exclude(preferred_job_location="").values_list(
+            "preferred_job_location",
+            flat=True,
+        )
+        if normalized_query:
+            candidate_locations = candidate_locations.filter(preferred_job_location__icontains=query)
+        for value in candidate_locations[:40]:
+            add_suggestion(value)
+
+        profile_locations = Candidate.objects.exclude(location="").values_list("location", flat=True)
+        if normalized_query:
+            profile_locations = profile_locations.filter(location__icontains=query)
+        for value in profile_locations[:40]:
+            add_suggestion(value)
+
+    elif resolved_field == "university":
+        institution_qs = CandidateEducation.objects.exclude(institution="").values_list("institution", flat=True)
+        if normalized_query:
+            institution_qs = institution_qs.filter(institution__icontains=query)
+        for value in institution_qs[:80]:
+            add_suggestion(value)
+
+    elif resolved_field == "primary_skills":
+        skill_values = []
+        skill_values.extend(
+            Job.objects.exclude(skills="").values_list("skills", flat=True)[:80]
+        )
+        skill_values.extend(
+            Candidate.objects.exclude(skills="").values_list("skills", flat=True)[:80]
+        )
+        skill_values.extend(
+            Candidate.objects.exclude(secondary_skills="").values_list("secondary_skills", flat=True)[:80]
+        )
+        for raw in skill_values:
+            for token in _split_skill_values(raw):
+                add_suggestion(token)
+
+    return JsonResponse({"suggestions": suggestions[:12]})
+
+
+@require_http_methods(["POST"])
+def send_registration_otp(request):
+    flow = (request.POST.get("flow") or "").strip().lower()
+    channel = (request.POST.get("channel") or "").strip().lower()
+    email = (request.POST.get("email") or "").strip().lower()
+    phone = (request.POST.get("phone") or "").strip()
+
+    if flow not in {"company", "candidate", "consultancy"}:
+        return JsonResponse({"success": False, "error": "Invalid registration flow."}, status=400)
+
+    if channel == "email":
+        if not email:
+            return JsonResponse({"success": False, "error": "Please enter email before requesting OTP."}, status=400)
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            return JsonResponse({"success": False, "error": "Enter a valid email address."}, status=400)
+
+        otp_value, otp_error = _issue_registration_email_otp(request, flow, email)
+        if otp_error:
+            return JsonResponse({"success": False, "error": otp_error}, status=500)
+
+        payload = {
+            "success": True,
+            "channel": "email",
+            "message": "OTP sent successfully to your email address.",
+        }
+        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False):
+            payload["debug_otp"] = otp_value
+        return JsonResponse(payload)
+
+    if channel in {"sms", "mobile"}:
+        if not phone:
+            return JsonResponse({"success": False, "error": "Please enter mobile number before requesting OTP."}, status=400)
+        if not re.match(r"^\+?\d{10,15}$", phone):
+            return JsonResponse({"success": False, "error": "Enter a valid mobile number (10 to 15 digits)."}, status=400)
+
+        otp_value, otp_error = _issue_registration_otp(request, flow, phone)
+        if otp_error:
+            return JsonResponse({"success": False, "error": otp_error}, status=500)
+
+        payload = {
+            "success": True,
+            "channel": "sms",
+            "message": "OTP sent successfully to your mobile number.",
+        }
+        if getattr(settings, "OTP_DEBUG_SHOW_IN_MESSAGES", False):
+            payload["debug_otp"] = otp_value
+        return JsonResponse(payload)
+
+    return JsonResponse({"success": False, "error": "Invalid OTP channel."}, status=400)
+
+
 @require_http_methods(["POST"])
 def verify_registration_otp(request):
     flow = (request.POST.get("flow") or "").strip().lower()
@@ -3205,7 +5117,7 @@ def verify_registration_otp(request):
     email = (request.POST.get("email") or "").strip().lower()
     phone = (request.POST.get("phone") or "").strip()
 
-    if flow not in {"company", "candidate"}:
+    if flow not in {"company", "candidate", "consultancy"}:
         return JsonResponse({"verified": False, "error": "Invalid verification flow."}, status=400)
     if not otp_value:
         return JsonResponse({"verified": False, "error": "OTP is required."}, status=400)
@@ -3252,6 +5164,73 @@ def verify_email_view(request, token):
 
     messages.success(request, "Email verified successfully. You can login now.")
     return redirect("dashboard:login")
+
+
+@require_http_methods(["GET"])
+def panel_notifications_api(request):
+    payload = build_panel_notifications(request, limit=8)
+    role = payload.get("role")
+    if not role:
+        return JsonResponse({"success": False, "error": "Unauthorized panel context."}, status=401)
+
+    if (request.GET.get("mark_seen") or "").strip() == "1":
+        mark_panel_notifications_seen(request, role=role)
+        payload = build_panel_notifications(request, limit=8)
+
+    message_unread_count = 0
+    candidate_id = request.session.get("candidate_id")
+    company_id = request.session.get("company_id")
+    consultancy_id = request.session.get("consultancy_id")
+    if candidate_id:
+        message_unread_count = (
+            Message.objects.filter(
+                thread__candidate_id=candidate_id,
+                is_read=False,
+            )
+            .exclude(sender_role="candidate")
+            .count()
+        )
+    elif company_id:
+        message_unread_count = (
+            Message.objects.filter(
+                thread__company_id=company_id,
+                is_read=False,
+            )
+            .exclude(sender_role="company")
+            .count()
+        )
+    elif consultancy_id:
+        message_unread_count = (
+            Message.objects.filter(
+                thread__consultancy_id=consultancy_id,
+                is_read=False,
+            )
+            .exclude(sender_role="consultancy")
+            .count()
+        )
+
+    items = []
+    for note in payload.get("items", []):
+        items.append(
+            {
+                "title": note.get("title", ""),
+                "message": note.get("message", ""),
+                "url": note.get("url", ""),
+                "created_label": note.get("created_label", ""),
+                "unread": bool(note.get("unread")),
+            }
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "role": role,
+            "unread_count": payload.get("unread_count", 0),
+            "sidebar_count": payload.get("unread_count", 0),
+            "message_unread_count": message_unread_count,
+            "items": items,
+        }
+    )
 
 
 def _safe_session_get(request, key, default=None):
@@ -3357,6 +5336,11 @@ def consultancy_dashboard_view(request):
         request.session.pop("consultancy_id", None)
         request.session.pop("consultancy_name", None)
         return redirect("dashboard:login")
+
+    subscription = _latest_subscription_for_account("Consultancy", consultancy.email)
+    if subscription:
+        _sync_org_subscription_from_subscription(subscription)
+        consultancy.refresh_from_db()
 
     assigned_qs = AssignedJob.objects.filter(consultancy=consultancy).select_related("job").order_by(
         "-assigned_date",
@@ -3624,6 +5608,20 @@ def consultancy_jobs_view(request):
         "archived": "Archived",
     }
     base_qs = _consultancy_posted_jobs_queryset(consultancy).annotate(apply_count=Count("applications"))
+    month_start, month_end = _month_window()
+    posted_this_month = _consultancy_posted_jobs_queryset(consultancy).filter(
+        created_at__date__gte=month_start,
+        created_at__date__lt=month_end,
+    ).count()
+    quota = _job_post_limit_for_account(
+        "Consultancy",
+        consultancy.email,
+        consultancy.plan_type,
+        consultancy.payment_status,
+        consultancy.plan_expiry,
+    )
+    quota_limit = quota.get("limit")
+    quota_remaining = None if quota_limit is None else max(quota_limit - posted_this_month, 0)
     jobs_qs = base_qs
     if filter_status in lifecycle_filters:
         jobs_qs = jobs_qs.filter(lifecycle_status=lifecycle_filters[filter_status])
@@ -3660,6 +5658,12 @@ def consultancy_jobs_view(request):
             edit_job = get_object_or_404(job_qs, job_id=job_id)
             job = edit_job
         else:
+            if post_action in {"draft", "publish"} and quota_limit is not None and posted_this_month >= quota_limit:
+                messages.error(
+                    request,
+                    f"{quota.get('plan', 'Free')} plan limit reached ({quota_limit} jobs/month). Please upgrade subscription.",
+                )
+                return redirect("dashboard:consultancy_subscription")
             job = Job()
 
         previous_applicants = job.applicants if job.pk else 0
@@ -3797,6 +5801,12 @@ def consultancy_jobs_view(request):
             "overview_metrics": overview_metrics,
             "search_query": query_text,
             "metrics_api_url": metrics_api_url,
+            "posting_quota": {
+                "plan": quota.get("plan", "Free"),
+                "limit": quota_limit,
+                "used": posted_this_month,
+                "remaining": quota_remaining,
+            },
         },
     )
 
@@ -4269,7 +6279,11 @@ def consultancy_applications_view(request):
 
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
-        next_url = request.POST.get("next") or request.get_full_path()
+        next_url = _safe_redirect_target(
+            request,
+            request.POST.get("next") or request.get_full_path(),
+            fallback=request.path,
+        )
 
         if action == "update_status":
             application_id = request.POST.get("application_id")
@@ -4435,6 +6449,14 @@ def consultancy_applications_view(request):
             applications = applications.filter(status__iexact=status_filter)
 
     applications = list(applications)
+    applications.sort(
+        key=lambda item: (
+            1 if _is_priority_application(item) else 0,
+            item.applied_date or timezone.localdate(),
+            item.created_at or timezone.now(),
+        ),
+        reverse=True,
+    )
     interview_map = {}
     app_ids = [app.id for app in applications if getattr(app, "id", None)]
     if app_ids:
@@ -4497,6 +6519,7 @@ def consultancy_applications_view(request):
         app.rejection_remark = app.notes if app.status == "Rejected" else ""
         app.skill_tags = _split_skills(app.skills)[:3]
         app.all_skill_tags = _split_skills(app.skills)
+        app.is_priority_application = _is_priority_application(app)
 
     total_applications = base_qs.count()
     new_since = timezone.now() - timezone.timedelta(days=7)
@@ -5494,10 +7517,191 @@ def consultancy_subscription_view(request):
     if not consultancy:
         return redirect("dashboard:login")
 
+    subscription = _create_or_touch_subscription("Consultancy", consultancy.name, consultancy.email)
+    _sync_org_subscription_from_subscription(subscription)
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "buy_plan":
+            plan_code = _normalize_plan_code(request.POST.get("plan_code"))
+            billing_cycle = (request.POST.get("billing_cycle") or "monthly").strip().lower()
+            if billing_cycle not in {"monthly", "quarterly"}:
+                billing_cycle = "monthly"
+
+            if plan_code == "Free":
+                _mark_subscription_free("Consultancy", consultancy.name, consultancy.email, actor_name="Consultancy Panel")
+                messages.success(request, "Free plan activated.")
+                return redirect("dashboard:consultancy_subscription")
+
+            pending_existing = _pending_payment_for_account("Consultancy", consultancy.email)
+            if pending_existing:
+                _refresh_payment_status_from_gateway(pending_existing)
+                pending_existing.refresh_from_db()
+                if pending_existing.status == "success":
+                    messages.success(request, "Previous pending payment is already successful. Plan activated.")
+                    return redirect("dashboard:consultancy_subscription")
+                if pending_existing.status in {"initiated", "pending"}:
+                    recovered = _recover_pending_payment_without_checkout(
+                        request,
+                        pending_existing,
+                        account_id_value=f"consultancy_{consultancy.id}",
+                    )
+                    recovered_payment = recovered.get("payment") or pending_existing
+                    recovered_redirect = (recovered.get("redirect_url") or "").strip()
+                    recovered_payment_id = recovered_payment.payment_id if recovered_payment else pending_existing.payment_id
+                    if recovered.get("status") == "success":
+                        messages.success(request, "Payment confirmed and plan activated.")
+                        return redirect("dashboard:consultancy_subscription")
+                    if recovered_redirect:
+                        if recovered.get("replaced_payment_id"):
+                            messages.info(
+                                request,
+                                f"Previous pending payment {pending_existing.payment_id} expired. Continue with {recovered_payment_id}.",
+                            )
+                        else:
+                            messages.info(request, f"Payment {recovered_payment_id} is pending. Continue checkout.")
+                        return _redirect_to_payment_checkout_or_fallback(
+                            request,
+                            recovered_redirect,
+                            "dashboard:consultancy_subscription",
+                        )
+                    if recovered.get("success"):
+                        messages.info(
+                            request,
+                            f"Payment {recovered_payment_id} is pending. Complete it first or refresh status.",
+                        )
+                    else:
+                        messages.error(
+                            request,
+                            recovered.get("error") or "Unable to recover pending payment. Please try again.",
+                        )
+                    return redirect("dashboard:consultancy_subscription")
+
+            amount = _resolve_plan_amount("Consultancy", plan_code, billing_cycle)
+            payment = _create_subscription_payment(
+                account_type="Consultancy",
+                account_name=consultancy.name,
+                account_email=consultancy.email,
+                plan_code=plan_code,
+                billing_cycle=billing_cycle,
+                amount=amount,
+                subscription=subscription,
+            )
+            result = _initiate_gateway_payment(
+                request,
+                payment,
+                account_id_value=f"consultancy_{consultancy.id}",
+            )
+            if not result.get("success"):
+                messages.error(request, result.get("error") or "Unable to start payment.")
+                return redirect("dashboard:consultancy_subscription")
+            if result.get("status") == "success":
+                messages.success(request, "Plan activated successfully.")
+                return redirect("dashboard:consultancy_subscription")
+            redirect_url = (result.get("redirect_url") or "").strip()
+            if redirect_url:
+                return _redirect_to_payment_checkout_or_fallback(
+                    request,
+                    redirect_url,
+                    "dashboard:consultancy_subscription",
+                )
+            messages.info(request, "Payment initiated. Complete payment then refresh status.")
+            return redirect("dashboard:consultancy_subscription")
+
+        if action == "activate_free":
+            _mark_subscription_free("Consultancy", consultancy.name, consultancy.email, actor_name="Consultancy Panel")
+            messages.success(request, "Moved to Free plan.")
+            return redirect("dashboard:consultancy_subscription")
+
+        if action == "refresh_payment":
+            payment_id = (request.POST.get("payment_id") or "").strip()
+            payment = SubscriptionPayment.objects.filter(
+                payment_id=payment_id,
+                account_type__iexact="Consultancy",
+                account_email__iexact=consultancy.email,
+            ).first()
+            if not payment:
+                messages.error(request, "Payment record not found.")
+            else:
+                _refresh_payment_status_from_gateway(payment)
+                payment.refresh_from_db()
+                if payment.status == "success":
+                    messages.success(request, "Payment confirmed and plan activated.")
+                elif payment.status == "failed":
+                    messages.error(request, "Payment failed. Please retry.")
+                else:
+                    recovered = _recover_pending_payment_without_checkout(
+                        request,
+                        payment,
+                        account_id_value=f"consultancy_{consultancy.id}",
+                    )
+                    recovered_payment = recovered.get("payment") or payment
+                    recovered_redirect = (recovered.get("redirect_url") or "").strip()
+                    recovered_payment_id = recovered_payment.payment_id if recovered_payment else payment.payment_id
+                    if recovered.get("status") == "success":
+                        messages.success(request, "Payment confirmed and plan activated.")
+                    elif recovered_redirect:
+                        if recovered.get("replaced_payment_id"):
+                            messages.info(
+                                request,
+                                f"Old pending payment {payment.payment_id} expired. Continue with {recovered_payment_id}.",
+                            )
+                        else:
+                            messages.info(request, f"Payment {recovered_payment_id} is pending. Continue checkout.")
+                        return _redirect_to_payment_checkout_or_fallback(
+                            request,
+                            recovered_redirect,
+                            "dashboard:consultancy_subscription",
+                        )
+                    elif recovered.get("success"):
+                        messages.info(request, "Payment is still pending.")
+                    else:
+                        messages.error(
+                            request,
+                            recovered.get("error") or "Unable to recover pending payment right now.",
+                        )
+            return redirect("dashboard:consultancy_subscription")
+
+    subscription = _latest_subscription_for_account("Consultancy", consultancy.email) or subscription
+    active_plan_code = _normalize_plan_code(subscription.plan)
+    is_active_subscription = _is_subscription_active(subscription)
+    plans = _subscription_plan_catalog()
+    current_plan = next((item for item in plans if item.get("plan_code") == active_plan_code), None)
+    payment_history = list(_recent_payments_for_account("Consultancy", consultancy.email, limit=25))
+    pending_payment = _pending_payment_for_account("Consultancy", consultancy.email)
+    payment_popup_message = (request.session.pop("payment_popup_message", "") or "").strip()
+    month_start, month_end = _month_window()
+    month_job_count = _consultancy_posted_jobs_queryset(consultancy).filter(
+        created_at__date__gte=month_start,
+        created_at__date__lt=month_end,
+    ).count()
+    quota = _job_post_limit_for_account(
+        "Consultancy",
+        consultancy.email,
+        consultancy.plan_type,
+        consultancy.payment_status,
+        consultancy.plan_expiry,
+    )
+
     return render(
         request,
         "dashboard/consultancy/consultancy_subscription.html",
-        {"consultancy": consultancy},
+        {
+            "consultancy": consultancy,
+            "subscription": subscription,
+            "plans": plans,
+            "current_plan": current_plan,
+            "is_active_subscription": is_active_subscription,
+            "payment_history": payment_history,
+            "pending_payment": pending_payment,
+            "payment_popup_message": payment_popup_message,
+            "posting_quota": {
+                "plan": quota.get("plan", "Free"),
+                "limit": quota.get("limit"),
+                "used": month_job_count,
+                "remaining": None if quota.get("limit") is None else max(quota.get("limit") - month_job_count, 0),
+            },
+        },
     )
 
 
@@ -7226,12 +9430,15 @@ def candidate_dashboard_view(request):
         request.session.pop("candidate_name", None)
         return redirect("dashboard:login")
 
+    subscription = _latest_subscription_for_account("Candidate", candidate.email)
+    is_premium = _is_subscription_active(subscription)
     applications = Application.objects.filter(candidate_email__iexact=candidate.email)
     shortlisted = applications.filter(status="Shortlisted").count()
     interviews = Interview.objects.filter(
         candidate_email__iexact=candidate.email,
         status__in=["scheduled", "rescheduled"],
     ).count()
+    recruiter_views = _candidate_recruiter_views_count(candidate)
     saved_jobs = CandidateSavedJob.objects.filter(candidate=candidate).count()
     recommended_jobs = _recommend_jobs_for_candidate(
         candidate,
@@ -7246,6 +9453,7 @@ def candidate_dashboard_view(request):
         "interviews": interviews,
         "saved_jobs": saved_jobs,
         "recommended_jobs": len(recommended_jobs),
+        "recruiter_views": recruiter_views,
     }
     metric_cards = [
         {
@@ -7284,9 +9492,26 @@ def candidate_dashboard_view(request):
             "metric_key": "recommended_jobs",
         },
     ]
+    if is_premium:
+        metric_cards.append(
+            {
+                "label": "Recruiter Views",
+                "value": metrics["recruiter_views"],
+                "sub": "Premium insight",
+                "metric_id": "metricRecruiterViews",
+                "metric_key": "recruiter_views",
+            }
+        )
     metrics_max = max([item["value"] for item in metric_cards] + [1])
     for item in metric_cards:
         item["width"] = max(8, round((item["value"] / metrics_max) * 100)) if metrics_max else 8
+
+    early_job_alerts = []
+    if is_premium:
+        early_job_alerts = list(
+            Job.objects.filter(status="Approved")
+            .order_by("-created_at")[:5]
+        )
 
     ad_segment = _resolve_subscription_segment_for_account(
         "Candidate",
@@ -7300,6 +9525,9 @@ def candidate_dashboard_view(request):
         "recommended_jobs": recommended_jobs,
         "applications": applications[:5],
         "advertisement": _active_advertisement_for("candidate", ad_segment),
+        "candidate_subscription": subscription,
+        "is_premium_candidate": is_premium,
+        "early_job_alerts": early_job_alerts,
     }
     return render(request, "dashboard/candidate/candidate_dashboard.html", context)
 
@@ -7674,6 +9902,8 @@ def candidate_job_detail_view(request, job_id):
     if latest_completion != candidate.profile_completion:
         candidate.profile_completion = latest_completion
         candidate.save(update_fields=["profile_completion"])
+    candidate_subscription = _latest_subscription_for_account("Candidate", candidate.email)
+    is_premium_candidate = _is_subscription_active(candidate_subscription)
     can_apply = True
 
     job = get_object_or_404(Job, job_id=job_id, status="Approved")
@@ -7859,6 +10089,11 @@ def candidate_job_detail_view(request, job_id):
                     resume=resume_upload or selected_resume or candidate.resume,
                     job=job,
                     consultancy=consultancy_source,
+                    internal_notes=(
+                        f"{PRIORITY_APPLICATION_TAG} Premium candidate application"
+                        if is_premium_candidate
+                        else ""
+                    ),
                 )
                 Job.objects.filter(pk=job.pk).update(applicants=F("applicants") + 1)
                 _ensure_message_threads(
@@ -7910,6 +10145,7 @@ def candidate_job_detail_view(request, job_id):
             "chat_thread_id": chat_thread_id,
             "feedback_prompt": feedback_prompt,
             "feedback_application": feedback_application,
+            "is_premium_candidate": is_premium_candidate,
         },
     )
 
@@ -8312,76 +10548,164 @@ def candidate_subscription_view(request):
     if not candidate:
         return redirect("dashboard:login")
 
-    subscription = (
-        Subscription.objects.filter(
-            account_type__iexact="Candidate",
-            contact__iexact=candidate.email,
-        )
-        .order_by("-expiry_date", "-updated_at")
-        .first()
-    )
+    subscription = _create_or_touch_subscription("Candidate", candidate.name, candidate.email)
+    is_premium = _is_subscription_active(subscription)
 
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
-        today = timezone.localdate()
         if action == "upgrade_premium":
-            if not subscription:
-                subscription = Subscription.objects.create(
-                    subscription_id=_generate_prefixed_id("SUB", 901, Subscription, "subscription_id"),
-                    name=candidate.name,
-                    account_type="Candidate",
-                    plan="Basic",
-                    payment_status="Paid",
-                    start_date=today,
-                    expiry_date=today + timezone.timedelta(days=30),
-                    contact=candidate.email,
-                    monthly_revenue=199,
-                    auto_renew=True,
-                )
+            if is_premium:
+                messages.info(request, "Premium Candidate plan is already active.")
             else:
-                subscription.plan = "Basic"
-                subscription.payment_status = "Paid"
-                subscription.start_date = today
-                subscription.expiry_date = today + timezone.timedelta(days=30)
-                subscription.monthly_revenue = 199
-                subscription.auto_renew = True
-                subscription.name = candidate.name
-                subscription.contact = candidate.email
-                subscription.save()
-            messages.success(request, "Premium Candidate plan activated (Demo).")
+                pending_payment = _pending_payment_for_account("Candidate", candidate.email)
+                if pending_payment:
+                    _refresh_payment_status_from_gateway(pending_payment)
+                    pending_payment.refresh_from_db()
+                    if pending_payment.status == "success":
+                        messages.success(request, "Previous payment is already successful. Premium activated.")
+                        return redirect("dashboard:candidate_subscription")
+                    if pending_payment.status in {"initiated", "pending"}:
+                        recovered = _recover_pending_payment_without_checkout(
+                            request,
+                            pending_payment,
+                            account_id_value=f"candidate_{candidate.id}",
+                        )
+                        recovered_payment = recovered.get("payment") or pending_payment
+                        recovered_redirect = (recovered.get("redirect_url") or "").strip()
+                        recovered_payment_id = recovered_payment.payment_id if recovered_payment else pending_payment.payment_id
+                        if recovered.get("status") == "success":
+                            messages.success(request, "Payment verified. Premium Candidate activated.")
+                            return redirect("dashboard:candidate_subscription")
+                        if recovered_redirect:
+                            if recovered.get("replaced_payment_id"):
+                                messages.info(
+                                    request,
+                                    f"Old pending payment {pending_payment.payment_id} expired. Continue with {recovered_payment_id}.",
+                                )
+                            else:
+                                messages.info(request, f"Payment {recovered_payment_id} is pending. Continue checkout.")
+                            return _redirect_to_payment_checkout_or_fallback(
+                                request,
+                                recovered_redirect,
+                                "dashboard:candidate_subscription",
+                            )
+                        if recovered.get("success"):
+                            messages.info(
+                                request,
+                                "A payment is already pending. Complete it first or refresh payment status.",
+                            )
+                        else:
+                            messages.error(
+                                request,
+                                recovered.get("error") or "Unable to recover pending payment. Please try again.",
+                            )
+                        return redirect("dashboard:candidate_subscription")
+
+                amount = _resolve_plan_amount("Candidate", CANDIDATE_PREMIUM_PLAN_CODE, "monthly")
+                payment = _create_subscription_payment(
+                    account_type="Candidate",
+                    account_name=candidate.name,
+                    account_email=candidate.email,
+                    plan_code=CANDIDATE_PREMIUM_PLAN_CODE,
+                    billing_cycle="monthly",
+                    amount=amount,
+                    subscription=subscription,
+                )
+                payment_result = _initiate_gateway_payment(
+                    request,
+                    payment,
+                    account_id_value=f"candidate_{candidate.id}",
+                )
+                if not payment_result.get("success"):
+                    messages.error(
+                        request,
+                        payment_result.get("error") or "Unable to start payment right now. Please try again.",
+                    )
+                    return redirect("dashboard:candidate_subscription")
+
+                if payment_result.get("status") == "success":
+                    messages.success(request, "Premium Candidate activated successfully.")
+                    return redirect("dashboard:candidate_subscription")
+
+                redirect_url = (payment_result.get("redirect_url") or "").strip()
+                if redirect_url:
+                    return _redirect_to_payment_checkout_or_fallback(
+                        request,
+                        redirect_url,
+                        "dashboard:candidate_subscription",
+                    )
+
+                messages.info(
+                    request,
+                    "Payment initiated. Refresh payment status after completing checkout.",
+                )
+                return redirect("dashboard:candidate_subscription")
         elif action == "downgrade_free":
-            if not subscription:
-                subscription = Subscription.objects.create(
-                    subscription_id=_generate_prefixed_id("SUB", 901, Subscription, "subscription_id"),
-                    name=candidate.name,
-                    account_type="Candidate",
-                    plan="Free",
-                    payment_status="Free",
-                    start_date=today,
-                    expiry_date=None,
-                    contact=candidate.email,
-                    monthly_revenue=0,
-                    auto_renew=False,
-                )
-            else:
-                subscription.plan = "Free"
-                subscription.payment_status = "Free"
-                subscription.start_date = today
-                subscription.expiry_date = None
-                subscription.monthly_revenue = 0
-                subscription.auto_renew = False
-                subscription.name = candidate.name
-                subscription.contact = candidate.email
-                subscription.save()
+            _mark_subscription_free("Candidate", candidate.name, candidate.email, actor_name="Candidate Panel")
             messages.success(request, "Moved to Free Candidate plan.")
+        elif action == "refresh_payment":
+            payment_id = (request.POST.get("payment_id") or "").strip()
+            payment = SubscriptionPayment.objects.filter(
+                payment_id=payment_id,
+                account_type__iexact="Candidate",
+                account_email__iexact=candidate.email,
+            ).first()
+            if not payment:
+                messages.error(request, "Payment record not found.")
+            else:
+                _refresh_payment_status_from_gateway(payment)
+                payment.refresh_from_db()
+                if payment.status == "success":
+                    messages.success(request, "Payment verified. Premium Candidate activated.")
+                elif payment.status == "failed":
+                    messages.error(request, "Payment failed. Please retry.")
+                else:
+                    recovered = _recover_pending_payment_without_checkout(
+                        request,
+                        payment,
+                        account_id_value=f"candidate_{candidate.id}",
+                    )
+                    recovered_payment = recovered.get("payment") or payment
+                    recovered_redirect = (recovered.get("redirect_url") or "").strip()
+                    recovered_payment_id = recovered_payment.payment_id if recovered_payment else payment.payment_id
+                    if recovered.get("status") == "success":
+                        messages.success(request, "Payment verified. Premium Candidate activated.")
+                    elif recovered_redirect:
+                        if recovered.get("replaced_payment_id"):
+                            messages.info(
+                                request,
+                                f"Old pending payment {payment.payment_id} expired. Continue with {recovered_payment_id}.",
+                            )
+                        else:
+                            messages.info(request, f"Payment {recovered_payment_id} is pending. Continue checkout.")
+                        return _redirect_to_payment_checkout_or_fallback(
+                            request,
+                            recovered_redirect,
+                            "dashboard:candidate_subscription",
+                        )
+                    elif recovered.get("success"):
+                        messages.info(request, "Payment is still pending.")
+                    else:
+                        messages.error(
+                            request,
+                            recovered.get("error") or "Unable to recover pending payment right now.",
+                        )
         return redirect("dashboard:candidate_subscription")
 
-    ad_segment = _resolve_subscription_segment_for_account(
-        "Candidate",
-        candidate.email,
-    )
-    is_premium = ad_segment == "subscribed"
-    expiry = subscription.expiry_date if subscription else None
+    subscription = _latest_subscription_for_account("Candidate", candidate.email) or subscription
+    is_premium = _is_subscription_active(subscription)
+    expiry = subscription.expiry_date if is_premium and subscription else None
+    pending_payment = _pending_payment_for_account("Candidate", candidate.email)
+    payment_history = list(_recent_payments_for_account("Candidate", candidate.email, limit=20))
+    payment_popup_message = (request.session.pop("payment_popup_message", "") or "").strip()
+    recruiter_views = _candidate_recruiter_views_count(candidate)
+    premium_features = [
+        {"label": "Resume boost", "enabled": is_premium},
+        {"label": "Profile highlighted", "enabled": is_premium},
+        {"label": "Early job alerts", "enabled": is_premium},
+        {"label": "See recruiter views", "enabled": is_premium},
+        {"label": "Priority applications", "enabled": is_premium},
+    ]
 
     return render(
         request,
@@ -8391,6 +10715,11 @@ def candidate_subscription_view(request):
             "subscription": subscription,
             "is_premium": is_premium,
             "expiry": expiry,
+            "pending_payment": pending_payment,
+            "payment_history": payment_history,
+            "payment_popup_message": payment_popup_message,
+            "premium_features": premium_features,
+            "recruiter_views": recruiter_views,
         },
     )
 
@@ -8535,6 +10864,8 @@ def api_candidate_metrics(request):
         status__in=["scheduled", "rescheduled"],
     ).count()
     recommended_jobs_count = Job.objects.filter(status="Approved").count()
+    subscription = _latest_subscription_for_account("Candidate", candidate.email)
+    is_premium = _is_subscription_active(subscription)
     data = {
         "profile_completion": candidate.profile_completion,
         "total_applications": applications.count(),
@@ -8542,6 +10873,8 @@ def api_candidate_metrics(request):
         "interviews": interviews,
         "saved_jobs": CandidateSavedJob.objects.filter(candidate=candidate).count(),
         "recommended_jobs": recommended_jobs_count,
+        "recruiter_views": _candidate_recruiter_views_count(candidate),
+        "is_premium": is_premium,
     }
     return JsonResponse(data)
 
@@ -8600,6 +10933,11 @@ def company_dashboard_view(request):
         request.session.pop("company_id", None)
         request.session.pop("company_name", None)
         return redirect("dashboard:login")
+
+    subscription = _latest_subscription_for_account("Company", company.email)
+    if subscription:
+        _sync_org_subscription_from_subscription(subscription)
+        company.refresh_from_db()
 
     company_name = company.name
     job_qs = Job.objects.filter(company__iexact=company_name)
@@ -8757,6 +11095,21 @@ def company_jobs_view(request):
     
     company_name = company.name
     base_jobs = Job.objects.filter(company__iexact=company_name).order_by("-created_at")
+    month_start, month_end = _month_window()
+    posted_this_month = Job.objects.filter(
+        company__iexact=company_name,
+        created_at__date__gte=month_start,
+        created_at__date__lt=month_end,
+    ).count()
+    quota = _job_post_limit_for_account(
+        "Company",
+        company.email,
+        company.plan_type,
+        company.payment_status,
+        company.plan_expiry,
+    )
+    quota_limit = quota.get("limit")
+    quota_remaining = None if quota_limit is None else max(quota_limit - posted_this_month, 0)
     jobs = base_jobs
     status_filter = (request.GET.get("status") or "").strip().lower()
     action = (request.GET.get("action") or "").strip().lower()
@@ -8784,6 +11137,12 @@ def company_jobs_view(request):
             job = edit_job
             is_new_job = False
         else:
+            if action in {"draft", "publish"} and quota_limit is not None and posted_this_month >= quota_limit:
+                messages.error(
+                    request,
+                    f"{quota.get('plan', 'Free')} plan limit reached ({quota_limit} jobs/month). Please upgrade subscription.",
+                )
+                return redirect("dashboard:company_billing")
             job = Job(company=company_name)
             is_new_job = True
 
@@ -8868,6 +11227,12 @@ def company_jobs_view(request):
         },
         "edit_job": edit_job,
         "form_mode": "view" if action == "view" else "edit" if action == "edit" else "new" if action == "new" else "list",
+        "posting_quota": {
+            "plan": quota.get("plan", "Free"),
+            "limit": quota_limit,
+            "used": posted_this_month,
+            "remaining": quota_remaining,
+        },
     })
 
 
@@ -9082,7 +11447,11 @@ def company_applications_view(request):
 
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
-        next_url = request.POST.get("next") or request.get_full_path()
+        next_url = _safe_redirect_target(
+            request,
+            request.POST.get("next") or request.get_full_path(),
+            fallback=request.path,
+        )
 
         if action == "update_status":
             application_id = request.POST.get("application_id")
@@ -9318,6 +11687,14 @@ def company_applications_view(request):
         applications = [
             app for app in applications if experience_in_range(app.experience, experience_filter)
         ]
+    applications.sort(
+        key=lambda item: (
+            1 if _is_priority_application(item) else 0,
+            item.applied_date or timezone.localdate(),
+            item.created_at or timezone.now(),
+        ),
+        reverse=True,
+    )
 
     interview_map = {}
     application_pk_ids = [app.id for app in applications if getattr(app, "id", None)]
@@ -9390,6 +11767,7 @@ def company_applications_view(request):
         app.skill_tags = split_skills(app.skills)[:3]
         app.all_skill_tags = split_skills(app.skills)
         app.skill_match = None
+        app.is_priority_application = _is_priority_application(app)
 
         job_key = (app.job_title or "").lower()
         job_skills = split_skills(job_map.get(job_key))
@@ -9801,7 +12179,11 @@ def company_interviews_view(request, section="schedule"):
 
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
-        next_url = request.POST.get("next") or request.get_full_path()
+        next_url = _safe_redirect_target(
+            request,
+            request.POST.get("next") or request.get_full_path(),
+            fallback=request.path,
+        )
 
         if action == "schedule":
             application_id = (request.POST.get("application_id") or "").strip()
@@ -10038,8 +12420,194 @@ def company_billing_view(request):
     company = Company.objects.filter(id=company_id).first()
     if not company:
         return redirect("dashboard:login")
-    
-    return render(request, "dashboard/company/company_billing.html", {"company": company})
+
+    subscription = _create_or_touch_subscription("Company", company.name, company.email)
+    _sync_org_subscription_from_subscription(subscription)
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "buy_plan":
+            plan_code = _normalize_plan_code(request.POST.get("plan_code"))
+            billing_cycle = (request.POST.get("billing_cycle") or "monthly").strip().lower()
+            if billing_cycle not in {"monthly", "quarterly"}:
+                billing_cycle = "monthly"
+
+            if plan_code == "Free":
+                _mark_subscription_free("Company", company.name, company.email, actor_name="Company Panel")
+                messages.success(request, "Free plan activated.")
+                return redirect("dashboard:company_billing")
+
+            pending_existing = _pending_payment_for_account("Company", company.email)
+            if pending_existing:
+                _refresh_payment_status_from_gateway(pending_existing)
+                pending_existing.refresh_from_db()
+                if pending_existing.status == "success":
+                    messages.success(request, "Previous pending payment is already successful. Plan activated.")
+                    return redirect("dashboard:company_billing")
+                if pending_existing.status in {"initiated", "pending"}:
+                    recovered = _recover_pending_payment_without_checkout(
+                        request,
+                        pending_existing,
+                        account_id_value=f"company_{company.id}",
+                    )
+                    recovered_payment = recovered.get("payment") or pending_existing
+                    recovered_redirect = (recovered.get("redirect_url") or "").strip()
+                    recovered_payment_id = recovered_payment.payment_id if recovered_payment else pending_existing.payment_id
+                    if recovered.get("status") == "success":
+                        messages.success(request, "Payment confirmed and plan activated.")
+                        return redirect("dashboard:company_billing")
+                    if recovered_redirect:
+                        if recovered.get("replaced_payment_id"):
+                            messages.info(
+                                request,
+                                f"Previous pending payment {pending_existing.payment_id} expired. Continue with {recovered_payment_id}.",
+                            )
+                        else:
+                            messages.info(request, f"Payment {recovered_payment_id} is pending. Continue checkout.")
+                        return _redirect_to_payment_checkout_or_fallback(
+                            request,
+                            recovered_redirect,
+                            "dashboard:company_billing",
+                        )
+                    if recovered.get("success"):
+                        messages.info(
+                            request,
+                            f"Payment {recovered_payment_id} is pending. Complete it first or refresh status.",
+                        )
+                    else:
+                        messages.error(
+                            request,
+                            recovered.get("error") or "Unable to recover pending payment. Please try again.",
+                        )
+                    return redirect("dashboard:company_billing")
+
+            amount = _resolve_plan_amount("Company", plan_code, billing_cycle)
+            payment = _create_subscription_payment(
+                account_type="Company",
+                account_name=company.name,
+                account_email=company.email,
+                plan_code=plan_code,
+                billing_cycle=billing_cycle,
+                amount=amount,
+                subscription=subscription,
+            )
+            result = _initiate_gateway_payment(
+                request,
+                payment,
+                account_id_value=f"company_{company.id}",
+            )
+            if not result.get("success"):
+                messages.error(request, result.get("error") or "Unable to start payment.")
+                return redirect("dashboard:company_billing")
+            if result.get("status") == "success":
+                messages.success(request, "Plan activated successfully.")
+                return redirect("dashboard:company_billing")
+            redirect_url = (result.get("redirect_url") or "").strip()
+            if redirect_url:
+                return _redirect_to_payment_checkout_or_fallback(
+                    request,
+                    redirect_url,
+                    "dashboard:company_billing",
+                )
+            messages.info(request, "Payment initiated. Complete payment then refresh status.")
+            return redirect("dashboard:company_billing")
+
+        if action == "activate_free":
+            _mark_subscription_free("Company", company.name, company.email, actor_name="Company Panel")
+            messages.success(request, "Moved to Free plan.")
+            return redirect("dashboard:company_billing")
+
+        if action == "refresh_payment":
+            payment_id = (request.POST.get("payment_id") or "").strip()
+            payment = SubscriptionPayment.objects.filter(
+                payment_id=payment_id,
+                account_type__iexact="Company",
+                account_email__iexact=company.email,
+            ).first()
+            if not payment:
+                messages.error(request, "Payment record not found.")
+            else:
+                _refresh_payment_status_from_gateway(payment)
+                payment.refresh_from_db()
+                if payment.status == "success":
+                    messages.success(request, "Payment confirmed and plan activated.")
+                elif payment.status == "failed":
+                    messages.error(request, "Payment failed. Please retry.")
+                else:
+                    recovered = _recover_pending_payment_without_checkout(
+                        request,
+                        payment,
+                        account_id_value=f"company_{company.id}",
+                    )
+                    recovered_payment = recovered.get("payment") or payment
+                    recovered_redirect = (recovered.get("redirect_url") or "").strip()
+                    recovered_payment_id = recovered_payment.payment_id if recovered_payment else payment.payment_id
+                    if recovered.get("status") == "success":
+                        messages.success(request, "Payment confirmed and plan activated.")
+                    elif recovered_redirect:
+                        if recovered.get("replaced_payment_id"):
+                            messages.info(
+                                request,
+                                f"Old pending payment {payment.payment_id} expired. Continue with {recovered_payment_id}.",
+                            )
+                        else:
+                            messages.info(request, f"Payment {recovered_payment_id} is pending. Continue checkout.")
+                        return _redirect_to_payment_checkout_or_fallback(
+                            request,
+                            recovered_redirect,
+                            "dashboard:company_billing",
+                        )
+                    elif recovered.get("success"):
+                        messages.info(request, "Payment is still pending.")
+                    else:
+                        messages.error(
+                            request,
+                            recovered.get("error") or "Unable to recover pending payment right now.",
+                        )
+            return redirect("dashboard:company_billing")
+
+    subscription = _latest_subscription_for_account("Company", company.email) or subscription
+    active_plan_code = _normalize_plan_code(subscription.plan)
+    is_active_subscription = _is_subscription_active(subscription)
+    plans = _subscription_plan_catalog()
+    current_plan = next((item for item in plans if item.get("plan_code") == active_plan_code), None)
+    payment_history = list(_recent_payments_for_account("Company", company.email, limit=25))
+    pending_payment = _pending_payment_for_account("Company", company.email)
+    payment_popup_message = (request.session.pop("payment_popup_message", "") or "").strip()
+    month_start, month_end = _month_window()
+    month_job_count = Job.objects.filter(
+        company__iexact=company.name,
+        created_at__date__gte=month_start,
+        created_at__date__lt=month_end,
+    ).count()
+    quota = _job_post_limit_for_account(
+        "Company",
+        company.email,
+        company.plan_type,
+        company.payment_status,
+        company.plan_expiry,
+    )
+
+    return render(
+        request,
+        "dashboard/company/company_billing.html",
+        {
+            "company": company,
+            "subscription": subscription,
+            "plans": plans,
+            "current_plan": current_plan,
+            "is_active_subscription": is_active_subscription,
+            "payment_history": payment_history,
+            "pending_payment": pending_payment,
+            "payment_popup_message": payment_popup_message,
+            "posting_quota": {
+                "plan": quota.get("plan", "Free"),
+                "limit": quota.get("limit"),
+                "used": month_job_count,
+                "remaining": None if quota.get("limit") is None else max(quota.get("limit") - month_job_count, 0),
+            },
+        },
+    )
 
 
 @company_login_required
@@ -11484,8 +14052,36 @@ def _deny_subadmin_delete_action(request):
     return None
 
 
+def _subscription_snapshot_for_account(account_type, email, obj=None):
+    subscription = _latest_subscription_for_account(account_type, email)
+    if subscription:
+        return {
+            "plan": _normalize_plan_code(subscription.plan),
+            "payment_status": subscription.payment_status,
+            "start_date": subscription.start_date,
+            "expiry_date": subscription.expiry_date,
+            "auto_renew": subscription.auto_renew,
+            "subscription": subscription,
+        }
+
+    fallback_plan = _normalize_plan_code(getattr(obj, "plan_type", "Free"))
+    return {
+        "plan": fallback_plan,
+        "payment_status": getattr(obj, "payment_status", "Free"),
+        "start_date": getattr(obj, "plan_start", None),
+        "expiry_date": getattr(obj, "plan_expiry", None),
+        "auto_renew": getattr(obj, "auto_renew", False),
+        "subscription": None,
+    }
+
+
 def _serialize_user(obj, user_type: str, request=None):
-    plan = getattr(obj, "plan_name", "") or "N/A"
+    account_type = {
+        "companies": "Company",
+        "consultancies": "Consultancy",
+    }.get(user_type, "")
+    snapshot = _subscription_snapshot_for_account(account_type, obj.email, obj=obj) if account_type else None
+    plan = (snapshot or {}).get("plan") or getattr(obj, "plan_name", "") or "N/A"
     payload = {
         "id": obj.id,
         "name": obj.name,
@@ -11527,6 +14123,11 @@ def _serialize_user(obj, user_type: str, request=None):
 
 
 def _serialize_user_detail(obj, user_type: str):
+    account_type = {
+        "companies": "Company",
+        "consultancies": "Consultancy",
+    }.get(user_type, "")
+    snapshot = _subscription_snapshot_for_account(account_type, obj.email, obj=obj) if account_type else None
     payload = {
         "id": obj.id,
         "name": obj.name,
@@ -11546,12 +14147,12 @@ def _serialize_user_detail(obj, user_type: str):
     if user_type in ["companies", "consultancies"]:
         payload.update(
             {
-                "plan_name": getattr(obj, "plan_name", ""),
-                "plan_type": getattr(obj, "plan_type", ""),
-                "plan_start": getattr(obj, "plan_start", None),
-                "plan_expiry": getattr(obj, "plan_expiry", None),
-                "payment_status": getattr(obj, "payment_status", ""),
-                "auto_renew": getattr(obj, "auto_renew", False),
+                "plan_name": (snapshot or {}).get("plan") or getattr(obj, "plan_name", ""),
+                "plan_type": (snapshot or {}).get("plan") or getattr(obj, "plan_type", ""),
+                "plan_start": (snapshot or {}).get("start_date") or getattr(obj, "plan_start", None),
+                "plan_expiry": (snapshot or {}).get("expiry_date") or getattr(obj, "plan_expiry", None),
+                "payment_status": (snapshot or {}).get("payment_status") or getattr(obj, "payment_status", ""),
+                "auto_renew": (snapshot or {}).get("auto_renew") if snapshot else getattr(obj, "auto_renew", False),
                 "contact_position": getattr(obj, "contact_position", ""),
             }
         )
@@ -11631,13 +14232,47 @@ def _apply_common_fields(obj, data, files):
         obj.profile_image = profile_image
 
 
-def _apply_user_subscription_fields(obj, data):
-    obj.plan_name = data.get("plan_name", "").strip()
-    obj.plan_type = data.get("plan_type", "").strip()
-    obj.plan_start = parse_date(data.get("plan_start")) if data.get("plan_start") else None
-    obj.plan_expiry = parse_date(data.get("plan_expiry")) if data.get("plan_expiry") else None
-    obj.payment_status = data.get("payment_status", "").strip()
-    obj.auto_renew = data.get("auto_renew") in ["on", "true", "1"]
+def _apply_user_subscription_fields(obj, data, account_type, actor_name="Admin"):
+    resolved_plan = _normalize_plan_code(data.get("plan_type") or data.get("plan_name") or "Free")
+    start_date = parse_date(data.get("plan_start")) if data.get("plan_start") else None
+    expiry_date = parse_date(data.get("plan_expiry")) if data.get("plan_expiry") else None
+    auto_renew = data.get("auto_renew") in ["on", "true", "1"]
+    payment_status = (data.get("payment_status", "") or "").strip().title()
+    if resolved_plan == "Free":
+        payment_status = "Free"
+        auto_renew = False
+        expiry_date = None
+        if not start_date:
+            start_date = timezone.localdate()
+    elif payment_status not in {"Paid", "Due", "Failed"}:
+        payment_status = "Paid"
+    if resolved_plan != "Free" and not start_date:
+        start_date = timezone.localdate()
+
+    obj.plan_name = resolved_plan
+    obj.plan_type = resolved_plan
+    obj.plan_start = start_date
+    obj.plan_expiry = expiry_date
+    obj.payment_status = payment_status
+    obj.auto_renew = auto_renew
+
+    subscription = _create_or_touch_subscription(account_type, obj.name, obj.email)
+    old_plan = subscription.plan or "Free"
+    subscription.plan = resolved_plan
+    subscription.payment_status = payment_status
+    subscription.start_date = start_date
+    subscription.expiry_date = expiry_date
+    subscription.contact = obj.email
+    subscription.name = obj.name
+    subscription.account_type = account_type
+    subscription.auto_renew = auto_renew
+    if resolved_plan == "Free":
+        subscription.monthly_revenue = 0
+    elif payment_status == "Paid":
+        subscription.monthly_revenue = _resolve_plan_amount(account_type, resolved_plan, "monthly")
+    subscription.save()
+    _log_subscription_change(subscription, old_plan, admin_name=actor_name)
+    _sync_org_subscription_from_subscription(subscription)
 
 
 @login_required
@@ -11701,7 +14336,12 @@ def api_user_create(request, user_type):
         doc = request.FILES.get("registration_document")
         if doc:
             obj.registration_document = doc
-        _apply_user_subscription_fields(obj, request.POST)
+        _apply_user_subscription_fields(
+            obj,
+            request.POST,
+            "Company",
+            actor_name=request.user.username or "Admin",
+        )
     elif user_type == "consultancies":
         obj.license_number = request.POST.get("license_number", "").strip()
         obj.company_type = request.POST.get("company_type", "").strip()
@@ -11739,7 +14379,12 @@ def api_user_create(request, user_type):
         address_proof = request.FILES.get("address_proof")
         if address_proof:
             obj.address_proof = address_proof
-        _apply_user_subscription_fields(obj, request.POST)
+        _apply_user_subscription_fields(
+            obj,
+            request.POST,
+            "Consultancy",
+            actor_name=request.user.username or "Admin",
+        )
     else:
         obj.date_of_birth = parse_date(request.POST.get("date_of_birth")) if request.POST.get("date_of_birth") else None
         resume = request.FILES.get("resume")
@@ -11750,6 +14395,16 @@ def api_user_create(request, user_type):
             obj.id_proof = id_proof
 
     obj.save()
+    if user_type == "companies":
+        subscription = _latest_subscription_for_account("Company", obj.email)
+        if subscription:
+            _sync_org_subscription_from_subscription(subscription)
+            obj.refresh_from_db()
+    elif user_type == "consultancies":
+        subscription = _latest_subscription_for_account("Consultancy", obj.email)
+        if subscription:
+            _sync_org_subscription_from_subscription(subscription)
+            obj.refresh_from_db()
     return JsonResponse({"success": True, "item": _serialize_user(obj, user_type, request=request)})
 
 
@@ -11769,7 +14424,12 @@ def api_user_update(request, user_type, pk):
         doc = request.FILES.get("registration_document")
         if doc:
             obj.registration_document = doc
-        _apply_user_subscription_fields(obj, request.POST)
+        _apply_user_subscription_fields(
+            obj,
+            request.POST,
+            "Company",
+            actor_name=request.user.username or "Admin",
+        )
     elif user_type == "consultancies":
         obj.license_number = request.POST.get("license_number", "").strip()
         obj.company_type = request.POST.get("company_type", "").strip()
@@ -11807,7 +14467,12 @@ def api_user_update(request, user_type, pk):
         address_proof = request.FILES.get("address_proof")
         if address_proof:
             obj.address_proof = address_proof
-        _apply_user_subscription_fields(obj, request.POST)
+        _apply_user_subscription_fields(
+            obj,
+            request.POST,
+            "Consultancy",
+            actor_name=request.user.username or "Admin",
+        )
     else:
         obj.date_of_birth = parse_date(request.POST.get("date_of_birth")) if request.POST.get("date_of_birth") else None
         resume = request.FILES.get("resume")
@@ -11818,6 +14483,16 @@ def api_user_update(request, user_type, pk):
             obj.id_proof = id_proof
 
     obj.save()
+    if user_type == "companies":
+        subscription = _latest_subscription_for_account("Company", obj.email)
+        if subscription:
+            _sync_org_subscription_from_subscription(subscription)
+            obj.refresh_from_db()
+    elif user_type == "consultancies":
+        subscription = _latest_subscription_for_account("Consultancy", obj.email)
+        if subscription:
+            _sync_org_subscription_from_subscription(subscription)
+            obj.refresh_from_db()
     return JsonResponse({"success": True, "item": _serialize_user(obj, user_type, request=request)})
 
 
@@ -12027,25 +14702,41 @@ def api_user_detail(request, user_type, pk):
 
     payments = []
     if account_type_lookup:
-        subscription_rows = (
-            Subscription.objects.filter(account_type__iexact=account_type_lookup)
-            .filter(Q(contact__iexact=obj.email) | Q(name__iexact=obj.name))
-            .order_by("-start_date", "-updated_at")[:20]
+        payment_rows = (
+            SubscriptionPayment.objects.filter(account_type__iexact=account_type_lookup)
+            .filter(Q(account_email__iexact=obj.email) | Q(account_name__iexact=obj.name))
+            .order_by("-created_at")[:20]
         )
-        for row in subscription_rows:
-            amount_value = row.monthly_revenue or 0
-            if amount_value:
-                amount_text = f"INR {amount_value:,}"
-            else:
-                amount_text = f"{(row.plan or 'Free')} plan"
+        for row in payment_rows:
             payments.append(
                 {
-                    "invoice": row.subscription_id or f"INV-{row.id}",
-                    "date": _date_text(row.start_date or row.created_at),
-                    "amount": amount_text,
-                    "status": row.payment_status or "Free",
+                    "invoice": row.payment_id or f"PAY-{row.id}",
+                    "date": _date_text(row.created_at),
+                    "amount": f"INR {row.amount:,}" if row.amount else "INR 0",
+                    "status": (row.status or "pending").title(),
                 }
             )
+
+        if not payments:
+            subscription_rows = (
+                Subscription.objects.filter(account_type__iexact=account_type_lookup)
+                .filter(Q(contact__iexact=obj.email) | Q(name__iexact=obj.name))
+                .order_by("-start_date", "-updated_at")[:20]
+            )
+            for row in subscription_rows:
+                amount_value = row.monthly_revenue or 0
+                if amount_value:
+                    amount_text = f"INR {amount_value:,}"
+                else:
+                    amount_text = f"{(row.plan or 'Free')} plan"
+                payments.append(
+                    {
+                        "invoice": row.subscription_id or f"INV-{row.id}",
+                        "date": _date_text(row.start_date or row.created_at),
+                        "amount": amount_text,
+                        "status": row.payment_status or "Free",
+                    }
+                )
 
     if not payments and user_type in {"companies", "consultancies"} and (obj.plan_name or obj.plan_type):
         payments.append(
@@ -12735,11 +15426,12 @@ def api_applications_export(request):
 
 
 def _serialize_subscription(sub):
+    plan_value = _normalize_plan_code(sub.plan)
     return {
         "id": sub.subscription_id,
         "name": sub.name,
         "account_type": sub.account_type,
-        "plan": sub.plan,
+        "plan": plan_value,
         "payment_status": sub.payment_status,
         "start_date": sub.start_date.strftime("%Y-%m-%d") if sub.start_date else "",
         "expiry_date": sub.expiry_date.strftime("%Y-%m-%d") if sub.expiry_date else "",
@@ -12798,9 +15490,14 @@ def _apply_plan_fields(plan, data):
 
 def _apply_subscription_fields(sub, data):
     sub.name = data.get("name", "").strip()
-    sub.account_type = data.get("account_type", "").strip()
-    sub.plan = data.get("plan", "Free").strip()
-    sub.payment_status = data.get("payment_status", "Free").strip()
+    sub.account_type = data.get("account_type", "").strip().title()
+    sub.plan = _normalize_plan_code(data.get("plan", "Free"))
+    payment_status = (data.get("payment_status", "Free") or "").strip().title() or "Free"
+    if sub.plan == "Free":
+        payment_status = "Free"
+    elif payment_status not in {"Paid", "Due", "Failed"}:
+        payment_status = "Paid"
+    sub.payment_status = payment_status
     sub.start_date = parse_date(data.get("start_date")) if data.get("start_date") else None
     sub.expiry_date = parse_date(data.get("expiry_date")) if data.get("expiry_date") else None
     sub.contact = data.get("contact", "").strip()
@@ -12873,7 +15570,7 @@ def api_subscriptions_list(request):
     expiring = base_qs.filter(expiry_date__isnull=False, expiry_date__lte=today + timezone.timedelta(days=30)).count()
     stats = {
         "total": base_qs.count(),
-        "paid": base_qs.exclude(plan="Free").count(),
+        "paid": base_qs.filter(payment_status="Paid").exclude(plan="Free").count(),
         "free": base_qs.filter(plan="Free").count(),
         "expiring": expiring,
     }
@@ -12896,12 +15593,11 @@ def api_subscriptions_list(request):
 @login_required
 @require_http_methods(["POST"])
 def api_subscriptions_create(request):
-    sub = Subscription()
+    sub = Subscription(subscription_id=_generate_prefixed_id("SUB", 401, Subscription, "subscription_id"))
     _apply_subscription_fields(sub, request.POST)
     sub.save()
-    if not sub.subscription_id:
-        sub.subscription_id = _generate_prefixed_id("SUB", 401, Subscription, "subscription_id")
-        sub.save(update_fields=["subscription_id"])
+    _sync_org_subscription_from_subscription(sub)
+    _log_subscription_change(sub, "Free", admin_name=request.user.username or "Admin")
     return JsonResponse({"success": True, "item": _serialize_subscription(sub)})
 
 
@@ -12912,13 +15608,8 @@ def api_subscriptions_update(request, subscription_id):
     old_plan = sub.plan
     _apply_subscription_fields(sub, request.POST)
     sub.save()
-    if old_plan != sub.plan:
-        SubscriptionLog.objects.create(
-            subscription=sub,
-            old_plan=old_plan,
-            new_plan=sub.plan,
-            admin_name=request.user.username or "Admin",
-        )
+    _sync_org_subscription_from_subscription(sub)
+    _log_subscription_change(sub, old_plan, admin_name=request.user.username or "Admin")
     return JsonResponse({"success": True, "item": _serialize_subscription(sub)})
 
 
@@ -12934,6 +15625,7 @@ def api_subscriptions_extend(request, subscription_id):
         day = min(sub.expiry_date.day, 28)
         sub.expiry_date = sub.expiry_date.replace(year=year, month=month, day=day)
         sub.save(update_fields=["expiry_date"])
+        _sync_org_subscription_from_subscription(sub)
     return JsonResponse({"success": True, "item": _serialize_subscription(sub)})
 
 
@@ -12945,8 +15637,555 @@ def api_subscriptions_delete(request, subscription_id):
         return blocked
 
     sub = get_object_or_404(Subscription, subscription_id=subscription_id)
+    if (sub.account_type or "").strip().lower() in {"company", "consultancy"} and sub.contact:
+        _mark_subscription_free(sub.account_type, sub.name, sub.contact, actor_name=request.user.username or "Admin")
     sub.delete()
     return JsonResponse({"success": True})
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_subscription_payments(request, subscription_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"success": False, "error": "Unauthorized."}, status=401)
+
+    subscription = get_object_or_404(Subscription, subscription_id=subscription_id)
+    payments_qs = SubscriptionPayment.objects.filter(subscription=subscription).order_by("-created_at", "-id")
+
+    # Keep backward compatibility with rows where FK was not linked but account metadata matches.
+    if not payments_qs.exists():
+        payment_filter = Q(account_type__iexact=(subscription.account_type or "").strip())
+        if subscription.contact:
+            payment_filter &= Q(account_email__iexact=subscription.contact)
+        elif subscription.name:
+            payment_filter &= Q(account_name__iexact=subscription.name)
+        payments_qs = SubscriptionPayment.objects.filter(payment_filter).order_by("-created_at", "-id")
+
+    payments = [_serialize_payment(item) for item in payments_qs[:200]]
+    return JsonResponse(
+        {
+            "success": True,
+            "subscription": _serialize_subscription(subscription),
+            "payments": payments,
+            "count": len(payments),
+        }
+    )
+
+
+def _serialize_payment(payment):
+    return {
+        "payment_id": payment.payment_id,
+        "account_type": payment.account_type,
+        "account_name": payment.account_name,
+        "account_email": payment.account_email,
+        "plan_code": payment.plan_code,
+        "billing_cycle": payment.billing_cycle,
+        "amount": payment.amount,
+        "currency": payment.currency,
+        "status": payment.status,
+        "provider": payment.provider,
+        "gateway_order_id": payment.gateway_order_id,
+        "gateway_payment_id": payment.gateway_payment_id,
+        "gateway_reference": payment.gateway_reference,
+        "redirect_url": payment.redirect_url,
+        "expires_at": payment.expires_at.isoformat() if payment.expires_at else "",
+        "callback_verified": bool(payment.callback_verified),
+        "created_at": payment.created_at.isoformat() if payment.created_at else "",
+        "updated_at": payment.updated_at.isoformat() if payment.updated_at else "",
+        "paid_at": payment.paid_at.isoformat() if payment.paid_at else "",
+    }
+
+
+@require_http_methods(["POST"])
+def api_payment_initiate(request):
+    body_payload = _safe_json_payload(request.body)
+
+    def payload_value(key, default=""):
+        if request.POST.get(key) not in [None, ""]:
+            return request.POST.get(key)
+        if isinstance(body_payload, dict):
+            value = body_payload.get(key)
+            if value is not None:
+                return value
+        return default
+
+    actor = _resolve_subscription_actor_from_request(request)
+    if not actor:
+        demo_user = str(payload_value("userId", "")).strip()
+        if not demo_user:
+            return JsonResponse({"success": False, "error": "Unauthorized account context."}, status=401)
+        demo_account_type = str(payload_value("account_type", "Candidate")).strip().title() or "Candidate"
+        demo_email = str(payload_value("account_email", "")).strip() or f"{demo_user}@jobexhibition.local"
+        actor = {
+            "account_type": demo_account_type,
+            "account": None,
+            "account_id": demo_user,
+            "name": str(payload_value("account_name", demo_user)).strip() or demo_user,
+            "email": demo_email,
+        }
+
+    account_type = actor.get("account_type")
+    account_name = actor.get("name")
+    account_email = actor.get("email")
+    if not account_email:
+        return JsonResponse(
+            {"success": False, "error": "Email is required before initiating payment."},
+            status=400,
+        )
+
+    requested_plan = payload_value("plan_code") or payload_value("plan") or CANDIDATE_PREMIUM_PLAN_CODE
+    requested_cycle = str(payload_value("billing_cycle", "monthly")).strip().lower()
+    if requested_cycle not in {"monthly", "quarterly"}:
+        requested_cycle = "monthly"
+    plan_code = _normalize_plan_code(requested_plan)
+    if account_type == "Candidate":
+        plan_code = CANDIDATE_PREMIUM_PLAN_CODE
+        requested_cycle = "monthly"
+
+    amount = _resolve_plan_amount(account_type, plan_code, requested_cycle)
+    requested_amount = payload_value("amount")
+    if requested_amount not in [None, ""]:
+        try:
+            parsed_amount = int(float(requested_amount))
+        except (TypeError, ValueError):
+            parsed_amount = 0
+        if parsed_amount > 0:
+            amount = parsed_amount
+    if plan_code != "Free" and amount <= 0:
+        return JsonResponse(
+            {"success": False, "error": "Unable to calculate payment amount for selected plan."},
+            status=400,
+        )
+
+    pending_existing = _pending_payment_for_account(account_type, account_email)
+    if pending_existing:
+        _refresh_payment_status_from_gateway(pending_existing)
+        pending_existing.refresh_from_db()
+
+        if pending_existing.status == "success":
+            _activate_subscription_from_payment(pending_existing, actor_name="Payment API")
+            return JsonResponse(
+                {
+                    "success": True,
+                    "status": "success",
+                    "payment": _serialize_payment(pending_existing),
+                    "redirect_url": "",
+                    "message": "Existing pending payment completed successfully.",
+                }
+            )
+
+        pending_payload = {"payment": pending_existing, "status": pending_existing.status, "redirect_url": "", "success": True}
+        if pending_existing.status in {"initiated", "pending"}:
+            pending_payload = _recover_pending_payment_without_checkout(
+                request,
+                pending_existing,
+                account_id_value=actor.get("account_id"),
+            )
+        active_pending = pending_payload.get("payment") or pending_existing
+        pending_redirect_url = _sanitize_payment_checkout_url(
+            request,
+            (pending_payload.get("redirect_url") or getattr(active_pending, "redirect_url", "") or "").strip(),
+        )
+
+        if pending_payload.get("status") in {"failed", "cancelled", "expired"} and not pending_redirect_url:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "status": pending_payload.get("status"),
+                    "error": pending_payload.get("error") or "Unable to recover pending payment.",
+                    "payment": _serialize_payment(active_pending),
+                    "redirect_url": "",
+                },
+                status=502,
+            )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "status": pending_payload.get("status") or active_pending.status,
+                "payment": _serialize_payment(active_pending),
+                "redirect_url": pending_redirect_url,
+                "message": (
+                    f"Existing pending payment {pending_existing.payment_id} recovered as {active_pending.payment_id}."
+                    if pending_payload.get("replaced_payment_id")
+                    else "Existing pending payment found."
+                ),
+            }
+        )
+
+    subscription = _create_or_touch_subscription(account_type, account_name, account_email)
+    payment = _create_subscription_payment(
+        account_type=account_type,
+        account_name=account_name,
+        account_email=account_email,
+        plan_code=plan_code,
+        billing_cycle=requested_cycle,
+        amount=amount,
+        subscription=subscription,
+    )
+    result = _initiate_gateway_payment(request, payment, account_id_value=actor.get("account_id"))
+    payment.refresh_from_db()
+
+    if not result.get("success"):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": result.get("error") or "Failed to initiate payment.",
+                "payment": _serialize_payment(payment),
+            },
+            status=502,
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "status": result.get("status"),
+            "payment": _serialize_payment(payment),
+            "redirect_url": _sanitize_payment_checkout_url(request, (result.get("redirect_url") or "").strip()),
+        }
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_payment_callback(request):
+    raw_body = request.body or b""
+    payload = _safe_json_payload(raw_body)
+    if not payload:
+        payload = {key: value for key, value in request.POST.items()}
+    callback_headers = _compact_headers(request.headers)
+
+    callback_secret = (getattr(settings, "PAYMENT_GATEWAY_CALLBACK_SECRET", "") or "").strip()
+    if callback_secret:
+        signature = (
+            request.headers.get("X-Payment-Signature")
+            or request.headers.get("X-Callback-Signature")
+            or request.headers.get("X-VERIFY")
+            or ""
+        ).strip()
+        if signature:
+            digest = hmac.new(callback_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(signature, digest):
+                return JsonResponse({"success": False, "error": "Invalid callback signature."}, status=403)
+
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    payment_keys = [
+        payload.get("payment_id"),
+        payload.get("paymentId"),
+        payload.get("merchantOrderId"),
+        payload.get("orderId"),
+        payload.get("referenceId"),
+        data.get("payment_id"),
+        data.get("paymentId"),
+        data.get("merchantOrderId"),
+        data.get("orderId"),
+        data.get("referenceId"),
+    ]
+    payment_keys = [str(item).strip() for item in payment_keys if str(item).strip()]
+
+    payment = None
+    for candidate_key in payment_keys:
+        payment = SubscriptionPayment.objects.filter(payment_id=candidate_key).first()
+        if payment:
+            break
+        payment = SubscriptionPayment.objects.filter(gateway_order_id=candidate_key).first()
+        if payment:
+            break
+        payment = SubscriptionPayment.objects.filter(gateway_reference=candidate_key).first()
+        if payment:
+            break
+
+    if not payment:
+        return JsonResponse({"success": False, "error": "Payment record not found."}, status=404)
+
+    resolved_status = _extract_payment_status(payload)
+    payment.status = resolved_status
+    payment.gateway_order_id = (
+        payload.get("merchantOrderId")
+        or payload.get("orderId")
+        or data.get("merchantOrderId")
+        or data.get("orderId")
+        or payment.gateway_order_id
+    )
+    payment.gateway_payment_id = (
+        payload.get("transactionId")
+        or payload.get("paymentId")
+        or data.get("transactionId")
+        or data.get("paymentId")
+        or payment.gateway_payment_id
+    )
+    payment.gateway_reference = (
+        payload.get("referenceId")
+        or payload.get("reference")
+        or data.get("referenceId")
+        or data.get("reference")
+        or payment.gateway_reference
+    )
+    payment.gateway_response = {
+        **(payment.gateway_response or {}),
+        "callback": {
+            "received_at": timezone.now().isoformat(),
+            "headers": callback_headers,
+            "payload": payload,
+        },
+    }
+    _sync_payment_expiry_from_payloads(payment, payload, data)
+    if resolved_status == "success":
+        payment.paid_at = payment.paid_at or timezone.now()
+        payment.callback_verified = True
+    payment.save(
+        update_fields=[
+            "status",
+            "gateway_order_id",
+            "gateway_payment_id",
+            "gateway_reference",
+            "gateway_response",
+            "paid_at",
+            "callback_verified",
+            "expires_at",
+            "updated_at",
+        ]
+    )
+    _record_payment_event(
+        payment=payment,
+        event_type="callback",
+        source=(payment.provider or "gateway"),
+        request_payload=payload,
+        response_payload={
+            "status": resolved_status,
+            "gateway_order_id": payment.gateway_order_id,
+            "gateway_payment_id": payment.gateway_payment_id,
+            "gateway_reference": payment.gateway_reference,
+        },
+        headers=callback_headers,
+        success=True,
+        gateway_status=resolved_status,
+        note="Gateway callback received.",
+    )
+
+    if (payment.provider or "").strip().lower() in {"phonepe", "phone pe"} and is_phonepe_configured(settings):
+        _refresh_payment_status_from_gateway(payment)
+        payment.refresh_from_db()
+        resolved_status = payment.status
+    elif resolved_status == "success":
+        _activate_subscription_from_payment(payment, actor_name="Payment Callback")
+
+    return JsonResponse(
+        {
+            "success": True,
+            "status": resolved_status,
+            "payment_id": payment.payment_id,
+        }
+    )
+
+
+def _can_access_payment_record(request, payment):
+    if not payment:
+        return False
+    if request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser):
+        return True
+    actor = _resolve_subscription_actor_from_request(request)
+    if not actor:
+        return False
+    actor_email = (actor.get("email") or "").strip().lower()
+    payment_email = (payment.account_email or "").strip().lower()
+    return bool(actor_email and payment_email and actor_email == payment_email)
+
+
+@require_http_methods(["GET"])
+def payment_system_checkout_view(request, payment_id):
+    payment = SubscriptionPayment.objects.filter(payment_id=payment_id).first()
+    if not payment:
+        messages.error(request, "Payment not found.")
+        return redirect("dashboard:login")
+
+    if not _can_access_payment_record(request, payment):
+        messages.error(request, "Access denied for this payment.")
+        return redirect("dashboard:login")
+
+    if (payment.provider or "").strip().lower() != INTERNAL_PAYMENT_PROVIDER.lower():
+        messages.info(request, "Please complete payment through PhonePe checkout.")
+        if payment.redirect_url:
+            return _redirect_to_payment_checkout_or_fallback(
+                request,
+                payment.redirect_url,
+                _billing_redirect_name_for_account(payment.account_type),
+            )
+        return redirect(_billing_redirect_name_for_account(payment.account_type))
+
+    if payment.status == "success":
+        messages.info(request, "Payment already completed.")
+        return redirect(f"{reverse('dashboard:payment_redirect')}?payment_id={payment.payment_id}")
+
+    return render(
+        request,
+        "dashboard/Payment_System/payment_checkout.html",
+        {
+            "payment": payment,
+            "billing_page_url": reverse(_billing_redirect_name_for_account(payment.account_type)),
+            "payment_qr_payload": _build_payment_qr_payload(payment),
+            "payment_qr_upi_id": (getattr(settings, "PAYMENT_QR_UPI_ID", "") or "").strip(),
+            "payment_qr_payee_name": (getattr(settings, "PAYMENT_QR_PAYEE_NAME", "") or "Job Exhibition").strip(),
+        },
+    )
+
+
+@require_http_methods(["POST"])
+def payment_system_process_view(request, payment_id):
+    payment = SubscriptionPayment.objects.filter(payment_id=payment_id).first()
+    if not payment:
+        messages.error(request, "Payment not found.")
+        return redirect("dashboard:login")
+
+    if not _can_access_payment_record(request, payment):
+        messages.error(request, "Access denied for this payment.")
+        return redirect("dashboard:login")
+
+    if (payment.provider or "").strip().lower() != INTERNAL_PAYMENT_PROVIDER.lower():
+        messages.error(request, "Manual payment confirmation is disabled for this transaction.")
+        if payment.redirect_url:
+            return _redirect_to_payment_checkout_or_fallback(
+                request,
+                payment.redirect_url,
+                _billing_redirect_name_for_account(payment.account_type),
+            )
+        return redirect(_billing_redirect_name_for_account(payment.account_type))
+
+    action = (request.POST.get("action") or "").strip().lower()
+    if action in {"pay", "success", "complete"}:
+        payment.status = "success"
+        payment.provider = INTERNAL_PAYMENT_PROVIDER
+        payment.callback_verified = True
+        payment.paid_at = payment.paid_at or timezone.now()
+        payment.gateway_reference = payment.gateway_reference or f"INTERNAL-{payment.payment_id}"
+        payment.gateway_response = {
+            **(payment.gateway_response or {}),
+            "internal_checkout": {
+                "action": "success",
+                "processed_at": timezone.now().isoformat(),
+            },
+        }
+        payment.save(
+            update_fields=[
+                "status",
+                "provider",
+                "callback_verified",
+                "paid_at",
+                "gateway_reference",
+                "gateway_response",
+                "updated_at",
+            ]
+        )
+        _record_payment_event(
+            payment=payment,
+            event_type="manual_update",
+            source=INTERNAL_PAYMENT_PROVIDER,
+            request_payload={"action": action},
+            response_payload={"status": payment.status},
+            success=True,
+            gateway_status=payment.status,
+            note="Internal checkout marked as success.",
+        )
+        _activate_subscription_from_payment(payment, actor_name="Internal Checkout")
+        messages.success(request, "Payment completed and subscription activated.")
+    elif action in {"cancel", "cancelled", "fail", "failed"}:
+        payment.status = "failed"
+        payment.provider = INTERNAL_PAYMENT_PROVIDER
+        payment.gateway_response = {
+            **(payment.gateway_response or {}),
+            "internal_checkout": {
+                "action": "failed",
+                "processed_at": timezone.now().isoformat(),
+            },
+        }
+        payment.save(
+            update_fields=[
+                "status",
+                "provider",
+                "gateway_response",
+                "updated_at",
+            ]
+        )
+        _record_payment_event(
+            payment=payment,
+            event_type="manual_update",
+            source=INTERNAL_PAYMENT_PROVIDER,
+            request_payload={"action": action},
+            response_payload={"status": payment.status},
+            success=False,
+            gateway_status=payment.status,
+            note="Internal checkout marked as failed.",
+        )
+        messages.error(request, "Payment was not completed.")
+    else:
+        messages.info(request, "No payment action selected.")
+
+    return redirect(f"{reverse('dashboard:payment_redirect')}?payment_id={payment.payment_id}")
+
+
+@require_http_methods(["GET"])
+def payment_redirect_view(request):
+    payment_id = (request.GET.get("payment_id") or request.GET.get("paymentId") or request.GET.get("orderId") or "").strip()
+    payment = None
+    if payment_id:
+        payment = SubscriptionPayment.objects.filter(
+            Q(payment_id=payment_id) | Q(gateway_order_id=payment_id) | Q(gateway_reference=payment_id)
+        ).first()
+    if payment:
+        _record_payment_event(
+            payment=payment,
+            event_type="redirect_hit",
+            source=(payment.provider or "gateway"),
+            request_payload={key: value for key, value in request.GET.items()},
+            response_payload={"status_before_refresh": payment.status},
+            success=True,
+            gateway_status=payment.status,
+            note="Payment redirect endpoint hit.",
+        )
+
+    if payment and payment.status in {"initiated", "pending"}:
+        _refresh_payment_status_from_gateway(payment)
+        payment.refresh_from_db()
+
+    if payment and payment.status == "success":
+        _activate_subscription_from_payment(payment, actor_name="Payment Redirect")
+        request.session["payment_popup_message"] = (
+            f"Payment successful for {payment.plan_code} ({payment.billing_cycle.title()}). Subscription activated."
+        )
+        messages.success(request, "Payment successful. Subscription activated.")
+        return redirect(_billing_redirect_name_for_account(payment.account_type))
+
+    if payment and payment.status in {"failed", "cancelled", "expired"}:
+        request.session["payment_popup_message"] = "Payment failed. Please try again."
+        messages.error(request, "Payment failed. Please retry.")
+        return redirect(_billing_redirect_name_for_account(payment.account_type))
+
+    if payment:
+        messages.info(request, "Payment is still pending. Refresh status after checkout.")
+        return redirect(_billing_redirect_name_for_account(payment.account_type))
+
+    messages.info(request, "Payment redirect received. No matching transaction was found.")
+    return redirect("dashboard:login")
+
+
+@require_http_methods(["GET"])
+def api_payment_status(request, payment_id):
+    actor = _resolve_subscription_actor_from_request(request)
+    if not actor:
+        return JsonResponse({"success": False, "error": "Unauthorized account context."}, status=401)
+
+    payment = SubscriptionPayment.objects.filter(payment_id=payment_id).first()
+    if not payment:
+        return JsonResponse({"success": False, "error": "Payment not found."}, status=404)
+    if (payment.account_email or "").strip().lower() != (actor.get("email") or "").strip().lower() and not (
+        request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser)
+    ):
+        return JsonResponse({"success": False, "error": "Access denied."}, status=403)
+
+    if payment.status in {"initiated", "pending"}:
+        _refresh_payment_status_from_gateway(payment)
+        payment.refresh_from_db()
+    return JsonResponse({"success": True, "payment": _serialize_payment(payment)})
 
 
 @login_required
@@ -12993,7 +16232,7 @@ def api_dashboard_metrics(request):
     )
 
     revenue_month = (
-        subscriptions.exclude(plan="Free").aggregate(total=Sum("monthly_revenue")).get("total")
+        subscriptions.filter(payment_status="Paid").exclude(plan="Free").aggregate(total=Sum("monthly_revenue")).get("total")
         or 0
     )
 
@@ -13030,7 +16269,7 @@ def api_dashboard_metrics(request):
     candidate_trend = count_by_month(candidate_dates, months)
 
     free_subs = subscriptions.filter(plan="Free").count()
-    paid_subs = subscriptions.exclude(plan="Free").count()
+    paid_subs = subscriptions.filter(payment_status="Paid").exclude(plan="Free").count()
 
     expiring_today = subscriptions.filter(expiry_date=today).count()
     suspicious_users = (
@@ -13064,7 +16303,7 @@ def api_dashboard_metrics(request):
         "-action_date",
         "-id",
     ).first()
-    latest_paid_sub = subscriptions.exclude(plan="Free").order_by("-updated_at").first()
+    latest_paid_sub = subscriptions.filter(payment_status="Paid").exclude(plan="Free").order_by("-updated_at").first()
 
     payment_value = "-"
     payment_time = ""

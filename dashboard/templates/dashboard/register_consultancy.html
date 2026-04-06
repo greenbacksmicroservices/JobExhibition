@@ -50,8 +50,7 @@
       100% { transform: translateY(-115vh) rotate(15deg); opacity: 0; }
     }
     .register-card {
-      width: 860px;
-      max-width: 100%;
+      width: min(1140px, 100%);
       background: rgba(255, 255, 255, 0.92);
       border-radius: 28px;
       padding: 36px;
@@ -98,6 +97,14 @@
       border: 1px solid #e2e8f0;
       font-size: 13px;
       background: #fff;
+    }
+    .field input.otp-verified {
+      border-color: #16a34a;
+      padding-right: 36px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2316a34a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 10l4 4 8-8'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 16px 16px;
     }
     .field textarea { resize: vertical; min-height: 72px; }
     .password-input {
@@ -149,6 +156,47 @@
       transition: transform 0.3s ease;
     }
     .btn-primary:hover { transform: translateY(-2px); }
+    .otp-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: end;
+    }
+    .otp-inline-status {
+      min-height: 18px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #64748b;
+    }
+    .otp-inline-status.is-success {
+      color: #166534;
+    }
+    .otp-inline-status.is-error {
+      color: #be123c;
+    }
+    .otp-inline-status.is-info {
+      color: #0f766e;
+    }
+    .btn-secondary {
+      border: 1px solid #0f766e;
+      color: #0f766e;
+      background: #ecfeff;
+      border-radius: 10px;
+      padding: 11px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .captcha {
+      background: #f8fafc;
+      border: 1px dashed #94a3b8;
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 12px;
+      color: #334155;
+      font-weight: 700;
+    }
     .link-row {
       margin-top: 14px;
       text-align: center;
@@ -293,6 +341,14 @@
       background: #0f766e;
       border-radius: 999px;
     }
+    @media (max-width: 640px) {
+      .otp-row {
+        grid-template-columns: 1fr;
+      }
+      .otp-row .btn-secondary {
+        width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
@@ -315,40 +371,40 @@
       {% endfor %}
     {% endif %}
 
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" data-registration-otp-url="{% url 'dashboard:send_registration_otp' %}">
       {% csrf_token %}
       <div class="form-section">
         <h4>1. Basic Company Information</h4>
         <div class="grid-2">
           <div class="field">
             <label>Consultancy Name *</label>
-            <input type="text" name="name" placeholder="Consultancy name" required />
+            <input type="text" name="name" value="{{ form_data.name|default:'' }}" placeholder="Consultancy name" required />
           </div>
           <div class="field">
             <label>Company Type</label>
             <select name="company_type" required>
               <option value="">Select Type</option>
-              <option value="Proprietorship">Proprietorship</option>
-              <option value="Partnership">Partnership</option>
-              <option value="LLP">LLP</option>
-              <option value="Pvt Ltd">Pvt Ltd</option>
+              <option value="Proprietorship" {% if form_data.company_type == 'Proprietorship' %}selected{% endif %}>Proprietorship</option>
+              <option value="Partnership" {% if form_data.company_type == 'Partnership' %}selected{% endif %}>Partnership</option>
+              <option value="LLP" {% if form_data.company_type == 'LLP' %}selected{% endif %}>LLP</option>
+              <option value="Pvt Ltd" {% if form_data.company_type == 'Pvt Ltd' %}selected{% endif %}>Pvt Ltd</option>
             </select>
           </div>
           <div class="field">
             <label>Registration Number (optional)</label>
-            <input type="text" name="registration_number" placeholder="Reg. Number" />
+            <input type="text" name="registration_number" value="{{ form_data.registration_number|default:'' }}" placeholder="Reg. Number" />
           </div>
           <div class="field">
             <label>GST Number (optional)</label>
-            <input type="text" name="gst_number" placeholder="GSTIN" />
+            <input type="text" name="gst_number" value="{{ form_data.gst_number|default:'' }}" placeholder="GSTIN" />
           </div>
           <div class="field">
             <label>Year of Establishment</label>
-            <input type="number" name="year_established" placeholder="e.g. 2015" />
+            <input type="number" name="year_established" value="{{ form_data.year_established|default:'' }}" placeholder="e.g. 2015" />
           </div>
           <div class="field">
             <label>Website URL (optional)</label>
-            <input type="url" name="website_url" placeholder="https://yourcompany.com" />
+            <input type="url" name="website_url" value="{{ form_data.website_url|default:'' }}" placeholder="https://yourcompany.com" />
           </div>
         </div>
       </div>
@@ -358,30 +414,37 @@
         <div class="grid-2">
           <div class="field">
             <label>Official Email (Login ID) *</label>
-            <input type="email" name="email" placeholder="consultancy@email.com" required />
+            <input type="email" name="email" value="{{ form_data.email|default:'' }}" placeholder="consultancy@email.com" required />
           </div>
           <div class="field">
             <label>Create Password</label>
             <div class="password-input">
-              <input type="password" id="consultancy_password" name="password" placeholder="Create password" required />
+              <input type="password" id="consultancy_password" name="password" autocomplete="new-password" placeholder="Create password" required />
               <button class="password-toggle" type="button" data-password-toggle="consultancy_password">Show</button>
             </div>
           </div>
           <div class="field">
+            <label>Confirm Password</label>
+            <div class="password-input">
+              <input type="password" id="consultancy_confirm_password" name="confirm_password" autocomplete="new-password" placeholder="Confirm password" required />
+              <button class="password-toggle" type="button" data-password-toggle="consultancy_confirm_password">Show</button>
+            </div>
+          </div>
+          <div class="field">
             <label>Mobile Number *</label>
-            <input type="text" name="phone" placeholder="+91" required />
+            <input type="text" name="phone" value="{{ form_data.phone|default:'' }}" placeholder="+91" required />
           </div>
           <div class="field">
             <label>Alternate Mobile Number</label>
-            <input type="text" name="alt_phone" placeholder="+91" />
+            <input type="text" name="alt_phone" value="{{ form_data.alt_phone|default:'' }}" placeholder="+91" />
           </div>
           <div class="field">
             <label>Office Landline (optional)</label>
-            <input type="text" name="office_landline" placeholder="Landline" />
+            <input type="text" name="office_landline" value="{{ form_data.office_landline|default:'' }}" placeholder="Landline" />
           </div>
           <div class="field">
             <label>City (Location)</label>
-            <input type="text" name="location" placeholder="City" />
+            <input type="text" name="location" value="{{ form_data.location|default:'' }}" placeholder="City" />
           </div>
         </div>
       </div>
@@ -391,27 +454,27 @@
         <div class="grid-2">
           <div class="field">
             <label>Address Line 1</label>
-            <input type="text" name="address_line1" placeholder="Building / Street" />
+            <input type="text" name="address_line1" value="{{ form_data.address_line1|default:'' }}" placeholder="Building / Street" />
           </div>
           <div class="field">
             <label>Address Line 2</label>
-            <input type="text" name="address_line2" placeholder="Area / Landmark" />
+            <input type="text" name="address_line2" value="{{ form_data.address_line2|default:'' }}" placeholder="Area / Landmark" />
           </div>
           <div class="field">
             <label>City</label>
-            <input type="text" name="city" placeholder="City" />
+            <input type="text" name="city" value="{{ form_data.city|default:'' }}" placeholder="City" />
           </div>
           <div class="field">
             <label>State</label>
-            <input type="text" name="state" placeholder="State" />
+            <input type="text" name="state" value="{{ form_data.state|default:'' }}" placeholder="State" />
           </div>
           <div class="field">
             <label>PIN Code</label>
-            <input type="text" name="pin_code" placeholder="PIN" />
+            <input type="text" name="pin_code" value="{{ form_data.pin_code|default:'' }}" placeholder="PIN" />
           </div>
           <div class="field">
             <label>Country</label>
-            <input type="text" name="country" placeholder="Country" />
+            <input type="text" name="country" value="{{ form_data.country|default:'' }}" placeholder="Country" />
           </div>
         </div>
       </div>
@@ -421,27 +484,27 @@
         <div class="grid-2">
           <div class="field">
             <label>Owner / Director Name</label>
-            <input type="text" name="owner_name" placeholder="Full name" />
+            <input type="text" name="owner_name" value="{{ form_data.owner_name|default:'' }}" placeholder="Full name" />
           </div>
           <div class="field">
             <label>Designation</label>
-            <input type="text" name="owner_designation" placeholder="Founder / Director" />
+            <input type="text" name="owner_designation" value="{{ form_data.owner_designation|default:'' }}" placeholder="Founder / Director" />
           </div>
           <div class="field">
             <label>Mobile Number</label>
-            <input type="text" name="owner_phone" placeholder="+91" />
+            <input type="text" name="owner_phone" value="{{ form_data.owner_phone|default:'' }}" placeholder="+91" />
           </div>
           <div class="field">
             <label>Email ID</label>
-            <input type="email" name="owner_email" placeholder="owner@email.com" />
+            <input type="email" name="owner_email" value="{{ form_data.owner_email|default:'' }}" placeholder="owner@email.com" />
           </div>
           <div class="field">
             <label>PAN Number (optional)</label>
-            <input type="text" name="owner_pan" placeholder="PAN" />
+            <input type="text" name="owner_pan" value="{{ form_data.owner_pan|default:'' }}" placeholder="PAN" />
           </div>
           <div class="field">
             <label>Aadhaar (optional)</label>
-            <input type="text" name="owner_aadhaar" placeholder="Aadhaar" />
+            <input type="text" name="owner_aadhaar" value="{{ form_data.owner_aadhaar|default:'' }}" placeholder="Aadhaar" />
           </div>
         </div>
       </div>
@@ -449,30 +512,32 @@
       <div class="form-section">
         <h4>5. Services Information</h4>
         <div class="grid-2">
-          <div class="field">
+          <div class="field" style="grid-column: 1 / -1;">
             <label>Type of Consultancy</label>
             <div class="checkbox-grid">
-              <label><input type="checkbox" name="consultancy_types" value="HR Consultancy" /> HR Consultancy</label>
-              <label><input type="checkbox" name="consultancy_types" value="IT Consultancy" /> IT Consultancy</label>
-              <label><input type="checkbox" name="consultancy_types" value="Education Consultancy" /> Education Consultancy</label>
-              <label><input type="checkbox" name="consultancy_types" value="Manpower Supply" /> Manpower Supply</label>
+              <label><input type="checkbox" name="consultancy_types" value="HR Consultancy" {% if form_data.consultancy_types and 'HR Consultancy' in form_data.consultancy_types %}checked{% endif %} /> HR Consultancy</label>
+              <label><input type="checkbox" name="consultancy_types" value="IT Consultancy" {% if form_data.consultancy_types and 'IT Consultancy' in form_data.consultancy_types %}checked{% endif %} /> IT Consultancy</label>
+              <label><input type="checkbox" name="consultancy_types" value="Education Consultancy" {% if form_data.consultancy_types and 'Education Consultancy' in form_data.consultancy_types %}checked{% endif %} /> Education Consultancy</label>
+              <label><input type="checkbox" name="consultancy_types" value="Manpower Supply" {% if form_data.consultancy_types and 'Manpower Supply' in form_data.consultancy_types %}checked{% endif %} /> Manpower Supply</label>
+              <label><input type="checkbox" name="consultancy_types" value="Executive Search" {% if form_data.consultancy_types and 'Executive Search' in form_data.consultancy_types %}checked{% endif %} /> Executive Search</label>
+              <label><input type="checkbox" name="consultancy_types" value="Overseas Recruitment" {% if form_data.consultancy_types and 'Overseas Recruitment' in form_data.consultancy_types %}checked{% endif %} /> Overseas Recruitment</label>
             </div>
           </div>
           <div class="field">
             <label>Industries Served</label>
-            <input type="text" name="industries_served" placeholder="e.g. IT, BFSI, Retail" />
+            <input type="text" name="industries_served" value="{{ form_data.industries_served|default:'' }}" placeholder="e.g. IT, BFSI, Retail" />
           </div>
           <div class="field">
             <label>Service Charges (optional)</label>
-            <input type="text" name="service_charges" placeholder="e.g. 8% CTC" />
+            <input type="text" name="service_charges" value="{{ form_data.service_charges|default:'' }}" placeholder="e.g. 8% CTC" />
           </div>
           <div class="field">
             <label>Areas of Operation</label>
             <select name="areas_of_operation">
               <option value="">Select</option>
-              <option value="State">State</option>
-              <option value="India">India</option>
-              <option value="International">International</option>
+              <option value="State" {% if form_data.areas_of_operation == 'State' %}selected{% endif %}>State</option>
+              <option value="India" {% if form_data.areas_of_operation == 'India' %}selected{% endif %}>India</option>
+              <option value="International" {% if form_data.areas_of_operation == 'International' %}selected{% endif %}>International</option>
             </select>
           </div>
         </div>
@@ -505,18 +570,47 @@
       </div>
 
       <div class="form-section">
-        <h4>7. Agreement &amp; Policy</h4>
+        <h4>7. Verification</h4>
+        <div class="grid-2">
+          <div class="field otp-row">
+            <div>
+              <label>Email OTP</label>
+              <div class="otp-inline-status" data-otp-status-for="email_otp" aria-live="polite"></div>
+              <input type="text" name="email_otp" value="{{ form_data.email_otp|default:'' }}" placeholder="Enter OTP" inputmode="numeric" autocomplete="one-time-code" data-otp-flow="consultancy" data-otp-channel="email" data-otp-verify-url="{% url 'dashboard:verify_registration_otp' %}" required />
+            </div>
+            <button class="btn-secondary" type="button" data-otp-send-button data-otp-send-channel="email" data-otp-target="email_otp">Send OTP</button>
+          </div>
+          <div class="field otp-row">
+            <div>
+              <label>Mobile OTP</label>
+              <div class="otp-inline-status" data-otp-status-for="mobile_otp" aria-live="polite"></div>
+              <input type="text" name="mobile_otp" value="{{ form_data.mobile_otp|default:'' }}" placeholder="Enter OTP" inputmode="numeric" autocomplete="one-time-code" data-otp-flow="consultancy" data-otp-channel="sms" data-otp-verify-url="{% url 'dashboard:verify_registration_otp' %}" required />
+            </div>
+            <button class="btn-secondary" type="button" data-otp-send-button data-otp-send-channel="sms" data-otp-target="mobile_otp">Send OTP</button>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>CAPTCHA</label>
+            <div class="captcha">Solve: {{ captcha_question }}</div>
+            <input type="text" name="captcha_answer" value="{{ form_data.captcha_answer|default:'' }}" placeholder="Enter answer" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h4>8. Agreement &amp; Policy</h4>
         <div class="field check-row">
-          <input type="checkbox" id="consultancy_agreement" name="consultancy_agreement" required />
+          <input type="checkbox" id="consultancy_agreement" name="consultancy_agreement" {% if form_data.consultancy_agreement %}checked{% endif %} required />
           <label for="consultancy_agreement">I agree to <span class="terms-link" onclick="openModal('consultancyAgreementModal')">Consultancy Agreement</span></label>
         </div>
         <div class="field check-row">
-          <input type="checkbox" id="consultancy_terms" name="terms_accepted" required />
+          <input type="checkbox" id="consultancy_terms" name="terms_accepted" {% if form_data.terms_accepted %}checked{% endif %} required />
           <label for="consultancy_terms">I agree to <span class="terms-link" onclick="openModal('consultancyTermsModal')">Terms &amp; Conditions</span></label>
         </div>
       </div>
 
-      <button class="btn-primary" type="submit">Submit for Approval</button>
+      <button class="btn-primary" type="submit" name="action" value="register">Submit for Approval</button>
     </form>
 
     <div class="link-row">
@@ -801,5 +895,7 @@
   </script>
 
   <script src="{% static 'dashboard/js/password-toggle.js' %}?v={{ static_asset_version }}"></script>
+  <script src="{% static 'dashboard/js/registration-otp-send.js' %}?v={{ static_asset_version }}"></script>
+  <script src="{% static 'dashboard/js/otp-verify-ui.js' %}?v={{ static_asset_version }}"></script>
 </body>
 </html>

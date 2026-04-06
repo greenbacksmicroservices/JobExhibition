@@ -16,6 +16,23 @@ document.addEventListener('DOMContentLoaded', () => {
   const darkToggle = document.getElementById('darkModeToggle');
   const fullscreenToggles = document.querySelectorAll('[data-fullscreen-toggle]');
   const messageLinks = document.querySelectorAll('a.icon-btn[aria-label="Messages"]');
+  const notificationDropdowns = Array.from(document.querySelectorAll('.notification-dropdown'));
+  const panelNotificationRoot = document.querySelector('[data-panel-notification-root]') || notificationDropdowns[0] || null;
+  let panelNotificationCountBadges = document.querySelectorAll('[data-panel-notification-count]');
+  const sidebarNotificationPlaceholders = document.querySelectorAll('[data-sidebar-notification-count]');
+  const panelNotificationsApiUrl = '/api/panel-notifications/';
+  if (panelNotificationRoot && (!panelNotificationCountBadges || !panelNotificationCountBadges.length)) {
+    const summary = panelNotificationRoot.querySelector('summary');
+    if (summary) {
+      const autoBadge = document.createElement('span');
+      autoBadge.className = 'icon-count-badge';
+      autoBadge.setAttribute('data-panel-notification-count', '');
+      autoBadge.style.display = 'none';
+      autoBadge.textContent = '0';
+      summary.appendChild(autoBadge);
+      panelNotificationCountBadges = document.querySelectorAll('[data-panel-notification-count]');
+    }
+  }
   const panelUserName = (
     document.querySelector('.profile-meta strong')?.textContent ||
     document.querySelector('.company-user-meta strong')?.textContent ||
@@ -642,6 +659,368 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
+
+  const closeAllNotificationDropdowns = () => {
+    notificationDropdowns.forEach((dropdown) => {
+      dropdown.removeAttribute('open');
+    });
+  };
+
+  if (notificationDropdowns.length) {
+    document.addEventListener('click', (event) => {
+      notificationDropdowns.forEach((dropdown) => {
+        if (!dropdown.contains(event.target)) {
+          dropdown.removeAttribute('open');
+        }
+      });
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeAllNotificationDropdowns();
+      }
+    });
+  }
+
+  const escapeHtml = (value) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const setCountBadges = (nodes, count) => {
+    nodes.forEach((node) => {
+      if (!node) return;
+      const numeric = Number(count || 0);
+      node.textContent = String(Math.max(0, numeric));
+      node.style.display = numeric > 0 ? '' : 'none';
+    });
+  };
+
+  const normalizePanelPath = (rawUrl) => {
+    const rawValue = String(rawUrl || '').trim();
+    if (!rawValue || rawValue.startsWith('#') || rawValue.startsWith('javascript:')) {
+      return '';
+    }
+    try {
+      const resolved = new URL(rawValue, window.location.origin);
+      const pathname = (resolved.pathname || '').replace(/\/+$/, '');
+      return pathname || '/';
+    } catch {
+      return '';
+    }
+  };
+
+  const buildPathPrefixes = (pathValue) => {
+    const normalizedPath = normalizePanelPath(pathValue);
+    if (!normalizedPath) {
+      return [];
+    }
+    if (normalizedPath === '/') {
+      return ['/'];
+    }
+    const segments = normalizedPath.split('/').filter(Boolean);
+    const prefixes = [];
+    for (let index = segments.length; index >= 1; index -= 1) {
+      prefixes.push(`/${segments.slice(0, index).join('/')}`);
+    }
+    return Array.from(new Set(prefixes));
+  };
+
+  const buildSidebarNotificationTargets = () => {
+    const nodes = Array.from(document.querySelectorAll('.sidebar-nav a[href], .sidebar-nav .nav-toggle[data-nav-url]'));
+    if (!nodes.length) {
+      return [];
+    }
+
+    const targets = [];
+    const seen = new Set();
+    let hostCounter = 0;
+
+    nodes.forEach((node) => {
+      const rawUrl =
+        node.tagName === 'A' ? node.getAttribute('href') : node.getAttribute('data-nav-url');
+      const normalizedPath = normalizePanelPath(rawUrl);
+      if (!normalizedPath) {
+        return;
+      }
+
+      let host = node;
+      if (node.classList.contains('nav-sub')) {
+        const parentToggle = node.closest('.nav-section')?.querySelector('.nav-toggle');
+        if (parentToggle) {
+          host = parentToggle;
+        }
+      }
+
+      if (!host.dataset.notificationHostId) {
+        hostCounter += 1;
+        host.dataset.notificationHostId = `panel-notification-host-${hostCounter}`;
+      }
+      const key = `${host.dataset.notificationHostId}:${normalizedPath}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      targets.push({
+        host,
+        prefixes: buildPathPrefixes(normalizedPath),
+      });
+    });
+
+    return targets;
+  };
+
+  const sidebarNotificationTargets = buildSidebarNotificationTargets();
+
+  const resolveSidebarNotificationHost = (noteUrl) => {
+    const normalizedPath = normalizePanelPath(noteUrl);
+    if (!normalizedPath || !sidebarNotificationTargets.length) {
+      return null;
+    }
+
+    let bestHost = null;
+    let bestScore = -1;
+    sidebarNotificationTargets.forEach((target) => {
+      target.prefixes.forEach((prefix) => {
+        if (!prefix) return;
+        if (normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)) {
+          const score = prefix.length;
+          if (score > bestScore) {
+            bestScore = score;
+            bestHost = target.host;
+          }
+        }
+      });
+    });
+    return bestHost;
+  };
+
+  const clearSidebarSectionBadges = () => {
+    sidebarNotificationPlaceholders.forEach((badge) => {
+      if (!badge) return;
+      badge.textContent = '0';
+      badge.style.display = 'none';
+    });
+    document.querySelectorAll('[data-dynamic-sidebar-badge]').forEach((badge) => {
+      badge.remove();
+    });
+  };
+
+  const setSidebarHostBadgeCount = (host, count) => {
+    if (!host || count < 1) {
+      return;
+    }
+    let badge = host.querySelector('[data-sidebar-notification-count]');
+    if (!badge) {
+      badge = host.querySelector('[data-dynamic-sidebar-badge]');
+    }
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'nav-count-badge nav-section-count-badge';
+      badge.setAttribute('data-dynamic-sidebar-badge', '');
+      const badgeContainer = host.querySelector('.nav-label') || host;
+      badgeContainer.appendChild(badge);
+    }
+    badge.textContent = String(count);
+    badge.style.display = '';
+  };
+
+  const updateSidebarSectionBadges = (items) => {
+    clearSidebarSectionBadges();
+    const rows = (Array.isArray(items) ? items : []).filter(
+      (item) => item && item.unread && item.url
+    );
+    if (!rows.length) {
+      return;
+    }
+
+    const sectionCounts = new Map();
+    rows.forEach((item) => {
+      const host = resolveSidebarNotificationHost(item.url);
+      if (!host) {
+        return;
+      }
+      sectionCounts.set(host, (sectionCounts.get(host) || 0) + 1);
+    });
+
+    if (!sectionCounts.size && sidebarNotificationPlaceholders.length) {
+      const fallbackBadge = sidebarNotificationPlaceholders[0];
+      const fallbackHost = fallbackBadge.closest('.nav-item, .nav-toggle, .nav-sub');
+      if (fallbackHost) {
+        sectionCounts.set(fallbackHost, rows.length);
+      }
+    }
+
+    sectionCounts.forEach((count, host) => {
+      setSidebarHostBadgeCount(host, count);
+    });
+  };
+
+  const renderPanelNotificationItems = (items) => {
+    if (!panelNotificationRoot) return;
+    const menu = panelNotificationRoot.querySelector('.notification-menu');
+    if (!menu) return;
+
+    let list = menu.querySelector('[data-panel-notification-list]');
+    if (!list) {
+      list = document.createElement('ul');
+      list.className = 'notification-list';
+      list.setAttribute('data-panel-notification-list', '');
+      const heading = menu.querySelector('h4');
+      if (heading && heading.nextSibling) {
+        menu.insertBefore(list, heading.nextSibling);
+      } else {
+        menu.appendChild(list);
+      }
+    }
+
+    let empty = menu.querySelector('[data-panel-notification-empty]');
+    if (!empty) {
+      empty = document.createElement('p');
+      empty.className = 'muted';
+      empty.setAttribute('data-panel-notification-empty', '');
+      empty.textContent = 'No notifications yet.';
+      menu.appendChild(empty);
+    }
+
+    const rows = Array.isArray(items) ? items : [];
+    if (!rows.length) {
+      list.innerHTML = '';
+      list.style.display = 'none';
+      empty.style.display = '';
+      return;
+    }
+
+    list.innerHTML = rows
+      .map((item) => {
+        const title = escapeHtml(item.title || 'Notification');
+        const message = escapeHtml(item.message || '');
+        const meta = item.created_label ? `<div class="muted">${escapeHtml(item.created_label)}</div>` : '';
+        if (item.url) {
+          return `<li><a href="${escapeHtml(item.url)}" class="action-link">${title}</a><div class="muted">${message}</div>${meta}</li>`;
+        }
+        return `<li><strong>${title}</strong><div class="muted">${message}</div>${meta}</li>`;
+      })
+      .join('');
+    list.style.display = 'grid';
+    empty.style.display = 'none';
+  };
+
+  const ensurePanelNotificationActions = () => {
+    if (!panelNotificationRoot) return {};
+    const menu = panelNotificationRoot.querySelector('.notification-menu');
+    if (!menu) return {};
+
+    let actions = menu.querySelector('[data-panel-notification-actions]');
+    if (!actions) {
+      actions = document.createElement('div');
+      actions.className = 'panel-notification-actions';
+      actions.setAttribute('data-panel-notification-actions', '');
+      menu.appendChild(actions);
+    }
+
+    let viewAllLink = actions.querySelector('[data-panel-notification-view-all]');
+    if (!viewAllLink) {
+      const existingLink = Array.from(menu.querySelectorAll('a.action-link')).find(
+        (link) => !link.closest('[data-panel-notification-list]')
+      );
+      if (existingLink) {
+        const previousParent = existingLink.parentElement;
+        existingLink.setAttribute('data-panel-notification-view-all', '');
+        actions.appendChild(existingLink);
+        if (
+          previousParent &&
+          previousParent !== menu &&
+          previousParent.children.length === 0
+        ) {
+          previousParent.remove();
+        }
+        viewAllLink = existingLink;
+      }
+    }
+
+    let readAllButton = actions.querySelector('[data-panel-notification-read-all]');
+    if (!readAllButton) {
+      readAllButton = document.createElement('button');
+      readAllButton.type = 'button';
+      readAllButton.className = 'notification-action-btn';
+      readAllButton.textContent = 'Read all';
+      readAllButton.setAttribute('data-panel-notification-read-all', '');
+      actions.appendChild(readAllButton);
+    }
+
+    return { actions, viewAllLink, readAllButton };
+  };
+
+  let panelNotificationPollHandle = null;
+  const refreshPanelNotifications = (markSeen = false) => {
+    if (!panelNotificationRoot) return Promise.resolve(null);
+    const query = markSeen ? '?mark_seen=1' : '';
+    return fetch(`${panelNotificationsApiUrl}${query}`, {
+      credentials: 'same-origin',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!data || !data.success) return;
+        const unread = Number(data.unread_count || 0);
+        setCountBadges(panelNotificationCountBadges, unread);
+        renderPanelNotificationItems(data.items || []);
+        updateSidebarSectionBadges(data.items || []);
+        return data;
+      })
+      .catch(() => null);
+  };
+
+  if (panelNotificationRoot) {
+    const { readAllButton } = ensurePanelNotificationActions();
+    if (readAllButton) {
+      readAllButton.addEventListener('click', () => {
+        const originalText = readAllButton.textContent;
+        readAllButton.disabled = true;
+        readAllButton.textContent = 'Marking...';
+        refreshPanelNotifications(true).finally(() => {
+          readAllButton.disabled = false;
+          readAllButton.textContent = originalText;
+        });
+      });
+    }
+
+    panelNotificationRoot.addEventListener('toggle', () => {
+      if (panelNotificationRoot.open) {
+        refreshPanelNotifications(false);
+      }
+    });
+
+    const startPanelNotificationPolling = () => {
+      if (panelNotificationPollHandle) return;
+      panelNotificationPollHandle = setInterval(() => {
+        if (!document.hidden) {
+          refreshPanelNotifications(false);
+        }
+      }, 15000);
+    };
+    const stopPanelNotificationPolling = () => {
+      if (!panelNotificationPollHandle) return;
+      clearInterval(panelNotificationPollHandle);
+      panelNotificationPollHandle = null;
+    };
+
+    refreshPanelNotifications(false);
+    startPanelNotificationPolling();
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopPanelNotificationPolling();
+      } else {
+        refreshPanelNotifications(false);
+        startPanelNotificationPolling();
+      }
+    });
+  }
 
   // Lightweight same-origin prefetch for faster panel navigation.
   const prefetchedUrls = new Set();

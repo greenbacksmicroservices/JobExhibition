@@ -41,6 +41,33 @@
 </section>
 {% endif %}
 
+<section class="card section-block">
+  <div class="card-header">
+    <div>
+      <h3>Posting Quota</h3>
+      <p class="muted">Monthly job posting limit based on your active subscription.</p>
+    </div>
+  </div>
+  <div class="info-grid">
+    <div class="info-row">
+      <span class="label">Plan</span>
+      <strong>{{ posting_quota.plan|default:"Free" }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Used This Month</span>
+      <strong>{{ posting_quota.used|default:0 }}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Monthly Limit</span>
+      <strong>{% if posting_quota.limit == None %}Unlimited{% else %}{{ posting_quota.limit }}{% endif %}</strong>
+    </div>
+    <div class="info-row">
+      <span class="label">Remaining</span>
+      <strong>{% if posting_quota.remaining == None %}Unlimited{% else %}{{ posting_quota.remaining }}{% endif %}</strong>
+    </div>
+  </div>
+</section>
+
 {% if form_mode != "list" %}
 <section class="card section-block" id="post-new-job">
   <div class="card-header">

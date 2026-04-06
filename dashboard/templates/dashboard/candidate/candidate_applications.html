@@ -54,7 +54,7 @@
       <tbody id="candidateApplicationsBody">
         {% if applications %}
         {% for app in applications %}
-        <tr data-application-id="{{ app.application_id }}" {% if forloop.first %}class="candidate-app-row-active"{% endif %}>
+        <tr id="candidate-app-{{ app.application_id }}" data-application-id="{{ app.application_id }}" {% if forloop.first %}class="candidate-app-row-active"{% endif %}>
           <td><strong>{{ app.job_title }}</strong></td>
           <td>{{ app.company }}</td>
           <td>{{ app.applied_date|date:"d M Y"|default:"--" }}</td>

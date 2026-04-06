@@ -97,6 +97,20 @@ SUBSCRIPTION_PAYMENT_CHOICES = [
     ("Failed", "Failed"),
 ]
 
+SUBSCRIPTION_CYCLE_CHOICES = [
+    ("monthly", "Monthly"),
+    ("quarterly", "Quarterly"),
+]
+
+PAYMENT_STATUS_CHOICES = [
+    ("initiated", "Initiated"),
+    ("pending", "Pending"),
+    ("success", "Success"),
+    ("failed", "Failed"),
+    ("cancelled", "Cancelled"),
+    ("expired", "Expired"),
+]
+
 INTERVIEW_STATUS_CHOICES = [
     ("scheduled", "Scheduled"),
     ("rescheduled", "Rescheduled"),
@@ -641,6 +655,76 @@ class Subscription(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.subscription_id})"
+
+
+class SubscriptionPayment(models.Model):
+    payment_id = models.CharField(max_length=24, unique=True)
+    subscription = models.ForeignKey(
+        Subscription,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="payments",
+        db_constraint=False,
+    )
+    account_type = models.CharField(max_length=50)
+    account_name = models.CharField(max_length=200, blank=True)
+    account_email = models.EmailField(max_length=254, blank=True)
+    plan_code = models.CharField(max_length=20, default="Free")
+    billing_cycle = models.CharField(
+        max_length=20,
+        choices=SUBSCRIPTION_CYCLE_CHOICES,
+        default="monthly",
+    )
+    amount = models.PositiveIntegerField(default=0)
+    currency = models.CharField(max_length=8, default="INR")
+    status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS_CHOICES,
+        default="initiated",
+    )
+    provider = models.CharField(max_length=40, default="PhonePe")
+    gateway_order_id = models.CharField(max_length=120, blank=True)
+    gateway_payment_id = models.CharField(max_length=120, blank=True)
+    gateway_reference = models.CharField(max_length=120, blank=True)
+    redirect_url = models.URLField(max_length=2048, blank=True)
+    callback_verified = models.BooleanField(default=False)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    gateway_response = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+
+    def __str__(self) -> str:
+        return f"{self.payment_id} ({self.account_type}:{self.plan_code})"
+
+
+class PaymentEventLog(models.Model):
+    payment = models.ForeignKey(
+        SubscriptionPayment,
+        on_delete=models.CASCADE,
+        related_name="event_logs",
+    )
+    event_type = models.CharField(max_length=40, db_index=True)
+    source = models.CharField(max_length=40, blank=True)
+    gateway_status = models.CharField(max_length=20, blank=True)
+    status_code = models.PositiveIntegerField(null=True, blank=True)
+    success = models.BooleanField(null=True, blank=True)
+    request_payload = models.JSONField(default=dict, blank=True)
+    response_payload = models.JSONField(default=dict, blank=True)
+    headers = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True)
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+
+    def __str__(self) -> str:
+        return f"{self.payment.payment_id} [{self.event_type}]"
 
 
 class SubscriptionLog(models.Model):

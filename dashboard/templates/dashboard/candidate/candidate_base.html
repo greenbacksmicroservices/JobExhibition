@@ -72,6 +72,7 @@
           <a class="nav-item {% if request.resolver_match.url_name == 'candidate_notifications' %}active{% endif %}" href="{% url 'dashboard:candidate_notifications' %}">
             <span class="nav-icon"><i class="fa-solid fa-bell"></i></span>
             <span>Notifications</span>
+            <span class="nav-count-badge" data-sidebar-notification-count {% if panel_notification_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_notification_unread_count|default:0 }}</span>
           </a>
           <a class="nav-item {% if request.resolver_match.url_name == 'candidate_profile' %}active{% endif %}" href="{% url 'dashboard:candidate_profile' %}">
             <span class="nav-icon"><i class="fa-solid fa-user"></i></span>
@@ -84,6 +85,10 @@
           <a class="nav-item {% if request.resolver_match.url_name == 'candidate_feedback' %}active{% endif %}" href="{% url 'dashboard:candidate_feedback' %}">
             <span class="nav-icon"><i class="fa-solid fa-star"></i></span>
             <span>Feedbacks</span>
+          </a>
+          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_subscription' %}active{% endif %}" href="{% url 'dashboard:candidate_subscription' %}">
+            <span class="nav-icon"><i class="fa-solid fa-crown"></i></span>
+            <span>Subscription</span>
           </a>
           <a class="nav-item {% if request.resolver_match.url_name == 'candidate_settings' %}active{% endif %}" href="{% url 'dashboard:candidate_settings' %}">
             <span class="nav-icon"><i class="fa-solid fa-gear"></i></span>
@@ -117,15 +122,15 @@
                 <i class="fa-solid fa-envelope"></i>
                 {% if panel_message_unread_count > 0 %}<span class="icon-count-badge">{{ panel_message_unread_count }}</span>{% endif %}
               </a>
-              <details class="notification-dropdown">
+              <details class="notification-dropdown" data-panel-notification-root>
                 <summary class="icon-btn" aria-label="Notifications">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
-                  {% if panel_notification_unread_count > 0 %}<span class="notif-dot"></span>{% endif %}
+                  <span class="icon-count-badge" data-panel-notification-count {% if panel_notification_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_notification_unread_count|default:0 }}</span>
                 </summary>
                 <div class="notification-menu">
                   <h4>Notifications</h4>
                   {% if panel_notifications %}
-                  <ul class="notification-list">
+                  <ul class="notification-list" data-panel-notification-list>
                     {% for note in panel_notifications %}
                     <li>
                       {% if note.url %}
@@ -141,7 +146,7 @@
                     <a href="{% url 'dashboard:candidate_notifications' %}" class="action-link">View all notifications</a>
                   </div>
                   {% else %}
-                  <p class="muted">No notifications yet.</p>
+                  <p class="muted" data-panel-notification-empty>No notifications yet.</p>
                   {% endif %}
                 </div>
               </details>

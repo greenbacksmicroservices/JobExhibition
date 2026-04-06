@@ -1,216 +1,314 @@
-"""
-Email OTP delivery using SMTP credentials.
-Based on PHP SMTP configuration from smtpcodesphp.md
-"""
+"""Email OTP delivery helpers for JobExhibition registration and login flows."""
 
 import logging
+from email import encoders
+from email.mime.base import MIMEBase
+from html import escape
+from pathlib import Path
+
 from django.conf import settings
+from django.core.mail import EmailMultiAlternatives, get_connection
+from django.core.mail.backends.smtp import EmailBackend
 
 logger = logging.getLogger(__name__)
 
 
-def _get_smtp_settings():
-    """
-    Get SMTP settings from Django settings or use defaults from PHP configuration.
-    
-    PHP Configuration (from smtpcodesphp.md):
-    - smtp_host: smtp.hostinger.com
-    - smtp_port: 465
-    - smtp_username: registration@sabkapaisa.com
-    - smtp_password: Admin$12345
-    - smtp_encryption: ssl
-    """
+def _get_primary_smtp_settings():
+    """Read primary SMTP settings from Django settings."""
     return {
-        'host': getattr(settings, 'EMAIL_HOST', 'smtp.hostinger.com'),
-        'port': getattr(settings, 'EMAIL_PORT', 465),
-        'username': getattr(settings, 'EMAIL_HOST_USER', 'registration@sabkapaisa.com'),
-        'password': getattr(settings, 'EMAIL_HOST_PASSWORD', 'Admin$12345'),
-        'use_tls': getattr(settings, 'EMAIL_USE_TLS', False),
-        'use_ssl': getattr(settings, 'EMAIL_USE_SSL', True),
-        'from_email': getattr(
-            settings, 
-            'DEFAULT_FROM_EMAIL', 
-            'SabkaPaisa <registration@sabkapaisa.com>'
+        "host": getattr(settings, "EMAIL_HOST", ""),
+        "port": int(getattr(settings, "EMAIL_PORT", 0) or 0),
+        "username": (getattr(settings, "EMAIL_HOST_USER", "") or "greenbacksjobexhibition@gmail.com").strip(),
+        "password": getattr(settings, "EMAIL_HOST_PASSWORD", "") or "sbyizwrjutuvcdaq",
+        "use_tls": bool(getattr(settings, "EMAIL_USE_TLS", False)),
+        "use_ssl": bool(getattr(settings, "EMAIL_USE_SSL", False)),
+        "from_email": (
+            getattr(settings, "DEFAULT_FROM_EMAIL", "")
+            or "JobExhibition <no-reply@jobexhibition.com>"
+        ),
+    }
+
+
+def _get_fallback_smtp_settings(primary_settings):
+    """Optional fallback sender account (if configured)."""
+    fallback_username = (getattr(settings, "EMAIL_FALLBACK_HOST_USER", "") or "").strip()
+    fallback_password = getattr(settings, "EMAIL_FALLBACK_HOST_PASSWORD", "") or ""
+    if not fallback_username or not fallback_password:
+        return None
+
+    return {
+        "host": getattr(settings, "EMAIL_FALLBACK_HOST", primary_settings["host"]),
+        "port": int(
+            getattr(settings, "EMAIL_FALLBACK_PORT", primary_settings["port"])
+            or primary_settings["port"]
+            or 0
+        ),
+        "username": fallback_username,
+        "password": fallback_password,
+        "use_tls": bool(
+            getattr(settings, "EMAIL_FALLBACK_USE_TLS", primary_settings["use_tls"])
+        ),
+        "use_ssl": bool(
+            getattr(settings, "EMAIL_FALLBACK_USE_SSL", primary_settings["use_ssl"])
+        ),
+        "from_email": (
+            getattr(settings, "EMAIL_FALLBACK_FROM_EMAIL", "")
+            or fallback_username
         ),
     }
 
 
 def _render_otp_email_subject():
-    """Generate OTP email subject."""
-    site_title = getattr(settings, 'SITE_TITLE', 'SabkaPaisa')
-    return f"Your OTP for {site_title} - Password Reset"
+    site_title = getattr(settings, "SITE_TITLE", "JobExhibition")
+    return f"{site_title} Verification OTP"
 
 
-def _render_otp_email_body(otp, to_name="User"):
-    """
-    Generate HTML email body for OTP.
-    Based on PHP email template from smtpcodesphp.md
-    """
-    site_title = getattr(settings, 'SITE_TITLE', 'SabkaPaisa')
-    
+def _resolve_otp_email_logo():
+    """Resolve logo source for OTP mails (external URL or local inline CID)."""
+    custom_url = (getattr(settings, "OTP_EMAIL_LOGO_URL", "") or "").strip()
+    if custom_url:
+        return custom_url, ""
+
+    custom_file = (getattr(settings, "OTP_EMAIL_LOGO_FILE", "") or "").strip()
+    if custom_file:
+        file_path = Path(custom_file)
+        if file_path.exists():
+            return "cid:jobexhibition-logo", str(file_path)
+
+    base_dir = Path(getattr(settings, "BASE_DIR", Path.cwd()))
+    candidates = [
+        base_dir / "static" / "dashboard" / "img" / "je-logo.svg",
+        base_dir / "staticfiles" / "dashboard" / "img" / "je-logo.svg",
+    ]
+    for logo_path in candidates:
+        if logo_path.exists():
+            return "cid:jobexhibition-logo", str(logo_path)
+    return "", ""
+
+
+def _render_otp_email_body(otp, to_name="User", logo_src=""):
+    """Generate HTML + plain body for OTP mail using JobExhibition design."""
+    site_title = getattr(settings, "SITE_TITLE", "JobExhibition")
+    safe_name = escape((to_name or "User").strip() or "User")
+    safe_otp = escape(str(otp or "").strip())
+    safe_logo_src = escape(logo_src or "")
+    otp_logo_html = ""
+    if safe_logo_src:
+        otp_logo_html = f"""
+                <div class="otp-brand-wrap">
+                    <img src="{safe_logo_src}" alt="{site_title} Logo" class="otp-brand-logo">
+                </div>
+""".rstrip()
+
     html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset='UTF-8'>
-        <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
-            .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
-            .otp-box {{ display: inline-block; padding: 20px 40px; background: #667eea; color: white; font-size: 32px; font-weight: bold; border-radius: 5px; margin: 20px 0; letter-spacing: 5px; }}
-            .footer {{ text-align: center; margin-top: 20px; color: #666; font-size: 12px; }}
-            .warning {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }}
-        </style>
-    </head>
-    <body>
-        <div class='container'>
-            <div class='header'>
-                <h1>🔐 Your OTP Code</h1>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{site_title} Verification</title>
+    <style>
+        body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f9fafb; margin: 0; padding: 0; }}
+        .wrapper {{ width: 100%; table-layout: fixed; background-color: #f9fafb; padding-bottom: 40px; }}
+        .main-container {{ max-width: 600px; background-color: #ffffff; margin: 40px auto; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #eef0f2; }}
+        .header {{ background: #2563eb; padding: 40px 20px; text-align: center; color: #ffffff; }}
+        .header h1 {{ margin: 0; font-size: 28px; letter-spacing: 1px; font-weight: 800; }}
+        .body-content {{ padding: 40px; text-align: center; }}
+        .body-content h2 {{ color: #1e293b; font-size: 22px; margin-bottom: 10px; }}
+        .body-content p {{ color: #64748b; font-size: 16px; line-height: 1.6; }}
+        .otp-container {{ margin: 30px 0; padding: 20px; background-color: #f1f5f9; border-radius: 8px; border: 1px solid #e2e8f0; }}
+        .otp-code {{ font-size: 40px; font-weight: bold; color: #2563eb; letter-spacing: 10px; margin: 0; }}
+        .otp-brand-wrap {{ margin: 14px 0 6px; text-align: center; }}
+        .otp-brand-logo {{ width: min(260px, 92%); height: auto; border-radius: 10px; border: 1px solid #e2e8f0; background: #ffffff; padding: 8px 10px; }}
+        .footer {{ background-color: #ffffff; padding: 40px 30px; text-align: center; border-top: 1px solid #f1f5f9; }}
+        .company-info {{ font-size: 15px; color: #475569; line-height: 1.6; font-weight: 500; }}
+        .security-note {{ font-size: 12px; color: #94a3b8; margin-top: 25px; padding-top: 20px; }}
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="main-container">
+            <div class="header">
+                <h1>{site_title}</h1>
             </div>
-            <div class='content'>
-                <p>Hello <strong>{to_name}</strong>,</p>
-                
-                <p>You requested a One-Time Password (OTP) for your account.</p>
-                
-                <p>Use the following OTP to complete your verification:</p>
-                
-                <div style='text-align: center;'>
-                    <div class='otp-box'>{otp}</div>
+            <div class="body-content">
+                <h2>Verify Your Account</h2>
+                <p>Namaste {safe_name},</p>
+                <p>Use the following One-Time Password (OTP) to complete your secure login. This code is valid for 10 minutes.</p>
+                <div class="otp-container">
+                    <div class="otp-code">{safe_otp}</div>
                 </div>
-                
-                <div class='warning'>
-                    <strong>⚠️ Security Notice:</strong>
-                    <ul>
-                        <li>This OTP is valid for 10 minutes only</li>
-                        <li>Do not share this code with anyone</li>
-                        <li>If you didn't request this, please ignore this email</li>
-                    </ul>
-                </div>
-                
-                <p>If you have any questions or concerns, please contact our support team.</p>
-                
-                <p>Best regards,<br><strong>{site_title} Team</strong></p>
+                {otp_logo_html}
+                <p>If you did not request this code, please ignore this email or contact support if you have concerns.</p>
             </div>
-            <div class='footer'>
-                <p>This is an automated email. Please do not reply to this message.</p>
-                <p>&copy; {site_title}. All rights reserved.</p>
+            <div class="footer">
+                <div class="company-info">
+                    <strong>{site_title}</strong><br>
+                    Connecting Talent with Opportunity<br>
+                    Bhubaneswar, Odisha
+                </div>
+                <div class="security-note">
+                    This is an automated message. Please do not reply directly to this email.
+                </div>
             </div>
         </div>
-    </body>
-    </html>
-    """
-    
-    # Plain text fallback
-    plain_text = f"""
-    Hello {to_name},
-    
-    You requested a One-Time Password (OTP) for your account.
-    
-    Your OTP is: {otp}
-    
-    This OTP is valid for 10 minutes only.
-    
-    Do not share this code with anyone.
-    
-    If you didn't request this, please ignore this email.
-    
-    Best regards,
-    {site_title} Team
-    """
-    
+    </div>
+</body>
+</html>
+""".strip()
+
+    plain_text = (
+        f"Hello {to_name or 'User'},\n\n"
+        f"Use this OTP to verify your account: {otp}\n"
+        "This OTP is valid for 10 minutes.\n\n"
+        "If you did not request this, please ignore this email.\n\n"
+        f"Regards,\n{site_title} Team"
+    )
+
     return html_content, plain_text
+
+
+def _send_message(
+    to_email,
+    subject,
+    plain_body,
+    html_body,
+    from_email,
+    smtp_settings=None,
+    inline_logo_path="",
+):
+    """Send an email using default backend or explicit SMTP connection."""
+    connection = None
+    if smtp_settings:
+        connection = get_connection(
+            backend="django.core.mail.backends.smtp.EmailBackend",
+            host=smtp_settings["host"],
+            port=smtp_settings["port"],
+            username=smtp_settings["username"],
+            password=smtp_settings["password"],
+            use_tls=smtp_settings["use_tls"],
+            use_ssl=smtp_settings["use_ssl"],
+            fail_silently=False,
+        )
+
+    msg = EmailMultiAlternatives(
+        subject=subject,
+        body=plain_body,
+        from_email=from_email,
+        to=[to_email],
+        connection=connection,
+    )
+    msg.attach_alternative(html_body, "text/html")
+
+    if inline_logo_path:
+        try:
+            with open(inline_logo_path, "rb") as logo_file:
+                logo_payload = logo_file.read()
+            if logo_payload:
+                inline_logo = MIMEBase("image", "svg+xml")
+                inline_logo.set_payload(logo_payload)
+                encoders.encode_base64(inline_logo)
+                inline_logo.add_header("Content-ID", "<jobexhibition-logo>")
+                inline_logo.add_header("Content-Disposition", "inline", filename="jobexhibition-logo.svg")
+                msg.attach(inline_logo)
+        except Exception:
+            logger.exception("Failed to attach OTP inline logo from %s.", inline_logo_path)
+    return msg.send()
 
 
 def send_otp_email(to_email, otp, to_name="User"):
     """
-    Send OTP via email using SMTP settings.
-
-    Args:
-        to_email: Recipient email address
-        otp: OTP code to send
-        to_name: Recipient name (default: "User")
+    Send OTP email.
 
     Returns:
-        tuple: (success: bool, error_message: str)
+        tuple[bool, str]: success flag and optional error message.
     """
+    target_email = (to_email or "").strip().lower()
+    if not target_email:
+        return False, "Email address is required."
+
+    backend_path = (getattr(settings, "EMAIL_BACKEND", "") or "").lower()
+    if "console" in backend_path:
+        logger.info("=" * 60)
+        logger.info("OTP EMAIL (Console Backend)")
+        logger.info("To: %s", target_email)
+        logger.info("Name: %s", to_name or "User")
+        logger.info("OTP: %s", otp)
+        logger.info("Subject: %s", _render_otp_email_subject())
+        logger.info("=" * 60)
+        return True, ""
+
+    primary = _get_primary_smtp_settings()
+    if not primary["host"] or not primary["username"] or not primary["password"]:
+        logger.error("Primary SMTP credentials are missing.")
+        return False, "Email service is not configured. Please contact support."
+
+    subject = _render_otp_email_subject()
+    logo_src, inline_logo_path = _resolve_otp_email_logo()
+    html_body, plain_body = _render_otp_email_body(otp, to_name, logo_src=logo_src)
+
     try:
-        smtp_settings = _get_smtp_settings()
-
-        # Check if using console backend (for development)
-        backend_path = getattr(settings, 'EMAIL_BACKEND', '')
-        if 'console' in backend_path.lower():
-            # Log to console for development/testing
-            logger.info("=" * 60)
-            logger.info(f"OTP EMAIL (Console Backend)")
-            logger.info(f"To: {to_email}")
-            logger.info(f"Name: {to_name}")
-            logger.info(f"OTP: {otp}")
-            logger.info(f"Subject: {_render_otp_email_subject()}")
-            logger.info("=" * 60)
-            return True, ""
-
-        # Check if SMTP is configured
-        if not smtp_settings['host'] or not smtp_settings['username']:
-            logger.warning("SMTP not configured. Using console backend for OTP.")
-            logger.info(f"OTP for {to_email} is: {otp}")
-            return True, ""
-
-        # Generate email content
-        subject = _render_otp_email_subject()
-        html_body, plain_body = _render_otp_email_body(otp, to_name)
-
-        # Send email using Django's send_mail
-        from django.core.mail import EmailMultiAlternatives
-        
-        msg = EmailMultiAlternatives(
+        sent_count = _send_message(
+            to_email=target_email,
             subject=subject,
-            body=plain_body,
-            from_email=smtp_settings['from_email'],
-            to=[to_email],
+            plain_body=plain_body,
+            html_body=html_body,
+            from_email=primary["from_email"],
+            inline_logo_path=inline_logo_path,
         )
-        msg.attach_alternative(html_body, "text/html")
-        
-        sent_count = msg.send()
-        
         if sent_count > 0:
-            logger.info(f"OTP email sent successfully to {to_email}")
+            logger.info("OTP email sent successfully to %s (primary SMTP).", target_email)
             return True, ""
-        else:
-            logger.error(f"Failed to send OTP email to {to_email}")
-            return False, "Failed to send OTP email. Please check SMTP settings."
-            
-    except Exception as e:
-        logger.exception(f"Error sending OTP email to {to_email}: {str(e)}")
-        return False, f"SMTP Error: {str(e)}"
+    except Exception:
+        logger.exception("Primary SMTP send failed for %s.", target_email)
+
+    fallback = _get_fallback_smtp_settings(primary)
+    if fallback:
+        try:
+            sent_count = _send_message(
+                to_email=target_email,
+                subject=subject,
+                plain_body=plain_body,
+                html_body=html_body,
+                from_email=fallback["from_email"],
+                smtp_settings=fallback,
+                inline_logo_path=inline_logo_path,
+            )
+            if sent_count > 0:
+                logger.info("OTP email sent successfully to %s (fallback SMTP).", target_email)
+                return True, ""
+        except Exception:
+            logger.exception("Fallback SMTP send failed for %s.", target_email)
+
+    logger.error("Failed to send OTP email to %s.", target_email)
+    return False, "Unable to send OTP email right now. Please try again."
 
 
 def verify_smtp_connection():
     """
-    Test SMTP connection with current settings.
-    
+    Test SMTP connection with current primary settings.
+
     Returns:
-        tuple: (success: bool, message: str)
+        tuple[bool, str]: success flag and status message.
     """
+    smtp_settings = _get_primary_smtp_settings()
+    if not smtp_settings["host"] or not smtp_settings["username"] or not smtp_settings["password"]:
+        return False, "SMTP credentials are missing."
+
     try:
-        smtp_settings = _get_smtp_settings()
-        
         backend = EmailBackend(
-            host=smtp_settings['host'],
-            port=smtp_settings['port'],
-            username=smtp_settings['username'],
-            password=smtp_settings['password'],
-            use_tls=smtp_settings['use_tls'],
-            use_ssl=smtp_settings['use_ssl'],
+            host=smtp_settings["host"],
+            port=smtp_settings["port"],
+            username=smtp_settings["username"],
+            password=smtp_settings["password"],
+            use_tls=smtp_settings["use_tls"],
+            use_ssl=smtp_settings["use_ssl"],
             fail_silently=False,
         )
-        
         connection = backend.open()
         if connection:
             backend.close()
-            return True, "SMTP connection successful!"
-        else:
-            return False, "Could not open SMTP connection."
-            
-    except Exception as e:
-        return False, f"SMTP connection failed: {str(e)}"
+            return True, "SMTP connection successful."
+        return False, "Could not open SMTP connection."
+    except Exception as exc:
+        return False, f"SMTP connection failed: {exc}"

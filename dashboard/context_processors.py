@@ -131,6 +131,7 @@ def panel_notifications_context(request):
     return {
         "panel_notifications": payload.get("items", []),
         "panel_notification_unread_count": payload.get("unread_count", 0),
+        "panel_sidebar_notification_count": payload.get("unread_count", 0),
         "panel_notification_role": payload.get("role"),
         "panel_message_unread_count": message_unread_count,
     }

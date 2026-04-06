@@ -1,4 +1,5 @@
 from datetime import datetime
+from urllib.parse import urlencode
 
 from django.urls import reverse
 from django.utils import timezone
@@ -10,6 +11,7 @@ ROLE_SEEN_SESSION_KEYS = {
     "candidate": "candidate_notifications_seen_at",
     "company": "company_notifications_seen_at",
     "consultancy": "consultancy_notifications_seen_at",
+    "admin": "admin_notifications_seen_at",
 }
 
 
@@ -53,6 +55,41 @@ def _note(title, message, created_at, url="", unread=False):
     }
 
 
+def _append_query_params(url, params):
+    filtered = {
+        key: value
+        for key, value in (params or {}).items()
+        if value not in {None, ""}
+    }
+    if not filtered:
+        return url
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}{urlencode(filtered)}"
+
+
+def _application_status_to_filter(status):
+    normalized = (status or "").strip()
+    if normalized in {"Interview", "Interview Scheduled"}:
+        return "Interview"
+    if normalized in {"Selected", "Offer Issued", "Offer Received"}:
+        return "Selected"
+    return normalized or "all"
+
+
+def _company_interview_url(interview):
+    status = (getattr(interview, "status", "") or "").strip().lower()
+    if status in {"completed"}:
+        base_url = reverse("dashboard:company_interviews_completed")
+    elif status in {"cancelled", "no_show"}:
+        base_url = reverse("dashboard:company_interviews_cancelled")
+    else:
+        base_url = reverse("dashboard:company_interviews_upcoming")
+    interview_id = getattr(interview, "id", None)
+    if interview_id:
+        return f"{base_url}#company-interview-{interview_id}"
+    return base_url
+
+
 def _candidate_feed(candidate, seen_at):
     feed = []
     email = (candidate.email or "").strip()
@@ -76,12 +113,21 @@ def _candidate_feed(candidate, seen_at):
         created_at = app.updated_at or app.created_at
         title = status_map.get(app.status, "Application update")
         message = f"{app.job_title} at {app.company} ({app.status})"
+        target_url = _append_query_params(
+            reverse("dashboard:candidate_applications"),
+            {
+                "application_id": app.application_id,
+                "mode": "timeline",
+            },
+        )
+        if app.application_id:
+            target_url = f"{target_url}#candidate-app-{app.application_id}"
         feed.append(
             _note(
                 title=title,
                 message=message,
                 created_at=created_at,
-                url=reverse("dashboard:candidate_applications"),
+                url=target_url,
                 unread=_mark_unread(created_at, seen_at),
             )
         )
@@ -103,12 +149,15 @@ def _candidate_feed(candidate, seen_at):
             message = f"{interview.job_title} on {interview.interview_date}"
         else:
             message = interview.job_title or "Interview status changed"
+        interview_url = reverse("dashboard:candidate_interviews")
+        if interview.id:
+            interview_url = f"{interview_url}#candidate-interview-{interview.id}"
         feed.append(
             _note(
                 title=title,
                 message=message,
                 created_at=created_at,
-                url=reverse("dashboard:candidate_interviews"),
+                url=interview_url,
                 unread=_mark_unread(created_at, seen_at),
             )
         )
@@ -148,12 +197,21 @@ def _company_feed(company, seen_at):
     for app in app_rows:
         created_at = app.updated_at or app.created_at
         message = f"{app.candidate_name} for {app.job_title} ({app.status})"
+        target_url = _append_query_params(
+            reverse("dashboard:company_applications"),
+            {
+                "status": _application_status_to_filter(app.status),
+                "application_id": app.application_id,
+            },
+        )
+        if app.application_id:
+            target_url = f"{target_url}#company-application-{app.application_id}"
         feed.append(
             _note(
                 title="Application update",
                 message=message,
                 created_at=created_at,
-                url=reverse("dashboard:company_applications"),
+                url=target_url,
                 unread=_mark_unread(created_at, seen_at),
             )
         )
@@ -167,7 +225,7 @@ def _company_feed(company, seen_at):
                 title="Interview update",
                 message=message,
                 created_at=created_at,
-                url=reverse("dashboard:company_interviews"),
+                url=_company_interview_url(interview),
                 unread=_mark_unread(created_at, seen_at),
             )
         )
@@ -227,12 +285,21 @@ def _consultancy_feed(consultancy, seen_at):
     for app in app_rows:
         created_at = app.updated_at or app.created_at
         message = f"{app.candidate_name} - {app.job_title} ({app.status})"
+        target_url = _append_query_params(
+            reverse("dashboard:consultancy_applications"),
+            {
+                "status": _application_status_to_filter(app.status),
+                "application_id": app.application_id,
+            },
+        )
+        if app.application_id:
+            target_url = f"{target_url}#consultancy-application-{app.application_id}"
         feed.append(
             _note(
                 title="Application update",
                 message=message,
                 created_at=created_at,
-                url=reverse("dashboard:consultancy_applications"),
+                url=target_url,
                 unread=_mark_unread(created_at, seen_at),
             )
         )
@@ -266,6 +333,69 @@ def _consultancy_feed(consultancy, seen_at):
     return feed
 
 
+def _admin_feed(admin_user, seen_at):
+    feed = []
+
+    latest_candidates = Candidate.objects.order_by("-registration_date")[:8]
+    for candidate in latest_candidates:
+        created_at = candidate.registration_date
+        message = f"{candidate.name} registered as Candidate ({candidate.email or 'email not set'})"
+        feed.append(
+            _note(
+                title="New candidate registration",
+                message=message,
+                created_at=created_at,
+                url=reverse("dashboard:candidates"),
+                unread=_mark_unread(created_at, seen_at),
+            )
+        )
+
+    latest_companies = Company.objects.order_by("-registration_date")[:8]
+    for company in latest_companies:
+        created_at = company.registration_date
+        message = f"{company.name} registered as Company ({company.email or 'email not set'})"
+        feed.append(
+            _note(
+                title="New company registration",
+                message=message,
+                created_at=created_at,
+                url=reverse("dashboard:companies"),
+                unread=_mark_unread(created_at, seen_at),
+            )
+        )
+
+    latest_consultancies = Consultancy.objects.order_by("-registration_date")[:8]
+    for consultancy in latest_consultancies:
+        created_at = consultancy.registration_date
+        message = f"{consultancy.name} registered as Consultancy ({consultancy.email or 'email not set'})"
+        feed.append(
+            _note(
+                title="New consultancy registration",
+                message=message,
+                created_at=created_at,
+                url=reverse("dashboard:consultancies"),
+                unread=_mark_unread(created_at, seen_at),
+            )
+        )
+
+    pending_apps = Application.objects.filter(status="Applied").order_by("-updated_at", "-created_at")
+    pending_jobs = pending_apps.count()
+    if pending_jobs:
+        latest_pending = pending_apps.first()
+        created_at = (latest_pending.updated_at or latest_pending.created_at) if latest_pending else None
+        feed.append(
+            _note(
+                title="Applications waiting review",
+                message=f"{pending_jobs} applications are currently in Applied status.",
+                created_at=created_at,
+                url=reverse("dashboard:applications"),
+                unread=_mark_unread(created_at, seen_at),
+            )
+        )
+
+    return feed
+
+
 def build_panel_notifications(request, limit=8):
     role = None
     account = None
@@ -274,7 +404,10 @@ def build_panel_notifications(request, limit=8):
     consultancy_id = request.session.get("consultancy_id")
     url_name = getattr(getattr(request, "resolver_match", None), "url_name", "") or ""
 
-    if url_name.startswith("candidate_") and candidate_id:
+    if request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser):
+        role = "admin"
+        account = request.user
+    elif url_name.startswith("candidate_") and candidate_id:
         role = "candidate"
         account = Candidate.objects.filter(id=candidate_id).only("id", "email", "last_login").first()
     elif url_name.startswith("company_") and company_id:
@@ -301,8 +434,10 @@ def build_panel_notifications(request, limit=8):
         items = _candidate_feed(account, seen_at)
     elif role == "company":
         items = _company_feed(account, seen_at)
-    else:
+    elif role == "consultancy":
         items = _consultancy_feed(account, seen_at)
+    else:
+        items = _admin_feed(account, seen_at)
 
     fallback_dt = timezone.make_aware(datetime(1970, 1, 1))
     items.sort(key=lambda row: row.get("created_at") or fallback_dt, reverse=True)
@@ -314,7 +449,9 @@ def build_panel_notifications(request, limit=8):
 def mark_panel_notifications_seen(request, role=None):
     selected_role = role
     if not selected_role:
-        if request.session.get("candidate_id"):
+        if request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser):
+            selected_role = "admin"
+        elif request.session.get("candidate_id"):
             selected_role = "candidate"
         elif request.session.get("company_id"):
             selected_role = "company"

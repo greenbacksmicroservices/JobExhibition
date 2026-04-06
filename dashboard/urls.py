@@ -1,4 +1,5 @@
-from django.urls import path
+from django.urls import path, re_path
+from django.views.generic import RedirectView
 
 from . import views
 
@@ -15,7 +16,14 @@ urlpatterns = [
     path("company/register/", views.company_register_view, name="company_register"),
     path("consultancy/register/", views.consultancy_register_view, name="consultancy_register"),
     path("candidate/register/", views.candidate_register_view, name="candidate_register"),
+    path(
+        "api/candidate-registration-suggestions/",
+        views.candidate_registration_suggestions_api,
+        name="candidate_registration_suggestions_api",
+    ),
+    path("otp/send/", views.send_registration_otp, name="send_registration_otp"),
     path("otp/verify/", views.verify_registration_otp, name="verify_registration_otp"),
+    path("api/panel-notifications/", views.panel_notifications_api, name="panel_notifications_api"),
     path("company/login/", views.company_login_view, name="company_login"),
     path("company/logout/", views.company_logout_view, name="company_logout"),
     path("consultancy/logout/", views.consultancy_logout_view, name="consultancy_logout"),
@@ -581,6 +589,64 @@ urlpatterns = [
         "api/subscriptions/<str:subscription_id>/delete/",
         views.api_subscriptions_delete,
         name="api_subscriptions_delete",
+    ),
+    path(
+        "api/subscriptions/<str:subscription_id>/payments/",
+        views.api_subscription_payments,
+        name="api_subscription_payments",
+    ),
+    path("api/payment/initiate/", views.api_payment_initiate, name="api_payment_initiate"),
+    path("api/payment/initiate", views.api_payment_initiate, name="api_payment_initiate_noslash"),
+    path("api/payment/callback/", views.api_payment_callback, name="api_payment_callback"),
+    path("api/payment/callback", views.api_payment_callback, name="api_payment_callback_noslash"),
+    path(
+        "payment-system/checkout/<str:payment_id>/",
+        views.payment_system_checkout_view,
+        name="payment_system_checkout",
+    ),
+    path(
+        "payment-system/checkout/<str:payment_id>",
+        views.payment_system_checkout_view,
+        name="payment_system_checkout_noslash",
+    ),
+    path(
+        "payment-system/process/<str:payment_id>/",
+        views.payment_system_process_view,
+        name="payment_system_process",
+    ),
+    path(
+        "payment-system/process/<str:payment_id>",
+        views.payment_system_process_view,
+        name="payment_system_process_noslash",
+    ),
+    path(
+        "api/payment/status/<str:payment_id>/",
+        views.api_payment_status,
+        name="api_payment_status",
+    ),
+    path(
+        "api/payment/status/<str:payment_id>",
+        views.api_payment_status,
+        name="api_payment_status_noslash",
+    ),
+    path("payment/redirect/", views.payment_redirect_view, name="payment_redirect"),
+    path("payment/redirect", views.payment_redirect_view, name="payment_redirect_noslash"),
+    path("payment/redirect/login/", views.payment_redirect_view, name="payment_redirect_login_legacy"),
+    path("payment/redirect/login", views.payment_redirect_view, name="payment_redirect_login_legacy_noslash"),
+    re_path(
+        r"^payment/re(?:/.*)?$",
+        RedirectView.as_view(pattern_name="dashboard:login", permanent=False),
+        name="payment_re_legacy",
+    ),
+    re_path(
+        r"^(?:127\.0\.0\.1(?::\d+)?|localhost(?::\d+)?)/payment/re(?:/.*)?$",
+        RedirectView.as_view(pattern_name="dashboard:login", permanent=False),
+        name="payment_re_hostprefixed_legacy",
+    ),
+    re_path(
+        r"^(?:127\.0\.0\.1(?::\d+)?|localhost(?::\d+)?)/payment/redirect/login/?$",
+        views.payment_redirect_view,
+        name="payment_redirect_hostprefixed_legacy",
     ),
     path("api/dashboard/metrics/", views.api_dashboard_metrics, name="api_dashboard_metrics"),
     path("candidate/api/applications/", views.api_candidate_applications, name="candidate_api_applications"),

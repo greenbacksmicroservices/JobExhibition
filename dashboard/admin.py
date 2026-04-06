@@ -18,7 +18,9 @@ from .models import (
     Interview,
     Message,
     MessageThread,
+    PaymentEventLog,
     PasswordResetToken,
+    SubscriptionPayment,
 )
 
 admin.site.register(Company)
@@ -39,3 +41,5 @@ admin.site.register(Message)
 admin.site.register(PasswordResetToken)
 admin.site.register(ConsultancyKycDocument)
 admin.site.register(AdminProfile)
+admin.site.register(SubscriptionPayment)
+admin.site.register(PaymentEventLog)

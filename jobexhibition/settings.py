@@ -47,6 +47,25 @@ def _load_env_file():
 _load_env_file()
 
 
+def _strip_problematic_cgi_env_vars():
+    """
+    Avoid clashing with WSGI CGI keys.
+
+    If REDIRECT_URL/SCRIPT_URL contain absolute URLs from .env, Django can
+    treat them as SCRIPT_NAME and generate malformed redirects.
+    """
+    for key in ("REDIRECT_URL", "SCRIPT_URL"):
+        value = (os.environ.get(key) or "").strip()
+        if not value:
+            continue
+        lowered = value.lower()
+        if lowered.startswith(("http://", "https://", "http:/", "https:/")):
+            os.environ.pop(key, None)
+
+
+_strip_problematic_cgi_env_vars()
+
+
 def _env_bool(key, default=False):
     value = os.getenv(key)
     if value is None:
@@ -181,6 +200,7 @@ CSRF_TRUSTED_ORIGINS = _env_list("DJANGO_CSRF_TRUSTED_ORIGINS", [])
 USE_X_FORWARDED_HOST = _env_bool("DJANGO_USE_X_FORWARDED_HOST", default=True)
 if _env_bool("DJANGO_TRUST_X_FORWARDED_PROTO", default=True):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+FORCE_SCRIPT_NAME = _env_str("DJANGO_FORCE_SCRIPT_NAME", "")
 
 
 # Application definition
@@ -192,7 +212,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'dashboard',
+    'dashboard.apps.DashboardConfig',
     'corsheaders'
 ]
 
@@ -239,6 +259,8 @@ WSGI_APPLICATION = 'jobexhibition.wsgi.application'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 DB_ENGINE = _env_str("DB_ENGINE", "django.db.backends.mysql")
+PAYMENT_DB_ALIAS = _env_str("PAYMENT_DB_ALIAS", "payment")
+PAYMENT_DB_ENABLED = _env_bool("PAYMENT_DB_ENABLED", default=True)
 
 if DB_ENGINE in {"sqlite", "django.db.backends.sqlite3"}:
     DATABASES = {
@@ -276,6 +298,68 @@ else:
             'OPTIONS': db_options,
         }
     }
+
+if PAYMENT_DB_ENABLED and PAYMENT_DB_ALIAS and PAYMENT_DB_ALIAS != "default":
+    payment_db_engine = _env_str("PAYMENT_DB_ENGINE", "django.db.backends.mysql")
+    if payment_db_engine in {"sqlite", "django.db.backends.sqlite3"}:
+        DATABASES[PAYMENT_DB_ALIAS] = {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': _env_str(
+                "PAYMENT_DB_SQLITE_PATH",
+                _env_str("DB_SQLITE_PATH", str(BASE_DIR / 'payment.sqlite3')),
+            ),
+        }
+    else:
+        payment_db_options = {
+            'charset': 'utf8mb4',
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            'connect_timeout': _env_int(
+                "PAYMENT_DB_CONNECT_TIMEOUT",
+                _env_int("DB_CONNECT_TIMEOUT", 20),
+            ),
+        }
+        payment_db_read_timeout = _env_int(
+            "PAYMENT_DB_READ_TIMEOUT",
+            _env_int("DB_READ_TIMEOUT", 30),
+        )
+        if payment_db_read_timeout > 0:
+            payment_db_options['read_timeout'] = payment_db_read_timeout
+        payment_db_write_timeout = _env_int(
+            "PAYMENT_DB_WRITE_TIMEOUT",
+            _env_int("DB_WRITE_TIMEOUT", 30),
+        )
+        if payment_db_write_timeout > 0:
+            payment_db_options['write_timeout'] = payment_db_write_timeout
+        payment_db_ssl_ca = _env_str("PAYMENT_DB_SSL_CA", _env_str("DB_SSL_CA", ""))
+        if payment_db_ssl_ca:
+            payment_db_options['ssl'] = {'ca': payment_db_ssl_ca}
+
+        DATABASES[PAYMENT_DB_ALIAS] = {
+            'ENGINE': payment_db_engine,
+            'NAME': _env_str(
+                "PAYMENT_DB_NAME",
+                _env_str("DB_NAME", "u529002218_jobdekhao123"),
+            ),
+            'USER': _env_str(
+                "PAYMENT_DB_USER",
+                _env_str("DB_USER", "u529002218_jobdekhao123"),
+            ),
+            'PASSWORD': _env_str(
+                "PAYMENT_DB_PASSWORD",
+                _env_str("DB_PASSWORD", "Jobdekhao123"),
+            ),
+            'HOST': _env_str("PAYMENT_DB_HOST", _env_str("DB_HOST", "srv685.hstgr.io")),
+            'PORT': _env_str("PAYMENT_DB_PORT", _env_str("DB_PORT", "3306")),
+            'CONN_MAX_AGE': _env_int(
+                "PAYMENT_DB_CONN_MAX_AGE",
+                _env_int("DB_CONN_MAX_AGE", 60),
+            ),
+            'CONN_HEALTH_CHECKS': _env_bool(
+                "PAYMENT_DB_CONN_HEALTH_CHECKS",
+                default=_env_bool("DB_CONN_HEALTH_CHECKS", default=True),
+            ),
+            'OPTIONS': payment_db_options,
+        }
 
 
 # Password validation
@@ -327,20 +411,27 @@ MEDIA_ROOT = BASE_DIR / 'media'
 SERVE_MEDIA_FILES = _env_bool("SERVE_MEDIA_FILES", default=True)
 
 # Email (SMTP) configuration
-# Gmail SMTP credentials from PHP function makeMailer()
-# Host: smtp.gmail.com, Port: 587, TLS: STARTTLS
 EMAIL_BACKEND = _env_str("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = _env_str("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = _env_int("EMAIL_PORT", 587)
-EMAIL_HOST_USER = _env_str("EMAIL_HOST_USER", "jyotijrs9404j@gmail.com")
-EMAIL_HOST_PASSWORD = _env_str("EMAIL_HOST_PASSWORD", "prsx sihj jdne qikf")
+EMAIL_HOST_USER = _env_str("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = _env_str("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", default=True)
 EMAIL_USE_SSL = _env_bool("EMAIL_USE_SSL", default=False)
 DEFAULT_FROM_EMAIL = _env_str(
     "DEFAULT_FROM_EMAIL",
-    "Job Exhibition <jyotijrs9404j@gmail.com>",
+    "JobExhibition <no-reply@jobexhibition.com>",
 )
-SITE_TITLE = _env_str("SITE_TITLE", "Job Exhibition")
+SITE_TITLE = _env_str("SITE_TITLE", "JobExhibition")
+
+# Optional fallback SMTP sender (used when primary SMTP fails).
+EMAIL_FALLBACK_HOST = _env_str("EMAIL_FALLBACK_HOST", EMAIL_HOST)
+EMAIL_FALLBACK_PORT = _env_int("EMAIL_FALLBACK_PORT", EMAIL_PORT)
+EMAIL_FALLBACK_HOST_USER = _env_str("EMAIL_FALLBACK_HOST_USER", "")
+EMAIL_FALLBACK_HOST_PASSWORD = _env_str("EMAIL_FALLBACK_HOST_PASSWORD", "")
+EMAIL_FALLBACK_USE_TLS = _env_bool("EMAIL_FALLBACK_USE_TLS", default=EMAIL_USE_TLS)
+EMAIL_FALLBACK_USE_SSL = _env_bool("EMAIL_FALLBACK_USE_SSL", default=EMAIL_USE_SSL)
+EMAIL_FALLBACK_FROM_EMAIL = _env_str("EMAIL_FALLBACK_FROM_EMAIL", "")
 
 AUTO_APPROVE_HOURS = _env_int("AUTO_APPROVE_HOURS", 24)
 
@@ -396,6 +487,52 @@ OTP_ALLOW_DEBUG_FALLBACK = _env_bool('OTP_ALLOW_DEBUG_FALLBACK', default=False)
 OTP_ALLOW_CONSOLE_EMAIL = _env_bool('OTP_ALLOW_CONSOLE_EMAIL', default=False)
 LOGIN_OTP_REQUIRED = _env_bool('LOGIN_OTP_REQUIRED', default=False)
 FORGOT_PASSWORD_OTP_REQUIRED = _env_bool('FORGOT_PASSWORD_OTP_REQUIRED', default=True)
+
+# Subscription / Payment gateway settings
+PAYMENT_SERVICE_PORT = _env_int("PORT", 3000)
+PAYMENT_SERVICE_NODE_ENV = _env_str("NODE_ENV", "development")
+PAYMENT_GATEWAY_PROVIDER = _env_str("PAYMENT_GATEWAY_PROVIDER", "PhonePe")
+PAYMENT_GATEWAY_INITIATE_URL = _env_str(
+    "PAYMENT_GATEWAY_INITIATE_URL",
+    "http://localhost:3000/api/payment/initiate",
+)
+PAYMENT_GATEWAY_STATUS_URL = _env_str(
+    "PAYMENT_GATEWAY_STATUS_URL",
+    "http://localhost:3000/api/payment/status",
+)
+PAYMENT_GATEWAY_CALLBACK_SECRET = _env_str("PAYMENT_GATEWAY_CALLBACK_SECRET", "")
+PAYMENT_GATEWAY_TIMEOUT_SECONDS = _env_int("PAYMENT_GATEWAY_TIMEOUT_SECONDS", 20)
+PAYMENT_GATEWAY_DEMO_AUTO_SUCCESS = _env_bool(
+    "PAYMENT_GATEWAY_DEMO_AUTO_SUCCESS",
+    default=False,
+)
+PAYMENT_GATEWAY_INTERNAL_FALLBACK = _env_bool(
+    "PAYMENT_GATEWAY_INTERNAL_FALLBACK",
+    default=False,
+)
+
+# PhonePe compatibility keys (direct integration defaults to latest v2 endpoints)
+PHONEPE_BASE_URL = _env_str("PHONEPE_BASE_URL", "https://api.phonepe.com/apis")
+PHONEPE_OAUTH_BASE_URL = _env_str("PHONEPE_OAUTH_BASE_URL", "https://api.phonepe.com/apis/identity-manager")
+PHONEPE_PAY_PATH = _env_str("PHONEPE_PAY_PATH", "/checkout/v2/pay")
+PHONEPE_STATUS_PATH = _env_str(
+    "PHONEPE_STATUS_PATH",
+    "/checkout/v2/order/{merchant_transaction_id}/status",
+)
+PHONEPE_CLIENT_ID = _env_first(["PHONEPE_CLIENT_ID", "MERCHANT_ID"], "SU2508261540303520112151")
+PHONEPE_CLIENT_SECRET = _env_first(["PHONEPE_CLIENT_SECRET", "SALT_KEY"], "75dbd341-4f7f-4120-a056-856f295a3ecb")
+PHONEPE_MERCHANT_ID = _env_first(["MERCHANT_ID", "PHONEPE_CLIENT_ID"], PHONEPE_CLIENT_ID)
+PHONEPE_SALT_KEY = _env_first(["SALT_KEY", "PHONEPE_CLIENT_SECRET"], PHONEPE_CLIENT_SECRET)
+PHONEPE_SALT_INDEX = _env_int("SALT_INDEX", _env_int("PHONEPE_SALT_INDEX", 1))
+PHONEPE_CLIENT_VERSION = _env_str("PHONEPE_CLIENT_VERSION", "1")
+PHONEPE_ENV = _env_str("PHONEPE_ENV", "UAT")
+MERCHANT_REDIRECT_URL = _env_str("MERCHANT_REDIRECT_URL", "/payment/redirect/")
+MERCHANT_CALLBACK_URL = _env_str("MERCHANT_CALLBACK_URL", "/api/payment/callback/")
+MERCHANT_USERNAME = _env_str("MERCHANT_USERNAME", "your_merchant_username")
+MERCHANT_PASSWORD = _env_str("MERCHANT_PASSWORD", "your_merchant_password")
+PAYMENT_QR_UPI_ID = _env_str("PAYMENT_QR_UPI_ID", _env_str("MERCHANT_USERNAME", "SU2508261540303520112151"))
+PAYMENT_QR_PAYEE_NAME = _env_str("PAYMENT_QR_PAYEE_NAME", "Job Exhibition")
+PAYMENT_QR_NOTE_PREFIX = _env_str("PAYMENT_QR_NOTE_PREFIX", "Subscription")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

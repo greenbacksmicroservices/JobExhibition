@@ -1,0 +1,256 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Payment Checkout | Job Exhibition</title>
+  <style>
+    :root {
+      --bg: #f4f8ff;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --primary: #0369a1;
+      --primary-dark: #075985;
+      --danger: #b91c1c;
+      --border: #dbeafe;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at top left, #dbeafe, transparent 45%),
+                  radial-gradient(circle at bottom right, #cffafe, transparent 45%),
+                  var(--bg);
+    }
+
+    .checkout-card {
+      width: 100%;
+      max-width: 540px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 22px 50px rgba(2, 132, 199, 0.18);
+    }
+
+    h1 {
+      margin: 0 0 6px 0;
+      font-size: 1.5rem;
+      color: var(--primary-dark);
+    }
+
+    .muted {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .summary {
+      margin-top: 16px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      background: #f8fbff;
+      display: grid;
+      gap: 8px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 0.95rem;
+    }
+
+    .row span:first-child { color: var(--muted); }
+    .row strong { color: var(--text); }
+
+    .amount {
+      margin-top: 8px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--border);
+      font-size: 1.05rem;
+    }
+
+    .qr-panel {
+      margin-top: 16px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #ffffff;
+      padding: 14px;
+      display: grid;
+      justify-items: center;
+      gap: 8px;
+      text-align: center;
+    }
+
+    .qr-title {
+      margin: 0;
+      font-size: 1rem;
+      color: var(--primary-dark);
+      font-weight: 700;
+    }
+
+    .qr-canvas-wrap {
+      width: 220px;
+      height: 220px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      background: #fff;
+    }
+
+    .qr-meta {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+      word-break: break-word;
+    }
+
+    .qr-fallback {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .upi-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      color: var(--primary-dark);
+      background: #eff6ff;
+      padding: 8px 14px;
+      font-weight: 700;
+      font-size: 0.83rem;
+    }
+
+    .actions {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform .15s ease, opacity .15s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+
+    .btn-pay {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: #fff;
+    }
+
+    .btn-cancel {
+      background: #fee2e2;
+      color: var(--danger);
+      border: 1px solid #fecaca;
+    }
+
+    .foot-links {
+      margin-top: 14px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .foot-links a {
+      color: var(--primary-dark);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .foot-links a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 520px) {
+      .actions {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="checkout-card">
+    <h1>JobExhibition Payment System</h1>
+    <p class="muted">Secure checkout for your selected subscription plan.</p>
+
+    <section class="summary">
+      <div class="row">
+        <span>Payment ID</span>
+        <strong>{{ payment.payment_id }}</strong>
+      </div>
+      <div class="row">
+        <span>Account</span>
+        <strong>{{ payment.account_name|default:"-" }} ({{ payment.account_type }})</strong>
+      </div>
+      <div class="row">
+        <span>Plan</span>
+        <strong>{{ payment.plan_code }}</strong>
+      </div>
+      <div class="row">
+        <span>Cycle</span>
+        <strong>{{ payment.billing_cycle|title }}</strong>
+      </div>
+      <div class="row amount">
+        <span>Amount</span>
+        <strong>INR {{ payment.amount }}</strong>
+      </div>
+    </section>
+
+    {% if payment_qr_payload %}
+    <section class="qr-panel">
+      <p class="qr-title">Scan QR and Pay</p>
+      <div class="qr-canvas-wrap">
+        <canvas id="paymentQrCanvas" width="220" height="220"></canvas>
+      </div>
+      <p class="qr-meta">Payee: {{ payment_qr_payee_name }} | UPI: {{ payment_qr_upi_id }}</p>
+      <a class="upi-link" href="{{ payment_qr_payload }}">Open UPI App</a>
+      <p class="qr-fallback">After payment, click "Pay Now" to confirm and activate your plan instantly.</p>
+    </section>
+    {% endif %}
+
+    <form method="post" action="{% url 'dashboard:payment_system_process' payment.payment_id %}">
+      {% csrf_token %}
+      <div class="actions">
+        <button class="btn btn-pay" type="submit" name="action" value="success">Pay Now</button>
+        <button class="btn btn-cancel" type="submit" name="action" value="failed">Cancel Payment</button>
+      </div>
+    </form>
+
+    <div class="foot-links">
+      <a href="{{ billing_page_url }}">Back to Billing</a>
+    </div>
+  </main>
+  {% if payment_qr_payload %}
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script>
+    (function () {
+      const qrData = "{{ payment_qr_payload|escapejs }}";
+      const canvas = document.getElementById("paymentQrCanvas");
+      if (!qrData || !canvas || !window.QRCode) return;
+      QRCode.toCanvas(canvas, qrData, { width: 220, margin: 1 }, function () {});
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>

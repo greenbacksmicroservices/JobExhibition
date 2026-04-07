@@ -16,6 +16,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const timers = new WeakMap();
   const cache = new Map();
+  const resolveCountryContext = () => {
+    const countryInput = form.querySelector('[name="country"], [name="nationality"]');
+    return (countryInput?.value || '').trim();
+  };
 
   const updateDatalist = (input, values) => {
     const listId = input.getAttribute('list');
@@ -31,18 +35,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const fetchSuggestions = async (input) => {
     const field = (input.dataset.suggestField || '').trim();
     const query = (input.value || '').trim();
-    if (!field || query.length < 1) {
+    const country = resolveCountryContext();
+    if (!field) {
       updateDatalist(input, []);
       return;
     }
 
-    const cacheKey = `${field}|${query.toLowerCase()}`;
+    const cacheKey = `${field}|${query.toLowerCase()}|${country.toLowerCase()}`;
     if (cache.has(cacheKey)) {
       updateDatalist(input, cache.get(cacheKey));
       return;
     }
 
     const params = new URLSearchParams({ field, q: query });
+    if (country) {
+      params.set('country', country);
+    }
     try {
       const response = await fetch(`${endpoint}?${params.toString()}`, {
         credentials: 'same-origin',

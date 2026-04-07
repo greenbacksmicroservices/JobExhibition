@@ -99,15 +99,25 @@
   </div>
   <div class="activity-list">
     {% for job in early_job_alerts %}
-    <div class="activity-item">
-      <div>
-        <strong>{{ job.title }}</strong>
-        <span class="muted">{{ job.company }} - {{ job.location|default:"Remote" }}</span>
+        <div class="activity-item">
+          <div>
+            <strong>{{ job.title }}</strong>
+            <span class="muted">{{ job.company }} - {{ job.location|default:"Remote" }}</span>
+          </div>
+          <div class="table-actions">
+            <a class="link-button" href="{% url 'dashboard:candidate_job_detail' job.job_id %}">View</a>
+            <button
+              class="action-btn"
+              type="button"
+              data-share-url="{% url 'dashboard:candidate_job_detail' job.job_id %}"
+              data-share-title="{{ job.title }} - {{ job.company }}"
+            >
+              Share
+            </button>
+          </div>
+        </div>
+        {% endfor %}
       </div>
-      <a class="link-button" href="{% url 'dashboard:candidate_job_detail' job.job_id %}">View</a>
-    </div>
-    {% endfor %}
-  </div>
 </section>
 {% endif %}
 
@@ -128,7 +138,17 @@
             <strong>{{ job.title }}</strong>
             <span class="muted">{{ job.company }} - {{ job.location|default:"Remote" }} - Match {{ job.match_score|default:0 }}%</span>
           </div>
-          <a class="link-button" href="{% url 'dashboard:candidate_job_detail' job.job_id %}">View</a>
+          <div class="table-actions">
+            <a class="link-button" href="{% url 'dashboard:candidate_job_detail' job.job_id %}">View</a>
+            <button
+              class="action-btn"
+              type="button"
+              data-share-url="{% url 'dashboard:candidate_job_detail' job.job_id %}"
+              data-share-title="{{ job.title }} - {{ job.company }}"
+            >
+              Share
+            </button>
+          </div>
         </div>
         {% endfor %}
       {% else %}

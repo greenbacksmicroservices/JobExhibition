@@ -210,25 +210,25 @@ body.sidebar-collapsed .nav-sub {
     justify-content: center;
     gap: 0;
     margin-bottom: 30px;
-    padding: 12px;
-    background: linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.04));
-    border-radius: 16px;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
     border: none;
-    box-shadow: 0 10px 22px rgba(10, 25, 72, 0.18);
+    box-shadow: none;
     transition: all 0.3s ease;
     position: relative;
     flex-wrap: nowrap;
 }
 
 .brand:hover {
-    background: linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06));
+    background: transparent;
 }
 
 .brand-mark {
-    background: rgba(255,255,255,0.98);
-    width: min(200px, 100%);
-    max-width: 200px;
-    height: 56px;
+    background: transparent;
+    width: min(220px, 100%);
+    max-width: 220px;
+    height: 64px;
     border-radius: 12px;
     display: flex;
     align-items: center;
@@ -239,9 +239,9 @@ body.sidebar-collapsed .nav-sub {
     box-shadow: none;
     transition: all 0.3s ease;
     overflow: hidden;
-    border: 1px solid rgba(255,255,255,0.65);
+    border: none;
     position: relative;
-    padding: 8px 12px;
+    padding: 0;
 }
 
 .brand-mark::after {
@@ -256,7 +256,7 @@ body.sidebar-collapsed .nav-sub {
     font-weight: 700;
     letter-spacing: 0.7px;
     background: #e2e8f0;
-    border: 1px solid #bfdbfe;
+    border: none;
     transition: opacity 0.2s ease;
     z-index: 0;
 }
@@ -869,6 +869,31 @@ body.sidebar-collapsed .nav-sub {
     background: #f8fafc;
 }
 
+.icon-btn[aria-label]::after {
+    content: attr(aria-label);
+    position: absolute;
+    left: 50%;
+    bottom: -30px;
+    transform: translateX(-50%) translateY(4px);
+    background: #0f172a;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 5px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    z-index: 40;
+}
+
+.icon-btn[aria-label]:hover::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
 .icon-btn svg {
     width: 18px;
     height: 18px;
@@ -904,6 +929,103 @@ body.sidebar-collapsed .nav-sub {
     background: #2563eb;
     color: #fff;
     border: none;
+}
+
+.share-sheet-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1600;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.46);
+    padding: 16px;
+}
+
+.share-sheet-overlay.open {
+    display: flex;
+}
+
+.share-sheet {
+    width: min(560px, 100%);
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 20px 44px rgba(15, 23, 42, 0.28);
+    padding: 16px;
+}
+
+.share-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.share-sheet-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+}
+
+.share-sheet-close {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid #d1d5db;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.share-sheet-meta {
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 12px;
+    word-break: break-word;
+}
+
+.share-sheet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+}
+
+.share-sheet-action {
+    border: 1px solid #dbe3ef;
+    border-radius: 12px;
+    background: #f8fafc;
+    color: #0f172a;
+    min-height: 76px;
+    padding: 10px;
+    display: grid;
+    place-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.share-sheet-action:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+    transform: translateY(-1px);
+}
+
+.share-sheet-action .share-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+@media (max-width: 640px) {
+    .share-sheet-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 .profile-dropdown {
@@ -944,6 +1066,18 @@ body.sidebar-collapsed .nav-sub {
     font-weight: bold;
     font-size: 14px;
     flex-shrink: 0;
+    overflow: hidden;
+}
+
+.profile-avatar.has-image {
+    background: #f1f5f9;
+}
+
+.profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
 }
 
 .profile-meta strong {
@@ -2588,7 +2722,7 @@ body.sidebar-collapsed .candidate-sidebar-ad {
 
 .company-sidebar .brand {
     justify-content: center;
-    padding: 12px;
+    padding: 0;
     margin-bottom: 22px;
     text-align: center;
 }
@@ -2618,7 +2752,8 @@ body.sidebar-collapsed .company-logo {
     width: 48px;
     height: 48px;
     font-size: 16px;
-    border-radius: 12px;
+    --logo-radius: 12px;
+    --ring-thickness: 2px;
 }
 
 body.sidebar-collapsed .company-user-meta,
@@ -2636,9 +2771,15 @@ body.sidebar-collapsed .profile-progress-text {
 .company-logo {
     width: 70px;
     height: 70px;
-    border-radius: 16px;
     --progress: 0;
-    background: conic-gradient(#22c55e calc(var(--progress) * 1%), rgba(255, 255, 255, 0.2) 0);
+    --logo-radius: 16px;
+    --ring-thickness: 3px;
+    border-radius: var(--logo-radius);
+    background: conic-gradient(
+        from -90deg,
+        #22c55e calc(var(--progress, 0) * 1%),
+        rgba(255, 255, 255, 0.28) 0
+    );
     color: #ffffff;
     display: flex;
     align-items: center;
@@ -2646,20 +2787,15 @@ body.sidebar-collapsed .profile-progress-text {
     font-weight: 700;
     font-size: 22px;
     flex-shrink: 0;
-    box-shadow: 0 6px 16px rgba(6, 182, 212, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: none;
+    border: none;
     overflow: hidden;
     position: relative;
-    padding: 4px;
+    padding: var(--ring-thickness);
 }
 
 .company-logo::after {
-    content: "";
-    position: absolute;
-    inset: 4px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, #06b6d4, #0ea5e9);
-    z-index: 0;
+    display: none;
 }
 
 .company-logo img {
@@ -2669,12 +2805,20 @@ body.sidebar-collapsed .profile-progress-text {
     display: block;
     position: relative;
     z-index: 1;
-    border-radius: 12px;
+    border-radius: calc(var(--logo-radius) - var(--ring-thickness));
 }
 
 .company-logo span {
     position: relative;
     z-index: 1;
+    width: 100%;
+    height: 100%;
+    border-radius: calc(var(--logo-radius) - var(--ring-thickness));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0891b2, #0284c7);
+    color: #ffffff;
 }
 
 .company-logo-stack {
@@ -3159,6 +3303,16 @@ body.sidebar-collapsed .profile-progress-text {
 
 .profile-shell {
     padding: 18px;
+}
+
+.profile-shell .profile-form {
+    display: block;
+    width: 100%;
+}
+
+.profile-shell .profile-form > .tab-section,
+.profile-shell .profile-form > .company-form-actions {
+    width: 100%;
 }
 
 .profile-shell .card-header {

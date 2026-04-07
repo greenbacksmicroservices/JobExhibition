@@ -197,6 +197,14 @@
         >
           {% if is_saved_job %}Saved{% else %}Save Job{% endif %}
         </button>
+        <button
+          class="btn ghost"
+          type="button"
+          data-share-url="{% url 'dashboard:candidate_job_detail' job.job_id %}"
+          data-share-title="{{ job.title }} - {{ job.company }}"
+        >
+          Share Job
+        </button>
         <button class="btn ghost" type="button" data-toggle-similar-jobs aria-expanded="false">Similar Jobs</button>
       </div>
       <p class="muted" id="savedJobsCountMeta">Saved jobs: {{ saved_jobs_count }}</p>

@@ -25,7 +25,9 @@ from django.contrib.auth import authenticate, get_user_model, login, logout, upd
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import check_password, identify_hasher, make_password
 from django.contrib.auth.models import Group
+from django.core.files import File
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.core.exceptions import DisallowedHost
 from django.core.cache import cache
 from django.core.mail import send_mail
@@ -204,6 +206,10 @@ PAYMENT_STATUS_FAILURE = {"failed", "failure", "cancelled", "expired", "payment_
 PRIORITY_APPLICATION_TAG = "[PRIORITY_APPLICATION]"
 CANDIDATE_PREMIUM_PLAN_CODE = "Basic"
 CANDIDATE_PREMIUM_MONTHLY_PRICE = 199
+CANDIDATE_POST_JOB_RESTRICTED_MESSAGE = (
+    "You are logged in as a candidate and cannot post jobs. "
+    "Only verified company or consultancy accounts can post new jobs."
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2829,7 +2835,45 @@ def _send_account_activation_email(account, account_type):
     return sent_count > 0
 
 
+def _generate_account_password(length=10):
+    password_length = max(8, int(length or 10))
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(password_length))
+
+
+def _send_approval_credentials_email(request, account, account_type, raw_password):
+    if not account or not getattr(account, "email", ""):
+        return False, "missing email"
+
+    role = "Company" if (account_type or "").strip().lower() == "company" else "Consultancy"
+    login_url = request.build_absolute_uri(reverse("dashboard:login"))
+    subject = f"Job Exhibition: {role} registration approved"
+    message = (
+        f"Hello {getattr(account, 'name', 'User')},\n\n"
+        f"Aapka {role} registration complete ho gaya hai.\n"
+        "Ab aap login kar sakte hain.\n\n"
+        f"Login ID: {account.email}\n"
+        f"Password: {raw_password}\n"
+        f"Login URL: {login_url}\n\n"
+        "Thanks,\n"
+        "Job Exhibition Team"
+    )
+
+    sent_count = send_mail(
+        subject,
+        message,
+        getattr(settings, "DEFAULT_FROM_EMAIL", None),
+        [account.email],
+        fail_silently=True,
+    )
+    if sent_count > 0:
+        return True, ""
+    return False, "email send failed"
+
+
 def _auto_approve_due_accounts():
+    if not bool(getattr(settings, "AUTO_APPROVE_ENABLED", False)):
+        return
     hours = int(getattr(settings, "AUTO_APPROVE_HOURS", 24) or 24)
     if hours <= 0:
         return
@@ -2976,6 +3020,74 @@ def _validate_registration_email_otp(request, flow_key, email, otp_value):
 
 def _clear_registration_email_otp(request, flow_key):
     _clear_session_otp(request, f"{OTP_SESSION_PREFIX}{flow_key}_email")
+
+
+def _registration_temp_upload_session_key(flow_key, field_name):
+    clean_flow = re.sub(r"[^a-z0-9_-]+", "", (flow_key or "").strip().lower()) or "default"
+    clean_field = re.sub(r"[^a-z0-9_-]+", "", (field_name or "").strip().lower()) or "file"
+    return f"registration_temp_upload_{clean_flow}_{clean_field}"
+
+
+def _get_registration_temp_upload_meta(request, flow_key, field_name):
+    payload = request.session.get(_registration_temp_upload_session_key(flow_key, field_name))
+    if not isinstance(payload, dict):
+        return {}
+    path = (payload.get("path") or "").strip()
+    name = (payload.get("name") or "").strip()
+    if not path or not name:
+        return {}
+    return {"path": path, "name": name}
+
+
+def _clear_registration_temp_upload(request, flow_key, field_name):
+    key = _registration_temp_upload_session_key(flow_key, field_name)
+    payload = request.session.pop(key, None)
+    request.session.modified = True
+    if not isinstance(payload, dict):
+        return
+    temp_path = (payload.get("path") or "").strip()
+    if not temp_path:
+        return
+    try:
+        if default_storage.exists(temp_path):
+            default_storage.delete(temp_path)
+    except Exception:
+        logger.warning("Failed to remove temp registration upload: %s", temp_path, exc_info=True)
+
+
+def _store_registration_temp_upload(request, flow_key, field_name, upload_obj):
+    if not upload_obj:
+        return {}
+
+    _clear_registration_temp_upload(request, flow_key, field_name)
+
+    original_name = Path(getattr(upload_obj, "name", "") or "document.bin").name
+    safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", original_name).strip("._") or "document.bin"
+    token = secrets.token_hex(8)
+    relative_path = f"temp/registrations/{flow_key}/{token}_{safe_name}"
+    stored_path = default_storage.save(relative_path, upload_obj)
+
+    payload = {"path": stored_path, "name": original_name}
+    request.session[_registration_temp_upload_session_key(flow_key, field_name)] = payload
+    request.session.modified = True
+    return payload
+
+
+def _attach_registration_temp_upload(instance, model_field_name, upload_meta):
+    if not instance or not upload_meta:
+        return False
+    temp_path = (upload_meta.get("path") or "").strip()
+    temp_name = Path((upload_meta.get("name") or "").strip()).name or "document.bin"
+    if not temp_path:
+        return False
+    try:
+        with default_storage.open(temp_path, "rb") as handle:
+            django_file = File(handle, name=temp_name)
+            getattr(instance, model_field_name).save(temp_name, django_file, save=False)
+        return True
+    except Exception:
+        logger.exception("Unable to attach temp registration upload: %s", temp_path)
+        return False
 
 
 def _store_consultancy_registration_documents(consultancy, upload_map):
@@ -3785,12 +3897,27 @@ def login_view(request):
         def _check_account_access(account_type, account):
             if not account:
                 return (False, "Invalid username/email.", "invalid identifier")
+            if account_type in {"company", "consultancy"}:
+                kyc_status = (getattr(account, "kyc_status", "") or "").strip()
+                if kyc_status != "Verified":
+                    if kyc_status == "Rejected":
+                        return (False, "Your account has been rejected. Please contact support.", "kyc rejected")
+                    return (
+                        False,
+                        "Aapka registration admin approval ka wait kar raha hai. Approval ke baad hi login hoga.",
+                        "kyc not verified",
+                    )
+                account_status = (getattr(account, "account_status", "") or "").strip()
+                if account_status and account_status != "Active":
+                    if account_status == "Blocked":
+                        return (False, "Your account is blocked. Please contact support.", "account blocked")
+                    return (
+                        False,
+                        "Your account is currently inactive. Please contact support.",
+                        "account not active",
+                    )
             if account_type == "company" and not account.email_verified:
                 return (False, "Please verify your email before login.", "email not verified")
-            if account_type == "consultancy" and account.kyc_status != "Verified":
-                if account.kyc_status == "Rejected":
-                    return (False, "Your account has been rejected. Please contact support.", "kyc rejected")
-                return (False, "Your account is under review. Please wait for admin approval.", "kyc not verified")
             if account_type == "candidate" and not account.email_verified:
                 return (False, "Please verify your email before login.", "email not verified")
             return (True, "", "")
@@ -3937,6 +4064,34 @@ def login_view(request):
         # Company login by username or email
         company = Company.objects.filter(Q(name__iexact=username) | Q(email__iexact=username)).first()
         if company and _check_raw_password(password, company.password):
+            if company.kyc_status != "Verified":
+                if company.kyc_status == "Rejected":
+                    messages.error(request, "Your account has been rejected. Please contact support.")
+                else:
+                    messages.error(request, "Aapka registration admin approval ka wait kar raha hai.")
+                _record_login_history(
+                    request,
+                    "company",
+                    username_or_email=company.email or username,
+                    account_id=company.id,
+                    is_success=False,
+                    note="kyc not verified",
+                )
+                return _render_login()
+            if company.account_status and company.account_status != "Active":
+                if company.account_status == "Blocked":
+                    messages.error(request, "Your account is blocked. Please contact support.")
+                else:
+                    messages.error(request, "Your account is currently inactive. Please contact support.")
+                _record_login_history(
+                    request,
+                    "company",
+                    username_or_email=company.email or username,
+                    account_id=company.id,
+                    is_success=False,
+                    note="account not active",
+                )
+                return _render_login()
             if not company.email_verified:
                 messages.error(request, "Please verify your email before login.")
                 _record_login_history(
@@ -3991,7 +4146,7 @@ def login_view(request):
                 if consultancy.kyc_status == "Rejected":
                     messages.error(request, "Your account has been rejected. Please contact support.")
                 else:
-                    messages.error(request, "Your account is under review. Please wait for admin approval.")
+                    messages.error(request, "Aapka registration admin approval ka wait kar raha hai.")
                 _record_login_history(
                     request,
                     "consultancy",
@@ -3999,6 +4154,20 @@ def login_view(request):
                     account_id=consultancy.id,
                     is_success=False,
                     note="kyc not verified",
+                )
+                return _render_login()
+            if consultancy.account_status and consultancy.account_status != "Active":
+                if consultancy.account_status == "Blocked":
+                    messages.error(request, "Your account is blocked. Please contact support.")
+                else:
+                    messages.error(request, "Your account is currently inactive. Please contact support.")
+                _record_login_history(
+                    request,
+                    "consultancy",
+                    username_or_email=consultancy.email or username,
+                    account_id=consultancy.id,
+                    is_success=False,
+                    note="account not active",
                 )
                 return _render_login()
             return _login_consultancy(consultancy)
@@ -4088,15 +4257,31 @@ def login_view(request):
 
 
 def forgot_password_view(request):
-    form_data = {"identifier": "", "mobile_otp": ""}
+    form_data = {
+        "identifier": "",
+        "mobile_otp": "",
+        "new_password": "",
+        "confirm_new_password": "",
+    }
 
     if request.method == "POST":
         action = (request.POST.get("action") or "send_reset_link").strip().lower()
+        action_aliases = {
+            "resend_reset_link": "send_reset_link",
+            "resend_link": "send_reset_link",
+            "reset_password": "reset_now",
+            "reset_password_now": "reset_now",
+        }
+        action = action_aliases.get(action, action)
         identifier = (request.POST.get("identifier") or "").strip()
         mobile_otp = (request.POST.get("mobile_otp") or "").strip()
+        new_password = request.POST.get("new_password") or ""
+        confirm_new_password = request.POST.get("confirm_new_password") or ""
         form_data = {
             "identifier": identifier,
             "mobile_otp": mobile_otp,
+            "new_password": new_password,
+            "confirm_new_password": confirm_new_password,
         }
         if not identifier:
             messages.error(request, "Please enter your email address or mobile number.")
@@ -4138,8 +4323,8 @@ def forgot_password_view(request):
                 )
             return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
 
-        if account and email:
-            requires_otp = getattr(settings, "FORGOT_PASSWORD_OTP_REQUIRED", True)
+        requires_otp = getattr(settings, "FORGOT_PASSWORD_OTP_REQUIRED", True)
+        if action in {"send_reset_link", "reset_now"} and account:
             if requires_otp:
                 if not phone:
                     messages.error(request, "No mobile number found for this account. Please contact support.")
@@ -4163,8 +4348,31 @@ def forgot_password_view(request):
                 ):
                     messages.error(request, "Invalid or expired OTP. Please request a new OTP.")
                     return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
-            _clear_session_otp(request, PASSWORD_RESET_OTP_SESSION_KEY)
-            _send_password_reset_link(request, account_type, account, email)
+
+            if action == "reset_now":
+                if not new_password or not confirm_new_password:
+                    messages.error(request, "New password and confirm password are required.")
+                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+                if new_password != confirm_new_password:
+                    messages.error(request, "New password and confirm password do not match.")
+                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+                password_errors = _password_strength_errors(new_password)
+                if password_errors:
+                    for error in password_errors:
+                        messages.error(request, error)
+                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+                _set_account_password(account_type, account, new_password)
+                _clear_session_otp(request, PASSWORD_RESET_OTP_SESSION_KEY)
+                messages.success(request, "Password reset successful. Please login with your new password.")
+                return redirect("dashboard:login")
+
+            if email:
+                _clear_session_otp(request, PASSWORD_RESET_OTP_SESSION_KEY)
+                _send_password_reset_link(request, account_type, account, email)
+            else:
+                messages.error(request, "No email found for this account. Please contact support.")
+                return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+
         messages.success(
             request,
             "If account exists, reset instructions have been sent to the registered email.",
@@ -4231,7 +4439,10 @@ def password_reset_confirm_view(request, token):
 
 def company_register_view(request):
     flow_key = "company"
-    form_data = {}
+    temp_registration_doc = _get_registration_temp_upload_meta(request, flow_key, "registration_document")
+    form_data = {
+        "registration_document_name": temp_registration_doc.get("name", ""),
+    }
     captcha_question = _get_registration_captcha_question(request, flow_key)
 
     if request.method == "POST":
@@ -4263,6 +4474,19 @@ def company_register_view(request):
         employee_count = _parse_int(request.POST.get("employee_count"))
         registration_document = request.FILES.get("registration_document")
         logo_upload = request.FILES.get("logo_upload")
+        if registration_document:
+            temp_registration_doc = _store_registration_temp_upload(
+                request,
+                flow_key,
+                "registration_document",
+                registration_document,
+            )
+        else:
+            temp_registration_doc = _get_registration_temp_upload_meta(
+                request,
+                flow_key,
+                "registration_document",
+            )
         hr_phone = phone
         hr_email = email
         contact_position = (request.POST.get("contact_position") or "").strip() or hr_designation
@@ -4281,6 +4505,8 @@ def company_register_view(request):
             "username": username,
             "email": email,
             "phone": phone,
+            "password": password,
+            "confirm_password": confirm_password,
             "company_type": company_type,
             "industry_type": industry_type,
             "company_size": company_size,
@@ -4307,6 +4533,7 @@ def company_register_view(request):
             "terms_accepted": terms_accepted,
             "privacy_accepted": privacy_accepted,
             "guidelines_accepted": guidelines_accepted,
+            "registration_document_name": temp_registration_doc.get("name", ""),
         }
 
         if action == "send_email_otp":
@@ -4373,7 +4600,7 @@ def company_register_view(request):
         if missing_fields:
             errors.append("Please fill required fields: " + ", ".join(missing_fields) + ".")
 
-        if not registration_document:
+        if not registration_document and not temp_registration_doc.get("path"):
             errors.append("Company registration certificate is required.")
 
         if password != confirm_password:
@@ -4440,14 +4667,15 @@ def company_register_view(request):
             gst_number=gst_number,
             cin_number=cin_number,
             pan_number=pan_number,
-            registration_document=registration_document,
+            registration_document=registration_document if registration_document else None,
             contact_position=contact_position,
             hr_name=hr_name,
             hr_designation=hr_designation,
             hr_phone=hr_phone,
             hr_email=hr_email,
             account_type="Company",
-            account_status="Active",
+            account_status="Suspended",
+            kyc_status="Pending",
             email_verified=email_otp_valid,
             phone_verified=mobile_otp_valid,
             terms_accepted=terms_accepted,
@@ -4459,29 +4687,36 @@ def company_register_view(request):
             year_established=year_established,
             employee_count=employee_count,
         )
+        if not registration_document and temp_registration_doc.get("path"):
+            if _attach_registration_temp_upload(company, "registration_document", temp_registration_doc):
+                company.save(update_fields=["registration_document"])
 
         if not _is_official_company_email(email):
             messages.warning(request, "Official domain email is recommended (example: hr@company.com).")
 
         if email_otp_valid:
-            messages.success(request, "Company registered and email verified via OTP.")
+            messages.success(
+                request,
+                "Company registration successful. Admin approval ke baad aapko login credentials email par mil jayenge.",
+            )
         else:
             verify_url, mail_sent = _send_email_verification_message(request, company, "company")
             if mail_sent:
                 messages.success(
                     request,
-                    "Company registered. Verification email sent. Please verify email before login.",
+                    "Company registered. Verification email sent. Email verify hone aur admin approval ke baad login enable hoga.",
                 )
             else:
                 messages.success(
                     request,
-                    "Company registered. Please verify your email using the link below before login.",
+                    "Company registered. Email verification aur admin approval ke baad login enable hoga.",
                 )
             if settings.DEBUG:
                 messages.info(request, f"Verification link: {verify_url}")
 
         _clear_registration_otp(request, flow_key)
         _clear_registration_email_otp(request, flow_key)
+        _clear_registration_temp_upload(request, flow_key, "registration_document")
         _set_registration_captcha(request, flow_key)
         return redirect("dashboard:login")
 
@@ -4545,6 +4780,8 @@ def consultancy_register_view(request):
             "name": name,
             "email": email,
             "phone": phone,
+            "password": password,
+            "confirm_password": confirm_password,
             "mobile_otp": mobile_otp,
             "email_otp": email_otp,
             "captcha_answer": captcha_answer,
@@ -4712,7 +4949,7 @@ def consultancy_register_view(request):
             address_proof=address_proof,
             profile_image=profile_image,
             account_type="Consultancy",
-            account_status="Active",
+            account_status="Suspended",
             kyc_status="Pending",
         )
         uploaded_count = _store_consultancy_registration_documents(
@@ -4730,7 +4967,10 @@ def consultancy_register_view(request):
                 f"{uploaded_count} document(s) were also added to your consultancy KYC panel.",
             )
 
-        messages.success(request, "Consultancy registered successfully. Please wait for admin approval.")
+        messages.success(
+            request,
+            "Consultancy registered successfully. Admin approval ke baad login credentials email par bheje jayenge.",
+        )
         _clear_registration_otp(request, flow_key)
         _clear_registration_email_otp(request, flow_key)
         _set_registration_captcha(request, flow_key)
@@ -4766,6 +5006,7 @@ def candidate_register_view(request):
         gender = (request.POST.get("gender") or "").strip()
         current_address = (request.POST.get("current_address") or "").strip()
         preferred_job_location = (request.POST.get("preferred_job_location") or "").strip()
+        nationality = (request.POST.get("nationality") or "").strip()
 
         current_job_title = (request.POST.get("current_job_title") or "").strip()
         total_experience = (request.POST.get("total_experience") or "").strip()
@@ -4791,11 +5032,14 @@ def candidate_register_view(request):
             "name": name,
             "email": email,
             "phone": phone,
+            "password": password,
+            "confirm_password": confirm_password,
             "location": location,
             "date_of_birth": date_of_birth_raw,
             "gender": gender,
             "current_address": current_address,
             "preferred_job_location": preferred_job_location,
+            "nationality": nationality,
             "current_job_title": current_job_title,
             "total_experience": total_experience,
             "current_salary": current_salary,
@@ -4930,6 +5174,7 @@ def candidate_register_view(request):
             date_of_birth=parse_date(date_of_birth_raw) if date_of_birth_raw else None,
             gender=gender,
             preferred_job_location=preferred_job_location,
+            nationality=nationality,
             current_position=current_job_title,
             total_experience=total_experience,
             current_salary=current_salary,
@@ -5017,12 +5262,42 @@ def candidate_registration_suggestions_api(request):
     field = (request.GET.get("field") or "").strip().lower()
     query = (request.GET.get("q") or "").strip()
     normalized_query = query.lower()
+    country_query = (request.GET.get("country") or "").strip()
+    normalized_country = country_query.lower()
+    country_aliases = {
+        "usa": "united states",
+        "us": "united states",
+        "u.s.a.": "united states",
+        "u.s.": "united states",
+        "uk": "united kingdom",
+        "u.k.": "united kingdom",
+        "uae": "united arab emirates",
+        "u.a.e.": "united arab emirates",
+    }
+    resolved_country = country_aliases.get(normalized_country, normalized_country)
 
     field_aliases = {
         "location": "preferred_job_location",
+        "name": "company_name",
+        "hr_designation": "designation",
+        "owner_designation": "designation",
     }
     resolved_field = field_aliases.get(field, field)
-    allowed_fields = {"current_job_title", "preferred_job_location", "primary_skills", "university"}
+    allowed_fields = {
+        "current_job_title",
+        "preferred_job_location",
+        "primary_skills",
+        "degree",
+        "university",
+        "company_name",
+        "industry_type",
+        "company_type",
+        "designation",
+        "city",
+        "state",
+        "country",
+        "industries_served",
+    }
     if resolved_field not in allowed_fields:
         return JsonResponse({"suggestions": []})
 
@@ -5057,6 +5332,14 @@ def candidate_registration_suggestions_api(request):
             "Excel",
             "Communication",
         ],
+        "degree": [
+            "B.Tech",
+            "B.E.",
+            "BCA",
+            "MCA",
+            "B.Sc Computer Science",
+            "MBA",
+        ],
         "university": [
             "Delhi University",
             "Mumbai University",
@@ -5065,6 +5348,194 @@ def candidate_registration_suggestions_api(request):
             "JNTU Hyderabad",
             "Bangalore University",
         ],
+        "company_name": [
+            "Infosys",
+            "TCS",
+            "Wipro",
+            "Accenture",
+            "HCL",
+            "Tech Mahindra",
+        ],
+        "industry_type": [
+            "IT Services",
+            "Software",
+            "BFSI",
+            "Healthcare",
+            "Education",
+            "Manufacturing",
+        ],
+        "company_type": [
+            "Private Ltd",
+            "LLP",
+            "Partnership",
+            "Proprietorship",
+            "Pvt Ltd",
+            "NGO",
+        ],
+        "designation": [
+            "HR Manager",
+            "Talent Acquisition Specialist",
+            "Recruitment Lead",
+            "Director",
+            "Founder",
+            "Operations Manager",
+        ],
+        "city": [
+            "Bengaluru",
+            "Hyderabad",
+            "Pune",
+            "Mumbai",
+            "Delhi",
+            "Chennai",
+            "Kolkata",
+        ],
+        "state": [
+            "Karnataka",
+            "Maharashtra",
+            "Telangana",
+            "Tamil Nadu",
+            "Delhi",
+            "West Bengal",
+        ],
+        "country": [
+            "India",
+            "United States",
+            "United Kingdom",
+            "United Arab Emirates",
+            "Singapore",
+        ],
+        "industries_served": [
+            "IT",
+            "BFSI",
+            "Healthcare",
+            "Retail",
+            "E-commerce",
+            "Manufacturing",
+        ],
+    }
+
+    country_specific = {
+        "india": {
+            "current_job_title": [
+                "Software Engineer",
+                "Data Analyst",
+                "HR Executive",
+                "Sales Executive",
+                "Customer Support Executive",
+            ],
+            "preferred_job_location": [
+                "Bengaluru",
+                "Hyderabad",
+                "Pune",
+                "Mumbai",
+                "Delhi NCR",
+                "Chennai",
+                "Kolkata",
+                "Remote",
+            ],
+            "degree": ["B.Tech", "B.E.", "BCA", "MCA", "MBA", "B.Com"],
+            "university": [
+                "Delhi University",
+                "Mumbai University",
+                "Anna University",
+                "Savitribai Phule Pune University",
+                "JNTU Hyderabad",
+                "Bangalore University",
+            ],
+            "city": ["Bengaluru", "Hyderabad", "Pune", "Mumbai", "Delhi", "Chennai"],
+            "state": ["Karnataka", "Maharashtra", "Telangana", "Tamil Nadu", "Delhi", "Gujarat"],
+        },
+        "united states": {
+            "current_job_title": [
+                "Software Engineer",
+                "Data Scientist",
+                "Business Analyst",
+                "Product Manager",
+                "Registered Nurse",
+            ],
+            "preferred_job_location": [
+                "New York",
+                "San Francisco",
+                "Seattle",
+                "Austin",
+                "Chicago",
+                "Remote",
+            ],
+            "degree": ["B.S.", "B.A.", "M.S.", "MBA", "Ph.D."],
+            "university": [
+                "Harvard University",
+                "Stanford University",
+                "MIT",
+                "University of California, Berkeley",
+                "Carnegie Mellon University",
+            ],
+            "city": ["New York", "San Francisco", "Seattle", "Austin", "Chicago", "Boston"],
+            "state": ["California", "Texas", "New York", "Washington", "Massachusetts", "Illinois"],
+        },
+        "united kingdom": {
+            "current_job_title": [
+                "Software Developer",
+                "Data Analyst",
+                "Finance Analyst",
+                "Marketing Executive",
+                "Care Assistant",
+            ],
+            "preferred_job_location": [
+                "London",
+                "Manchester",
+                "Birmingham",
+                "Edinburgh",
+                "Leeds",
+                "Remote",
+            ],
+            "degree": ["BSc", "BA", "MSc", "MA", "MBA"],
+            "university": [
+                "University of Oxford",
+                "University of Cambridge",
+                "Imperial College London",
+                "University College London",
+                "University of Manchester",
+            ],
+            "city": ["London", "Manchester", "Birmingham", "Edinburgh", "Leeds", "Bristol"],
+            "state": ["England", "Scotland", "Wales", "Northern Ireland"],
+        },
+        "united arab emirates": {
+            "current_job_title": [
+                "Sales Executive",
+                "Accountant",
+                "Operations Coordinator",
+                "Civil Engineer",
+                "HR Officer",
+            ],
+            "preferred_job_location": ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Remote"],
+            "degree": ["B.Tech", "BBA", "MBA", "B.Com", "Diploma"],
+            "university": [
+                "United Arab Emirates University",
+                "Khalifa University",
+                "American University of Sharjah",
+                "University of Dubai",
+            ],
+            "city": ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Al Ain"],
+            "state": ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah"],
+        },
+        "singapore": {
+            "current_job_title": [
+                "Software Engineer",
+                "Data Analyst",
+                "Business Development Executive",
+                "Financial Analyst",
+                "Operations Executive",
+            ],
+            "preferred_job_location": ["Singapore", "Remote"],
+            "degree": ["B.Eng", "B.Sc", "BBA", "M.Sc", "MBA"],
+            "university": [
+                "National University of Singapore",
+                "Nanyang Technological University",
+                "Singapore Management University",
+            ],
+            "city": ["Singapore"],
+            "state": ["Central Region", "East Region", "North Region", "North-East Region", "West Region"],
+        },
     }
 
     suggestions = []
@@ -5082,10 +5553,26 @@ def candidate_registration_suggestions_api(request):
         seen.add(lowered)
         suggestions.append(cleaned)
 
-    for item in fallback.get(resolved_field, []):
+    country_seed_fields = {
+        "current_job_title",
+        "preferred_job_location",
+        "degree",
+        "university",
+        "city",
+        "state",
+    }
+    country_seed_values = country_specific.get(resolved_country, {}).get(resolved_field, [])
+    for item in country_seed_values:
         add_suggestion(item)
 
-    if resolved_field == "current_job_title":
+    use_generic_fallback = not (country_seed_values and resolved_field in country_seed_fields)
+    if use_generic_fallback:
+        for item in fallback.get(resolved_field, []):
+            add_suggestion(item)
+
+    skip_database_expansion = bool(country_seed_values and resolved_field in country_seed_fields)
+
+    if resolved_field == "current_job_title" and not skip_database_expansion:
         job_titles = Job.objects.exclude(title="").values_list("title", flat=True)
         if normalized_query:
             job_titles = job_titles.filter(title__icontains=query)
@@ -5098,7 +5585,7 @@ def candidate_registration_suggestions_api(request):
         for value in candidate_positions[:40]:
             add_suggestion(value)
 
-    elif resolved_field == "preferred_job_location":
+    elif resolved_field == "preferred_job_location" and not skip_database_expansion:
         job_locations = Job.objects.exclude(location="").values_list("location", flat=True)
         if normalized_query:
             job_locations = job_locations.filter(location__icontains=query)
@@ -5120,7 +5607,23 @@ def candidate_registration_suggestions_api(request):
         for value in profile_locations[:40]:
             add_suggestion(value)
 
-    elif resolved_field == "university":
+    elif resolved_field == "degree" and not skip_database_expansion:
+        qualification_qs = CandidateEducation.objects.exclude(qualification="").values_list("qualification", flat=True)
+        if normalized_query:
+            qualification_qs = qualification_qs.filter(qualification__icontains=query)
+        for value in qualification_qs[:80]:
+            add_suggestion(value)
+
+        graduation_qs = Candidate.objects.exclude(education_graduation="").values_list(
+            "education_graduation",
+            flat=True,
+        )
+        if normalized_query:
+            graduation_qs = graduation_qs.filter(education_graduation__icontains=query)
+        for value in graduation_qs[:80]:
+            add_suggestion(value)
+
+    elif resolved_field == "university" and not skip_database_expansion:
         institution_qs = CandidateEducation.objects.exclude(institution="").values_list("institution", flat=True)
         if normalized_query:
             institution_qs = institution_qs.filter(institution__icontains=query)
@@ -5141,8 +5644,116 @@ def candidate_registration_suggestions_api(request):
         for raw in skill_values:
             for token in _split_skill_values(raw):
                 add_suggestion(token)
+    elif resolved_field == "company_name":
+        company_names = Company.objects.exclude(name="").values_list("name", flat=True)
+        consultancy_names = Consultancy.objects.exclude(name="").values_list("name", flat=True)
+        job_companies = Job.objects.exclude(company="").values_list("company", flat=True)
+        if normalized_query:
+            company_names = company_names.filter(name__icontains=query)
+            consultancy_names = consultancy_names.filter(name__icontains=query)
+            job_companies = job_companies.filter(company__icontains=query)
+        for value in company_names[:80]:
+            add_suggestion(value)
+        for value in consultancy_names[:80]:
+            add_suggestion(value)
+        for value in job_companies[:80]:
+            add_suggestion(value)
+    elif resolved_field == "industry_type":
+        company_industries = Company.objects.exclude(industry_type="").values_list("industry_type", flat=True)
+        consultancy_industries = Consultancy.objects.exclude(industries_served="").values_list(
+            "industries_served",
+            flat=True,
+        )
+        job_categories = Job.objects.exclude(category="").values_list("category", flat=True)
+        if normalized_query:
+            company_industries = company_industries.filter(industry_type__icontains=query)
+            consultancy_industries = consultancy_industries.filter(industries_served__icontains=query)
+            job_categories = job_categories.filter(category__icontains=query)
+        for value in company_industries[:80]:
+            add_suggestion(value)
+        for value in job_categories[:80]:
+            add_suggestion(value)
+        for raw in consultancy_industries[:80]:
+            for token in _split_skill_values(raw):
+                add_suggestion(token)
+    elif resolved_field == "company_type":
+        company_types = Company.objects.exclude(company_type="").values_list("company_type", flat=True)
+        consultancy_types = Consultancy.objects.exclude(company_type="").values_list("company_type", flat=True)
+        if normalized_query:
+            company_types = company_types.filter(company_type__icontains=query)
+            consultancy_types = consultancy_types.filter(company_type__icontains=query)
+        for value in company_types[:80]:
+            add_suggestion(value)
+        for value in consultancy_types[:80]:
+            add_suggestion(value)
+    elif resolved_field == "designation":
+        hr_designations = Company.objects.exclude(hr_designation="").values_list("hr_designation", flat=True)
+        owner_designations = Consultancy.objects.exclude(owner_designation="").values_list(
+            "owner_designation",
+            flat=True,
+        )
+        candidate_positions = Candidate.objects.exclude(current_position="").values_list("current_position", flat=True)
+        if normalized_query:
+            hr_designations = hr_designations.filter(hr_designation__icontains=query)
+            owner_designations = owner_designations.filter(owner_designation__icontains=query)
+            candidate_positions = candidate_positions.filter(current_position__icontains=query)
+        for value in hr_designations[:80]:
+            add_suggestion(value)
+        for value in owner_designations[:80]:
+            add_suggestion(value)
+        for value in candidate_positions[:60]:
+            add_suggestion(value)
+    elif resolved_field == "city" and not skip_database_expansion:
+        job_locations = Job.objects.exclude(location="").values_list("location", flat=True)
+        company_cities = Company.objects.exclude(city="").values_list("city", flat=True)
+        consultancy_cities = Consultancy.objects.exclude(city="").values_list("city", flat=True)
+        if normalized_query:
+            job_locations = job_locations.filter(location__icontains=query)
+            company_cities = company_cities.filter(city__icontains=query)
+            consultancy_cities = consultancy_cities.filter(city__icontains=query)
+        for value in job_locations[:80]:
+            add_suggestion(value)
+        for value in company_cities[:80]:
+            add_suggestion(value)
+        for value in consultancy_cities[:80]:
+            add_suggestion(value)
+    elif resolved_field == "state" and not skip_database_expansion:
+        company_states = Company.objects.exclude(state="").values_list("state", flat=True)
+        consultancy_states = Consultancy.objects.exclude(state="").values_list("state", flat=True)
+        if normalized_query:
+            company_states = company_states.filter(state__icontains=query)
+            consultancy_states = consultancy_states.filter(state__icontains=query)
+        for value in company_states[:80]:
+            add_suggestion(value)
+        for value in consultancy_states[:80]:
+            add_suggestion(value)
+    elif resolved_field == "country":
+        company_countries = Company.objects.exclude(country="").values_list("country", flat=True)
+        consultancy_countries = Consultancy.objects.exclude(country="").values_list("country", flat=True)
+        if normalized_query:
+            company_countries = company_countries.filter(country__icontains=query)
+            consultancy_countries = consultancy_countries.filter(country__icontains=query)
+        for value in company_countries[:80]:
+            add_suggestion(value)
+        for value in consultancy_countries[:80]:
+            add_suggestion(value)
+    elif resolved_field == "industries_served":
+        consultancy_industries = Consultancy.objects.exclude(industries_served="").values_list(
+            "industries_served",
+            flat=True,
+        )
+        company_industries = Company.objects.exclude(industry_type="").values_list("industry_type", flat=True)
+        if normalized_query:
+            consultancy_industries = consultancy_industries.filter(industries_served__icontains=query)
+            company_industries = company_industries.filter(industry_type__icontains=query)
+        for raw in consultancy_industries[:80]:
+            for token in _split_skill_values(raw):
+                add_suggestion(token)
+        for value in company_industries[:80]:
+            add_suggestion(value)
 
-    return JsonResponse({"suggestions": suggestions[:12]})
+    ordered = sorted(suggestions, key=lambda value: value.lower())
+    return JsonResponse({"suggestions": ordered[:12]})
 
 
 @require_http_methods(["POST"])
@@ -5255,20 +5866,43 @@ def verify_email_view(request, token):
 
 @require_http_methods(["GET"])
 def panel_notifications_api(request):
-    payload = build_panel_notifications(request, limit=8)
+    payload = build_panel_notifications(request, limit=8, only_unread=True)
     role = payload.get("role")
     if not role:
         return JsonResponse({"success": False, "error": "Unauthorized panel context."}, status=401)
 
-    if (request.GET.get("mark_seen") or "").strip() == "1":
-        mark_panel_notifications_seen(request, role=role)
-        payload = build_panel_notifications(request, limit=8)
-
-    message_unread_count = 0
     candidate_id = request.session.get("candidate_id")
     company_id = request.session.get("company_id")
     consultancy_id = request.session.get("consultancy_id")
-    if candidate_id:
+    if (request.GET.get("mark_seen") or "").strip() == "1":
+        mark_panel_notifications_seen(request, role=role)
+        if role == "admin":
+            Message.objects.filter(is_read=False).exclude(sender_role="admin").update(is_read=True)
+        elif candidate_id:
+            Message.objects.filter(
+                thread__candidate_id=candidate_id,
+                is_read=False,
+            ).exclude(sender_role="candidate").update(is_read=True)
+        elif company_id:
+            Message.objects.filter(
+                thread__company_id=company_id,
+                is_read=False,
+            ).exclude(sender_role="company").update(is_read=True)
+        elif consultancy_id:
+            Message.objects.filter(
+                thread__consultancy_id=consultancy_id,
+                is_read=False,
+            ).exclude(sender_role="consultancy").update(is_read=True)
+        payload = build_panel_notifications(request, limit=8, only_unread=True)
+
+    message_unread_count = 0
+    if role == "admin":
+        message_unread_count = (
+            Message.objects.filter(is_read=False)
+            .exclude(sender_role="admin")
+            .count()
+        )
+    elif candidate_id:
         message_unread_count = (
             Message.objects.filter(
                 thread__candidate_id=candidate_id,
@@ -5308,12 +5942,16 @@ def panel_notifications_api(request):
             }
         )
 
+    notification_unread_count = int(payload.get("unread_count", 0) or 0)
+    combined_unread_count = notification_unread_count + int(message_unread_count or 0)
+
     return JsonResponse(
         {
             "success": True,
             "role": role,
-            "unread_count": payload.get("unread_count", 0),
-            "sidebar_count": payload.get("unread_count", 0),
+            "unread_count": notification_unread_count,
+            "combined_unread_count": combined_unread_count,
+            "sidebar_count": notification_unread_count,
             "message_unread_count": message_unread_count,
             "items": items,
         }
@@ -5329,10 +5967,35 @@ def _safe_session_get(request, key, default=None):
     return default
 
 
+def _should_block_candidate_post_job_attempt(request):
+    path = (request.path or "").rstrip("/").lower()
+    action = (request.GET.get("action") or "").strip().lower()
+    is_company_post_new = path.endswith("/company/jobs") and action == "new"
+    is_consultancy_post_new = path.endswith("/consultancy/job-management") and action == "new"
+    return is_company_post_new or is_consultancy_post_new
+
+
+def _redirect_candidate_if_post_job_blocked(request):
+    if not _safe_session_get(request, "candidate_id"):
+        return None
+    if not _should_block_candidate_post_job_attempt(request):
+        return None
+    messages.add_message(
+        request,
+        messages.WARNING,
+        CANDIDATE_POST_JOB_RESTRICTED_MESSAGE,
+        extra_tags="popup",
+    )
+    return redirect("dashboard:candidate_dashboard")
+
+
 def company_login_required(view_func):
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
         if not _safe_session_get(request, "company_id"):
+            blocked_redirect = _redirect_candidate_if_post_job_blocked(request)
+            if blocked_redirect is not None:
+                return blocked_redirect
             return redirect("dashboard:login")
         return view_func(request, *args, **kwargs)
 
@@ -5365,6 +6028,9 @@ def consultancy_login_required(view_func):
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
         if not _safe_session_get(request, "consultancy_id"):
+            blocked_redirect = _redirect_candidate_if_post_job_blocked(request)
+            if blocked_redirect is not None:
+                return blocked_redirect
             return redirect("dashboard:login")
         return view_func(request, *args, **kwargs)
 
@@ -7573,14 +8239,12 @@ def consultancy_profile_settings_view(request):
             return redirect("dashboard:login")
 
         consultancy.name = (request.POST.get("name") or consultancy.name).strip()
-        consultancy.email = (request.POST.get("email") or consultancy.email).strip()
-        consultancy.phone = (request.POST.get("phone") or "").strip()
         consultancy.location = (request.POST.get("location") or "").strip()
         consultancy.address = (request.POST.get("address") or "").strip()
         consultancy.contact_position = (request.POST.get("contact_position") or "").strip()
         if request.FILES.get("profile_image"):
             consultancy.profile_image = request.FILES["profile_image"]
-        consultancy.save(update_fields=["name", "email", "phone", "location", "address", "contact_position", "profile_image"])
+        consultancy.save(update_fields=["name", "location", "address", "contact_position", "profile_image"])
         messages.success(request, "Consultancy profile updated.")
         return redirect("dashboard:consultancy_profile_settings")
 
@@ -9630,13 +10294,10 @@ def candidate_profile_view(request):
         action = (request.POST.get("action") or "").strip()
         if action == "update_profile":
             name = (request.POST.get("name") or "").strip()
-            email = (request.POST.get("email") or "").strip()
-            if not name or not email:
-                messages.error(request, "Name and email are required.")
+            if not name:
+                messages.error(request, "Name is required.")
             else:
                 candidate.name = name
-                candidate.email = email
-                candidate.phone = (request.POST.get("phone") or "").strip()
                 candidate.alt_phone = (request.POST.get("alt_phone") or "").strip()
                 candidate.date_of_birth = parse_date(request.POST.get("date_of_birth")) if request.POST.get("date_of_birth") else None
                 candidate.gender = (request.POST.get("gender") or "").strip()
@@ -9919,7 +10580,7 @@ def candidate_job_search_view(request):
     experience = (request.GET.get("experience") or "").strip()
     skills = (request.GET.get("skills") or "").strip()
     job_type = (request.GET.get("job_type") or "").strip()
-    sort = (request.GET.get("sort") or "latest").strip()
+    page_number = (request.GET.get("page") or "1").strip()
 
     if search:
         jobs_qs = jobs_qs.filter(Q(title__icontains=search) | Q(company__icontains=search))
@@ -9934,10 +10595,7 @@ def candidate_job_search_view(request):
     if job_type:
         jobs_qs = jobs_qs.filter(job_type__iexact=job_type)
 
-    if sort == "salary_high":
-        jobs_qs = jobs_qs.order_by("-salary", "-created_at")
-    else:
-        jobs_qs = jobs_qs.order_by("-created_at")
+    jobs_qs = jobs_qs.order_by("title", "company", "-created_at")
 
     recommended_jobs = _recommend_jobs_for_candidate(candidate, jobs_queryset=jobs_qs, limit=None)
     recommendation_map = {item.job_id: item for item in recommended_jobs}
@@ -9948,23 +10606,43 @@ def candidate_job_search_view(request):
         job.matched_skills = getattr(matched, "matched_skills", []) if matched else []
         job.match_reason = getattr(matched, "match_reason", "Recommended for your profile") if matched else "Recommended for your profile"
 
-    if sort != "salary_high":
-        jobs.sort(
-            key=lambda item: (
-                getattr(item, "match_score", 0),
-                getattr(item, "created_at", timezone.now()),
-            ),
-            reverse=True,
+    jobs.sort(
+        key=lambda item: (
+            (item.title or "").strip().lower(),
+            (item.company or "").strip().lower(),
+            getattr(item, "created_at", timezone.now()),
         )
+    )
+
+    paginator = Paginator(jobs, 10)
+    page_obj = paginator.get_page(page_number)
+    paginated_jobs = list(page_obj.object_list)
+
+    total_jobs = paginator.count
+    if total_jobs > 0:
+        showing_from = (page_obj.number - 1) * paginator.per_page + 1
+        showing_to = showing_from + len(paginated_jobs) - 1
+    else:
+        showing_from = 0
+        showing_to = 0
 
     saved_job_ids = set(
         CandidateSavedJob.objects.filter(candidate=candidate).values_list("job_id", flat=True)
     )
+    query_params = request.GET.copy()
+    query_params.pop("page", None)
+    query_without_page = query_params.urlencode()
 
     context = {
         "candidate": candidate,
-        "jobs": jobs,
+        "jobs": paginated_jobs,
         "saved_job_ids": saved_job_ids,
+        "page_obj": page_obj,
+        "total_jobs": total_jobs,
+        "showing_from": showing_from,
+        "showing_to": showing_to,
+        "entries_per_page": paginator.per_page,
+        "query_without_page": query_without_page,
         "filters": {
             "search": search,
             "location": location,
@@ -9972,10 +10650,79 @@ def candidate_job_search_view(request):
             "experience": experience,
             "skills": skills,
             "job_type": job_type,
-            "sort": sort,
         },
     }
     return render(request, "dashboard/candidate/candidate_job_search.html", context)
+
+
+@candidate_login_required
+@require_http_methods(["GET"])
+def candidate_job_search_suggestions_api(request):
+    field = (request.GET.get("field") or "").strip().lower()
+    query = (request.GET.get("q") or "").strip()
+    normalized_query = query.lower()
+
+    if field not in {"search", "location", "skills"}:
+        return JsonResponse({"suggestions": []})
+
+    suggestions = []
+    seen = set()
+
+    def add_suggestion(value):
+        cleaned = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not cleaned:
+            return
+        lowered = cleaned.lower()
+        if normalized_query and normalized_query not in lowered:
+            return
+        if lowered in seen:
+            return
+        seen.add(lowered)
+        suggestions.append(cleaned)
+
+    jobs_qs = Job.objects.filter(status="Approved")
+    if field == "search":
+        fallback = [
+            "Software Engineer",
+            "Data Analyst",
+            "Sales Executive",
+            "HR Recruiter",
+            "Digital Marketing",
+            "UI UX Designer",
+        ]
+        for item in fallback:
+            add_suggestion(item)
+
+        title_qs = jobs_qs.exclude(title="")
+        if normalized_query:
+            title_qs = title_qs.filter(title__icontains=query)
+
+        for value in title_qs.values_list("title", flat=True)[:220]:
+            add_suggestion(value)
+
+    elif field == "location":
+        fallback = ["Bengaluru", "Hyderabad", "Pune", "Mumbai", "Delhi NCR", "Remote"]
+        for item in fallback:
+            add_suggestion(item)
+
+        location_qs = jobs_qs.exclude(location="")
+        if normalized_query:
+            location_qs = location_qs.filter(location__icontains=query)
+        for value in location_qs.values_list("location", flat=True)[:160]:
+            add_suggestion(value)
+
+    elif field == "skills":
+        fallback = ["Python", "Django", "React", "SQL", "Java", "Communication"]
+        for item in fallback:
+            add_suggestion(item)
+
+        skill_values = jobs_qs.exclude(skills="").values_list("skills", flat=True)[:200]
+        for raw in skill_values:
+            for token in _split_skill_values(raw):
+                add_suggestion(token)
+
+    ordered = sorted(suggestions, key=lambda value: value.lower())
+    return JsonResponse({"suggestions": ordered[:12]})
 
 
 @candidate_login_required
@@ -10524,9 +11271,9 @@ def candidate_notifications_view(request):
     )
     advertisement = _active_advertisement_for("candidate", ad_segment)
 
-    payload = build_panel_notifications(request, limit=40)
-    notifications = payload.get("items", [])
     mark_panel_notifications_seen(request, role="candidate")
+    payload = build_panel_notifications(request, limit=40, only_unread=True)
+    notifications = payload.get("items", [])
     return render(
         request,
         "dashboard/candidate/candidate_notifications.html",
@@ -10558,10 +11305,8 @@ def candidate_settings_view(request):
                 candidate.save(update_fields=["password"])
                 messages.success(request, "Password updated.")
         elif action == "update_settings":
-            email = (request.POST.get("email") or "").strip()
-            candidate.email = email or candidate.email
             candidate.profile_visibility = request.POST.get("profile_visibility") == "on"
-            candidate.save(update_fields=["email", "profile_visibility"])
+            candidate.save(update_fields=["profile_visibility"])
             messages.success(request, "Settings updated.")
         elif action == "send_delete_otp":
             phone = _resolve_candidate_primary_phone(candidate)
@@ -11012,6 +11757,40 @@ def api_candidate_toggle_saved_job(request):
     )
 
 
+def _build_company_interview_calendar(company_name):
+    if not company_name:
+        return []
+
+    today = timezone.localdate()
+    monday = today - timedelta(days=today.weekday())
+    week_dates = [monday + timedelta(days=offset) for offset in range(7)]
+    weekday_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    counts_qs = (
+        Interview.objects.filter(
+            company__iexact=company_name,
+            interview_date__in=week_dates,
+            status__in=["scheduled", "rescheduled"],
+        )
+        .values("interview_date")
+        .annotate(total=Count("id"))
+    )
+    counts_map = {row["interview_date"]: int(row["total"] or 0) for row in counts_qs}
+
+    calendar_rows = []
+    for index, day_value in enumerate(week_dates):
+        calendar_rows.append(
+            {
+                "label": weekday_labels[index],
+                "date_day": day_value.day,
+                "date_iso": day_value.isoformat(),
+                "count": counts_map.get(day_value, 0),
+                "is_today": day_value == today,
+            }
+        )
+    return calendar_rows
+
+
 @company_login_required
 def company_dashboard_view(request):
     company_id = request.session.get("company_id")
@@ -11046,6 +11825,28 @@ def company_dashboard_view(request):
     )
 
     recent_applicants = applications.order_by("-applied_date", "-id")[:4]
+    interview_calendar = _build_company_interview_calendar(company_name)
+    upcoming_interviews = (
+        Interview.objects.filter(
+            company__iexact=company_name,
+            interview_date__isnull=False,
+            interview_date__gte=timezone.localdate(),
+            status__in=["scheduled", "rescheduled"],
+        )
+        .order_by("interview_date", "interview_time", "id")[:6]
+    )
+    scheduled_meetings = []
+    for row in upcoming_interviews:
+        date_label = row.interview_date.strftime("%d %b %Y") if row.interview_date else "--"
+        time_label = row.interview_time.strftime("%I:%M %p").lstrip("0") if row.interview_time else "--"
+        scheduled_meetings.append(
+            {
+                "title": f"{row.job_title or 'Interview'}",
+                "with": row.candidate_name or row.candidate_email or "Candidate",
+                "time": f"{date_label} - {time_label}",
+            }
+        )
+
     ad_segment = _resolve_subscription_segment_for_account(
         "Company",
         company.email,
@@ -11064,6 +11865,8 @@ def company_dashboard_view(request):
             "plan_label": plan_label,
             "plan_expiry": plan_expiry,
             "recent_applicants": recent_applicants,
+            "interview_calendar": interview_calendar,
+            "scheduled_meetings": scheduled_meetings,
             "advertisement": advertisement,
         },
     )
@@ -11089,6 +11892,7 @@ def api_company_metrics(request):
         "interviews": applications.filter(status__in=INTERVIEW_STATUSES).count(),
         "on_hold": applications.filter(status="On Hold").count(),
         "rejected": applications.filter(status="Rejected").count(),
+        "interview_calendar": _build_company_interview_calendar(company_name),
     }
     return JsonResponse(metrics)
 
@@ -11104,12 +11908,10 @@ def company_profile_view(request):
         action = (request.POST.get("action") or "").strip()
         if action == "update_info":
             company.name = (request.POST.get("name") or company.name).strip()
-            company.email = (request.POST.get("email") or company.email).strip()
-            company.phone = (request.POST.get("phone") or "").strip()
             company.location = (request.POST.get("location") or "").strip()
             company.address = (request.POST.get("address") or "").strip()
             company.contact_position = (request.POST.get("contact_position") or "").strip()
-            company.save(update_fields=["name", "email", "phone", "location", "address", "contact_position"])
+            company.save(update_fields=["name", "location", "address", "contact_position"])
             messages.success(request, "Company information updated.")
         elif action == "upload_logo":
             if request.FILES.get("profile_image"):
@@ -11235,11 +12037,17 @@ def company_jobs_view(request):
 
         _apply_job_fields(job, request.POST)
         job.company = company_name
-
-        if action in ["draft", "publish"]:
-            job.status = "Pending"
-            if not job.posted_date:
-                job.posted_date = timezone.localdate()
+        lifecycle_status = _normalize_consultancy_job_lifecycle(request.POST.get("lifecycle_status"))
+        if action == "draft":
+            lifecycle_status = "Draft"
+        elif action == "publish":
+            lifecycle_status = "Active"
+        job.lifecycle_status = lifecycle_status
+        job.status = _legacy_status_for_lifecycle(lifecycle_status)
+        if action in {"publish", "update"} and lifecycle_status == "Active":
+            job.status = "Approved"
+        if action in {"publish", "update"} and not job.posted_date:
+            job.posted_date = timezone.localdate()
         job.save()
 
         if not job.job_id:
@@ -11254,7 +12062,7 @@ def company_jobs_view(request):
         elif action == "publish":
             messages.success(
                 request,
-                "New job submitted for approval." if is_new_job else "Job updated and submitted for approval.",
+                "Job published and live now." if is_new_job else "Job updated and live now.",
             )
         else:
             messages.success(
@@ -12757,10 +13565,8 @@ def company_settings_view(request):
         action = (request.POST.get("action") or "").strip()
         if action == "update_settings":
             company.name = (request.POST.get("name") or company.name).strip()
-            company.email = (request.POST.get("email") or company.email).strip()
-            company.phone = (request.POST.get("phone") or "").strip()
             company.location = (request.POST.get("location") or "").strip()
-            company.save(update_fields=["name", "email", "phone", "location"])
+            company.save(update_fields=["name", "location"])
             messages.success(request, "Settings updated successfully.")
         elif action == "change_password":
             current_password = request.POST.get("current_password") or ""
@@ -14637,12 +15443,63 @@ def api_user_kyc(request, user_type, pk):
     if not model:
         return JsonResponse({"success": False, "error": "Invalid user type"}, status=400)
     obj = get_object_or_404(model, pk=pk)
+    previous_kyc_status = (obj.kyc_status or "").strip()
     kyc_status = request.POST.get("kyc_status")
     if not kyc_status:
         return JsonResponse({"success": False, "error": "Missing KYC status"}, status=400)
+
+    update_fields = ["kyc_status"]
     obj.kyc_status = kyc_status
-    obj.save(update_fields=["kyc_status"])
-    return JsonResponse({"success": True, "item": _serialize_user(obj, user_type, request=request)})
+    approval_mail_sent = False
+    approval_mail_error = ""
+
+    just_verified = (
+        user_type in {"companies", "consultancies"}
+        and (previous_kyc_status or "").strip().lower() != "verified"
+        and (kyc_status or "").strip().lower() == "verified"
+    )
+    if just_verified:
+        if (obj.account_status or "").strip() != "Active":
+            obj.account_status = "Active"
+            update_fields.append("account_status")
+
+        raw_password = ""
+        stored_password_is_plain = bool(obj.password) and not _is_hashed_password(obj.password)
+
+        if stored_password_is_plain:
+            raw_password = obj.password
+            obj.password = _hash_password(raw_password)
+            update_fields.append("password")
+            obj.save(update_fields=list(dict.fromkeys(update_fields)))
+            approval_mail_sent, approval_mail_error = _send_approval_credentials_email(
+                request,
+                obj,
+                "company" if user_type == "companies" else "consultancy",
+                raw_password,
+            )
+        else:
+            obj.save(update_fields=list(dict.fromkeys(update_fields)))
+            raw_password = _generate_account_password(10)
+            approval_mail_sent, approval_mail_error = _send_approval_credentials_email(
+                request,
+                obj,
+                "company" if user_type == "companies" else "consultancy",
+                raw_password,
+            )
+            if approval_mail_sent:
+                obj.password = _hash_password(raw_password)
+                obj.save(update_fields=["password"])
+    else:
+        obj.save(update_fields=list(dict.fromkeys(update_fields)))
+
+    return JsonResponse(
+        {
+            "success": True,
+            "item": _serialize_user(obj, user_type, request=request),
+            "approval_mail_sent": approval_mail_sent,
+            "approval_mail_error": approval_mail_error,
+        }
+    )
 
 
 @login_required

@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const darkToggle = document.getElementById('darkModeToggle');
   const fullscreenToggles = document.querySelectorAll('[data-fullscreen-toggle]');
   const messageLinks = document.querySelectorAll('a.icon-btn[aria-label="Messages"]');
+  let panelMessageCountBadges = document.querySelectorAll('[data-panel-message-count]');
   const notificationDropdowns = Array.from(document.querySelectorAll('.notification-dropdown'));
   const panelNotificationRoot = document.querySelector('[data-panel-notification-root]') || notificationDropdowns[0] || null;
   let panelNotificationCountBadges = document.querySelectorAll('[data-panel-notification-count]');
@@ -33,6 +34,18 @@ document.addEventListener('DOMContentLoaded', () => {
       panelNotificationCountBadges = document.querySelectorAll('[data-panel-notification-count]');
     }
   }
+  if (messageLinks.length) {
+    messageLinks.forEach((link) => {
+      if (link.querySelector('[data-panel-message-count]')) return;
+      const autoBadge = document.createElement('span');
+      autoBadge.className = 'icon-count-badge';
+      autoBadge.setAttribute('data-panel-message-count', '');
+      autoBadge.style.display = 'none';
+      autoBadge.textContent = '0';
+      link.appendChild(autoBadge);
+    });
+    panelMessageCountBadges = document.querySelectorAll('[data-panel-message-count]');
+  }
   const panelUserName = (
     document.querySelector('.profile-meta strong')?.textContent ||
     document.querySelector('.company-user-meta strong')?.textContent ||
@@ -41,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     .trim()
     .toLowerCase();
   const isSubadminPanel = panelUserName === 'subadmin' || document.body.dataset.panelRole === 'subadmin';
+  const isAdminAccordionExclusive = Boolean(document.querySelector('.company-user.admin-user'));
 
   const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
   const storage = {
@@ -276,29 +290,150 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 3000);
   });
 
-  document.querySelectorAll('.company-logo').forEach((logo) => {
-    const img = logo.querySelector('img');
-    if (!img) return;
+  const resolveInitialFromText = (value, fallback = 'A') => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return fallback;
+    const first = trimmed.charAt(0).toUpperCase();
+    return first || fallback;
+  };
 
+  const setAvatarInitial = (avatar, initialChar) => {
+    if (!avatar) return;
+    avatar.classList.remove('has-image');
+    avatar.textContent = resolveInitialFromText(initialChar);
+  };
+
+  const setAvatarImage = (avatar, imageUrl, altText, fallbackInitial) => {
+    if (!avatar) return false;
+    const safeUrl = String(imageUrl || '').trim();
+    if (!safeUrl) {
+      setAvatarInitial(avatar, fallbackInitial);
+      return false;
+    }
+
+    avatar.classList.add('has-image');
+    avatar.textContent = '';
+    const img = document.createElement('img');
+    img.src = safeUrl;
+    img.alt = altText || 'Profile photo';
+
+    const fallback = () => {
+      if (img.parentNode) {
+        img.remove();
+      }
+      setAvatarInitial(avatar, fallbackInitial);
+    };
+
+    if (img.complete && img.naturalWidth === 0) {
+      fallback();
+      return false;
+    }
+
+    img.addEventListener('error', fallback, { once: true });
+    avatar.appendChild(img);
+    return true;
+  };
+
+  document.querySelectorAll('.company-logo').forEach((logo) => {
+    const progressValue = Number.parseFloat(logo.style.getPropertyValue('--progress') || '0');
+    const safeProgress = Number.isFinite(progressValue)
+      ? Math.min(100, Math.max(0, progressValue))
+      : 0;
+    logo.style.setProperty('--progress', String(safeProgress));
+
+    const img = logo.querySelector('img');
     const userName = (
       logo.closest('.company-user')?.querySelector('.company-user-meta strong')?.textContent || 'A'
-    )
-      .trim()
-      .charAt(0)
-      .toUpperCase() || 'A';
+    );
+    const userInitial = resolveInitialFromText(userName);
+
+    if (!img) {
+      if (!logo.querySelector('span')) {
+        const fallback = document.createElement('span');
+        fallback.textContent = userInitial;
+        logo.appendChild(fallback);
+      }
+      return;
+    }
 
     const fallbackToInitial = () => {
-      if (!logo) return;
       if (logo.querySelector('span')) {
         const existing = logo.querySelector('span');
-        existing.textContent = userName;
-        if (img && img.parentNode) img.remove();
-        return;
+        existing.textContent = userInitial;
+      } else {
+        const fallback = document.createElement('span');
+        fallback.textContent = userInitial;
+        logo.appendChild(fallback);
       }
-      const fallback = document.createElement('span');
-      fallback.textContent = userName;
-      if (img && img.parentNode) img.remove();
-      logo.appendChild(fallback);
+      if (img.parentNode) {
+        img.remove();
+      }
+    };
+
+    if (img.complete && img.naturalWidth === 0) {
+      fallbackToInitial();
+      return;
+    }
+    img.addEventListener('error', fallbackToInitial, { once: true });
+  });
+
+  // Admin panel: mirror uploaded photo into header dropdown while keeping sidebar photo visible.
+  const adminUserCard = document.querySelector('.company-user.admin-user');
+  if (adminUserCard) {
+    const adminName =
+      adminUserCard.querySelector('.company-user-meta strong')?.textContent ||
+      document.querySelector('.profile-meta strong')?.textContent ||
+      'A';
+    const adminInitial = resolveInitialFromText(adminName);
+    const sidebarLogo = adminUserCard.querySelector('.company-logo');
+    const sidebarImage = sidebarLogo?.querySelector('img');
+    const adminPhotoUrl = String(sidebarImage?.getAttribute('src') || '').trim();
+
+    if (sidebarLogo && adminPhotoUrl) {
+      const staleInitial = sidebarLogo.querySelector('span');
+      if (staleInitial) {
+        staleInitial.remove();
+      }
+    }
+
+    if (sidebarLogo && !adminPhotoUrl) {
+      let sidebarInitial = sidebarLogo.querySelector('span');
+      if (!sidebarInitial) {
+        sidebarInitial = document.createElement('span');
+        sidebarLogo.appendChild(sidebarInitial);
+      }
+      sidebarInitial.textContent = adminInitial;
+    }
+
+    document.querySelectorAll('.profile-summary .profile-avatar').forEach((avatar) => {
+      if (adminPhotoUrl) {
+        setAvatarImage(avatar, adminPhotoUrl, 'Admin photo', adminInitial);
+      } else {
+        setAvatarInitial(avatar, adminInitial);
+      }
+    });
+  }
+
+  document.querySelectorAll('.profile-avatar').forEach((avatar) => {
+    const fallbackInitial = resolveInitialFromText(
+      avatar.dataset.initial ||
+        avatar.textContent ||
+        avatar.closest('.profile-summary')?.querySelector('.profile-meta strong')?.textContent ||
+        avatar.closest('.company-user')?.querySelector('.company-user-meta strong')?.textContent ||
+        'A'
+    );
+    avatar.dataset.initial = fallbackInitial;
+
+    const img = avatar.querySelector('img');
+    if (!img) {
+      if (!String(avatar.textContent || '').trim()) {
+        avatar.textContent = fallbackInitial;
+      }
+      return;
+    }
+
+    const fallbackToInitial = () => {
+      setAvatarInitial(avatar, fallbackInitial);
     };
 
     if (img.complete && img.naturalWidth === 0) {
@@ -551,8 +686,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const sections = Array.from(document.querySelectorAll('.nav-section'));
     if (!sections.length) return;
     const activeSection = sections.find((section) => section.querySelector('.nav-sub.active'));
+    const preferredOpenSection = isAdminAccordionExclusive
+      ? activeSection || sections.find((section) => section.classList.contains('open')) || null
+      : null;
     sections.forEach((section) => {
-      const shouldOpen = section.classList.contains('open') || Boolean(activeSection && section === activeSection);
+      const shouldOpen = isAdminAccordionExclusive
+        ? Boolean(preferredOpenSection && section === preferredOpenSection)
+        : section.classList.contains('open') || Boolean(activeSection && section === activeSection);
       const toggleButton = section.querySelector('.nav-toggle');
       const body = section.querySelector('.nav-accordion-body');
       section.classList.toggle('open', shouldOpen);
@@ -570,10 +710,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Save and restore sidebar accordion state
   const saveSidebarState = () => {
     const sections = Array.from(document.querySelectorAll('.nav-section'));
-    const expandedSections = sections
+    let expandedSections = sections
       .filter((section) => section.classList.contains('open'))
       .map((section) => section.querySelector('.nav-toggle')?.getAttribute('data-target'))
       .filter((target) => target !== null);
+
+    if (isAdminAccordionExclusive && expandedSections.length > 1) {
+      expandedSections = expandedSections.slice(0, 1);
+    }
     
     try {
       storage.set('sidebar-state', JSON.stringify(expandedSections));
@@ -586,21 +730,51 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const savedState = storage.get('sidebar-state');
       if (!savedState) return;
-      const expandedSections = JSON.parse(savedState) || [];
+      const parsedState = JSON.parse(savedState);
+      const expandedSections = Array.isArray(parsedState)
+        ? parsedState.filter((entry) => typeof entry === 'string')
+        : [];
       const sections = Array.from(document.querySelectorAll('.nav-section'));
+      const activeSection = sections.find((section) => section.querySelector('.nav-sub.active'));
+      const activeTarget = activeSection?.querySelector('.nav-toggle')?.getAttribute('data-target') || '';
+      const exclusiveTarget = isAdminAccordionExclusive
+        ? (activeTarget || expandedSections[0] || '')
+        : '';
       
       sections.forEach((section) => {
         const target = section.querySelector('.nav-toggle')?.getAttribute('data-target');
-        const shouldBeOpen = expandedSections.includes(target);
+        const shouldBeOpen = isAdminAccordionExclusive
+          ? Boolean(exclusiveTarget && target === exclusiveTarget)
+          : expandedSections.includes(target);
+        const toggleButton = section.querySelector('.nav-toggle');
         section.classList.toggle('open', shouldBeOpen);
+        if (toggleButton) {
+          toggleButton.setAttribute('aria-expanded', String(shouldBeOpen));
+        }
         const body = section.querySelector('.nav-accordion-body');
         if (body) {
           body.style.display = shouldBeOpen ? 'block' : '';
+          body.style.maxHeight = '';
+          body.style.overflow = '';
         }
       });
     } catch {
       // Ignore parse errors and continue
     }
+  };
+
+  const closeSiblingAccordions = (currentSection) => {
+    if (!isAdminAccordionExclusive || !currentSection) return;
+    const sections = Array.from(document.querySelectorAll('.nav-section'));
+    sections.forEach((section) => {
+      if (section === currentSection || !section.classList.contains('open')) return;
+      const toggleButton = section.querySelector('.nav-toggle');
+      animateAccordion(section, false);
+      section.classList.remove('open');
+      if (toggleButton) {
+        toggleButton.setAttribute('aria-expanded', 'false');
+      }
+    });
   };
 
   normalizeAccordionState();
@@ -623,6 +797,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Toggle current section
       const isOpen = !section.classList.contains('open');
+      if (isOpen) {
+        closeSiblingAccordions(section);
+      }
       animateAccordion(section, isOpen);
       section.classList.toggle('open', isOpen);
       button.setAttribute('aria-expanded', String(isOpen));
@@ -697,6 +874,208 @@ document.addEventListener('DOMContentLoaded', () => {
       node.style.display = numeric > 0 ? '' : 'none';
     });
   };
+
+  const resolveShareUrl = (rawUrl) => {
+    const value = String(rawUrl || '').trim();
+    if (!value) return '';
+    try {
+      return new URL(value, window.location.origin).toString();
+    } catch {
+      return '';
+    }
+  };
+
+  const copyTextFallback = async (value) => {
+    if (!value) return false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(value);
+        return true;
+      } catch {
+        // continue to legacy fallback
+      }
+    }
+    const textArea = document.createElement('textarea');
+    textArea.value = value;
+    textArea.setAttribute('readonly', 'readonly');
+    textArea.style.position = 'fixed';
+    textArea.style.top = '-9999px';
+    document.body.appendChild(textArea);
+    textArea.select();
+    const isCopied = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    return Boolean(isCopied);
+  };
+
+  const showShareState = (button, text) => {
+    if (!button) return;
+    const original = button.dataset.originalText || button.textContent || 'Share';
+    button.dataset.originalText = original;
+    button.textContent = text;
+    window.setTimeout(() => {
+      button.textContent = button.dataset.originalText || 'Share';
+    }, 1200);
+  };
+
+  let shareSheetState = null;
+
+  const openExternalShare = (url) => {
+    if (!url) return;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const getShareMessage = (title, url) => `${String(title || 'Job').trim()}\n${url}`;
+
+  const ensureShareSheet = () => {
+    if (shareSheetState) return shareSheetState;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'share-sheet-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.innerHTML = `
+      <div class="share-sheet" role="dialog" aria-modal="true" aria-label="Share job">
+        <div class="share-sheet-header">
+          <h4 class="share-sheet-title">Share Job</h4>
+          <button type="button" class="share-sheet-close" data-share-close aria-label="Close share options">x</button>
+        </div>
+        <div class="share-sheet-meta" data-share-meta></div>
+        <div class="share-sheet-grid">
+          <button type="button" class="share-sheet-action" data-share-action="whatsapp"><span class="share-icon">WA</span><span>WhatsApp</span></button>
+          <button type="button" class="share-sheet-action" data-share-action="copy"><span class="share-icon">CP</span><span>Copy Link</span></button>
+          <button type="button" class="share-sheet-action" data-share-action="google"><span class="share-icon">G</span><span>Google Mail</span></button>
+          <button type="button" class="share-sheet-action" data-share-action="instagram"><span class="share-icon">IG</span><span>Instagram</span></button>
+          <button type="button" class="share-sheet-action" data-share-action="more"><span class="share-icon">+</span><span>More Apps</span></button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const titleNode = overlay.querySelector('.share-sheet-title');
+    const metaNode = overlay.querySelector('[data-share-meta]');
+    const closeButton = overlay.querySelector('[data-share-close]');
+
+    const closeSheet = () => {
+      overlay.classList.remove('open');
+      overlay.setAttribute('aria-hidden', 'true');
+      if (shareSheetState) {
+        shareSheetState.currentButton = null;
+        shareSheetState.currentTitle = '';
+        shareSheetState.currentUrl = '';
+      }
+    };
+
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay || event.target.closest('[data-share-close]')) {
+        closeSheet();
+      }
+    });
+
+    if (closeButton) {
+      closeButton.addEventListener('click', () => closeSheet());
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && overlay.classList.contains('open')) {
+        closeSheet();
+      }
+    });
+
+    overlay.querySelectorAll('[data-share-action]').forEach((actionButton) => {
+      actionButton.addEventListener('click', async () => {
+        if (!shareSheetState || !shareSheetState.currentUrl) return;
+
+        const currentUrl = shareSheetState.currentUrl;
+        const currentTitle = shareSheetState.currentTitle || 'Job';
+        const currentButton = shareSheetState.currentButton;
+        const shareMessage = getShareMessage(currentTitle, currentUrl);
+        const action = actionButton.getAttribute('data-share-action');
+
+        if (action === 'whatsapp') {
+          openExternalShare(`https://wa.me/?text=${encodeURIComponent(shareMessage)}`);
+          showShareState(currentButton, 'Shared');
+          closeSheet();
+          return;
+        }
+
+        if (action === 'copy') {
+          const copied = await copyTextFallback(currentUrl);
+          showShareState(currentButton, copied ? 'Copied' : 'Copy Failed');
+          closeSheet();
+          return;
+        }
+
+        if (action === 'google') {
+          openExternalShare(
+            `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(currentTitle)}&body=${encodeURIComponent(shareMessage)}`
+          );
+          showShareState(currentButton, 'Shared');
+          closeSheet();
+          return;
+        }
+
+        if (action === 'instagram') {
+          const copied = await copyTextFallback(currentUrl);
+          openExternalShare('https://www.instagram.com/');
+          showShareState(currentButton, copied ? 'Copied + Opened' : 'Opened');
+          closeSheet();
+          return;
+        }
+
+        if (action === 'more') {
+          if (navigator.share) {
+            try {
+              await navigator.share({ title: currentTitle, text: currentTitle, url: currentUrl });
+              showShareState(currentButton, 'Shared');
+            } catch {
+              const copied = await copyTextFallback(currentUrl);
+              showShareState(currentButton, copied ? 'Copied' : 'Share');
+            }
+          } else {
+            const copied = await copyTextFallback(currentUrl);
+            showShareState(currentButton, copied ? 'Copied' : 'Share');
+          }
+          closeSheet();
+        }
+      });
+    });
+
+    shareSheetState = {
+      overlay,
+      titleNode,
+      metaNode,
+      closeSheet,
+      currentButton: null,
+      currentTitle: '',
+      currentUrl: '',
+    };
+
+    return shareSheetState;
+  };
+
+  const openShareSheet = (button, title, url) => {
+    const sheet = ensureShareSheet();
+    sheet.currentButton = button;
+    sheet.currentTitle = title;
+    sheet.currentUrl = url;
+    if (sheet.titleNode) {
+      sheet.titleNode.textContent = title || 'Share Job';
+    }
+    if (sheet.metaNode) {
+      sheet.metaNode.textContent = url;
+    }
+    sheet.overlay.classList.add('open');
+    sheet.overlay.setAttribute('aria-hidden', 'false');
+  };
+
+  document.addEventListener('click', (event) => {
+    const shareButton = event.target.closest('[data-share-url]');
+    if (!shareButton) return;
+    event.preventDefault();
+    const shareUrl = resolveShareUrl(shareButton.getAttribute('data-share-url'));
+    if (!shareUrl) return;
+    const shareTitle = (shareButton.getAttribute('data-share-title') || document.title || 'Job').trim();
+    openShareSheet(shareButton, shareTitle, shareUrl);
+  });
 
   const normalizePanelPath = (rawUrl) => {
     const rawValue = String(rawUrl || '').trim();
@@ -845,11 +1224,23 @@ document.addEventListener('DOMContentLoaded', () => {
       sectionCounts.set(host, (sectionCounts.get(host) || 0) + 1);
     });
 
-    if (!sectionCounts.size && sidebarNotificationPlaceholders.length) {
-      const fallbackBadge = sidebarNotificationPlaceholders[0];
-      const fallbackHost = fallbackBadge.closest('.nav-item, .nav-toggle, .nav-sub');
-      if (fallbackHost) {
-        sectionCounts.set(fallbackHost, rows.length);
+    if (!sectionCounts.size) {
+      if (sidebarNotificationPlaceholders.length) {
+        const fallbackBadge = sidebarNotificationPlaceholders[0];
+        const fallbackHost = fallbackBadge.closest('.nav-item, .nav-toggle, .nav-sub');
+        if (fallbackHost) {
+          sectionCounts.set(fallbackHost, rows.length);
+        }
+      } else {
+        const genericHost =
+          document.querySelector('.sidebar-nav .nav-item[href*="notification"]') ||
+          document.querySelector('.sidebar-nav .nav-sub[href*="notification"]') ||
+          document.querySelector('.sidebar-nav .nav-toggle[data-nav-url*="communication"]') ||
+          document.querySelector('.sidebar-nav .nav-item[href*="communication"]') ||
+          document.querySelector('.sidebar-nav .nav-item[href]');
+        if (genericHost) {
+          sectionCounts.set(genericHost, rows.length);
+        }
       }
     }
 
@@ -967,8 +1358,10 @@ document.addEventListener('DOMContentLoaded', () => {
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (!data || !data.success) return;
-        const unread = Number(data.unread_count || 0);
-        setCountBadges(panelNotificationCountBadges, unread);
+        const notificationUnread = Number(data.unread_count || 0);
+        const messageUnread = Number(data.message_unread_count || 0);
+        setCountBadges(panelNotificationCountBadges, notificationUnread);
+        setCountBadges(panelMessageCountBadges, messageUnread);
         renderPanelNotificationItems(data.items || []);
         updateSidebarSectionBadges(data.items || []);
         return data;

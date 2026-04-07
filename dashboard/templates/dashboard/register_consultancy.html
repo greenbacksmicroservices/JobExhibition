@@ -107,6 +107,7 @@
       background-size: 16px 16px;
     }
     .field textarea { resize: vertical; min-height: 72px; }
+    .field small { font-size: 11px; color: #64748b; }
     .password-input {
       display: flex;
       align-items: center;
@@ -371,14 +372,14 @@
       {% endfor %}
     {% endif %}
 
-    <form method="post" enctype="multipart/form-data" data-registration-otp-url="{% url 'dashboard:send_registration_otp' %}">
+    <form method="post" enctype="multipart/form-data" data-registration-otp-url="{% url 'dashboard:send_registration_otp' %}" data-suggestions-endpoint="{% url 'dashboard:candidate_registration_suggestions_api' %}">
       {% csrf_token %}
       <div class="form-section">
         <h4>1. Basic Company Information</h4>
         <div class="grid-2">
           <div class="field">
             <label>Consultancy Name *</label>
-            <input type="text" name="name" value="{{ form_data.name|default:'' }}" placeholder="Consultancy name" required />
+            <input type="text" name="name" value="{{ form_data.name|default:'' }}" placeholder="Consultancy name" list="consultancy_name_list" data-suggest-field="company_name" required />
           </div>
           <div class="field">
             <label>Company Type</label>
@@ -419,16 +420,18 @@
           <div class="field">
             <label>Create Password</label>
             <div class="password-input">
-              <input type="password" id="consultancy_password" name="password" autocomplete="new-password" placeholder="Create password" required />
+              <input type="password" id="consultancy_password" name="password" value="{{ form_data.password|default:'' }}" autocomplete="new-password" placeholder="Create password" required />
               <button class="password-toggle" type="button" data-password-toggle="consultancy_password">Show</button>
             </div>
+            <small>Use at least 8 characters with uppercase, lowercase, number, and special character.</small>
           </div>
           <div class="field">
             <label>Confirm Password</label>
             <div class="password-input">
-              <input type="password" id="consultancy_confirm_password" name="confirm_password" autocomplete="new-password" placeholder="Confirm password" required />
+              <input type="password" id="consultancy_confirm_password" name="confirm_password" value="{{ form_data.confirm_password|default:'' }}" autocomplete="new-password" placeholder="Confirm password" required />
               <button class="password-toggle" type="button" data-password-toggle="consultancy_confirm_password">Show</button>
             </div>
+            <small>Re-enter the same password exactly as above.</small>
           </div>
           <div class="field">
             <label>Mobile Number *</label>
@@ -444,7 +447,7 @@
           </div>
           <div class="field">
             <label>City (Location)</label>
-            <input type="text" name="location" value="{{ form_data.location|default:'' }}" placeholder="City" />
+            <input type="text" name="location" value="{{ form_data.location|default:'' }}" placeholder="City" list="consultancy_location_list" data-suggest-field="city" />
           </div>
         </div>
       </div>
@@ -462,11 +465,11 @@
           </div>
           <div class="field">
             <label>City</label>
-            <input type="text" name="city" value="{{ form_data.city|default:'' }}" placeholder="City" />
+            <input type="text" name="city" value="{{ form_data.city|default:'' }}" placeholder="City" list="consultancy_city_list" data-suggest-field="city" />
           </div>
           <div class="field">
             <label>State</label>
-            <input type="text" name="state" value="{{ form_data.state|default:'' }}" placeholder="State" />
+            <input type="text" name="state" value="{{ form_data.state|default:'' }}" placeholder="State" list="consultancy_state_list" data-suggest-field="state" />
           </div>
           <div class="field">
             <label>PIN Code</label>
@@ -474,7 +477,7 @@
           </div>
           <div class="field">
             <label>Country</label>
-            <input type="text" name="country" value="{{ form_data.country|default:'' }}" placeholder="Country" />
+            <input type="text" name="country" value="{{ form_data.country|default:'' }}" placeholder="Country" list="consultancy_country_list" data-suggest-field="country" />
           </div>
         </div>
       </div>
@@ -488,7 +491,7 @@
           </div>
           <div class="field">
             <label>Designation</label>
-            <input type="text" name="owner_designation" value="{{ form_data.owner_designation|default:'' }}" placeholder="Founder / Director" />
+            <input type="text" name="owner_designation" value="{{ form_data.owner_designation|default:'' }}" placeholder="Founder / Director" list="consultancy_designation_list" data-suggest-field="designation" />
           </div>
           <div class="field">
             <label>Mobile Number</label>
@@ -525,7 +528,7 @@
           </div>
           <div class="field">
             <label>Industries Served</label>
-            <input type="text" name="industries_served" value="{{ form_data.industries_served|default:'' }}" placeholder="e.g. IT, BFSI, Retail" />
+            <input type="text" name="industries_served" value="{{ form_data.industries_served|default:'' }}" placeholder="e.g. IT, BFSI, Retail" list="consultancy_industries_list" data-suggest-field="industries_served" />
           </div>
           <div class="field">
             <label>Service Charges (optional)</label>
@@ -789,11 +792,9 @@
 
         <strong>5. Job Posting and Approval</strong>
         <ul>
-          <li>Job postings may undergo platform moderation.</li>
-          <li>Admin approval may be required before publishing.</li>
-          <li>Content review may be conducted.</li>
-          <li>The platform may approve or reject job listings.</li>
-          <li>Suspicious or fraudulent postings may be removed.</li>
+          <li>Published jobs go live instantly from your panel.</li>
+          <li>Draft jobs stay hidden until you publish them.</li>
+          <li>Suspicious or fraudulent postings may still be removed by platform safety checks.</li>
         </ul>
 
         <strong>6. Subscription and Paid Services</strong>
@@ -857,6 +858,14 @@
     </div>
   </div>
 
+  <datalist id="consultancy_name_list"></datalist>
+  <datalist id="consultancy_location_list"></datalist>
+  <datalist id="consultancy_city_list"></datalist>
+  <datalist id="consultancy_state_list"></datalist>
+  <datalist id="consultancy_country_list"></datalist>
+  <datalist id="consultancy_designation_list"></datalist>
+  <datalist id="consultancy_industries_list"></datalist>
+
   <script>
     const modalOverlays = document.querySelectorAll('.modal-overlay');
 
@@ -895,6 +904,7 @@
   </script>
 
   <script src="{% static 'dashboard/js/password-toggle.js' %}?v={{ static_asset_version }}"></script>
+  <script src="{% static 'dashboard/js/registration-suggestions.js' %}?v={{ static_asset_version }}"></script>
   <script src="{% static 'dashboard/js/registration-otp-send.js' %}?v={{ static_asset_version }}"></script>
   <script src="{% static 'dashboard/js/otp-verify-ui.js' %}?v={{ static_asset_version }}"></script>
 </body>

@@ -403,17 +403,18 @@
           <div class="field">
             <label>Password</label>
             <div class="password-input">
-              <input type="password" id="candidate_password" name="password" autocomplete="new-password" placeholder="Create password" required />
+              <input type="password" id="candidate_password" name="password" value="{{ form_data.password|default:'' }}" autocomplete="new-password" placeholder="Create password" required />
               <button class="password-toggle" type="button" data-password-toggle="candidate_password">Show</button>
             </div>
-            <small></small>
+            <small>Use at least 8 characters with uppercase, lowercase, number, and special character.</small>
           </div>
           <div class="field">
             <label>Confirm Password</label>
             <div class="password-input">
-              <input type="password" id="candidate_confirm_password" name="confirm_password" autocomplete="new-password" placeholder="Confirm password" required />
+              <input type="password" id="candidate_confirm_password" name="confirm_password" value="{{ form_data.confirm_password|default:'' }}" autocomplete="new-password" placeholder="Confirm password" required />
               <button class="password-toggle" type="button" data-password-toggle="candidate_confirm_password">Show</button>
             </div>
+            <small>Re-enter the same password exactly as above.</small>
           </div>
         </div>
       </section>
@@ -443,6 +444,12 @@
           <div class="field">
             <label>Preferred Job Location</label>
             <input type="text" name="preferred_job_location" value="{{ form_data.preferred_job_location|default:'' }}" list="candidate_preferred_location_list" data-suggest-field="preferred_job_location" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Country</label>
+            <input type="text" name="nationality" value="{{ form_data.nationality|default:'' }}" list="candidate_country_list" data-suggest-field="country" />
           </div>
         </div>
         <div class="field">
@@ -495,7 +502,7 @@
         <div class="grid-2">
           <div class="field">
             <label>Degree</label>
-            <input type="text" name="degree" value="{{ form_data.degree|default:'' }}" />
+            <input type="text" name="degree" value="{{ form_data.degree|default:'' }}" list="candidate_degree_list" data-suggest-field="degree" />
           </div>
           <div class="field">
             <label>University</label>
@@ -626,7 +633,9 @@
   <datalist id="candidate_preferred_location_list"></datalist>
   <datalist id="candidate_location_list"></datalist>
   <datalist id="candidate_primary_skills_list"></datalist>
+  <datalist id="candidate_degree_list"></datalist>
   <datalist id="candidate_university_list"></datalist>
+  <datalist id="candidate_country_list"></datalist>
 
   <div class="modal-overlay" id="candidateAgreementModal" aria-hidden="true">
     <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="candidateAgreementTitle">

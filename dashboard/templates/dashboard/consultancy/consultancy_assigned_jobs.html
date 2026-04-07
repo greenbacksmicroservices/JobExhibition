@@ -100,6 +100,14 @@
               <div class="table-actions">
                 <a class="action-btn" href="{% url 'dashboard:consultancy_job_detail' row.job_id %}">View Details</a>
                 <a class="action-btn" href="{% url 'dashboard:consultancy_applications' %}?job_id={{ row.job_id }}">View Submissions</a>
+                <button
+                  class="action-btn"
+                  type="button"
+                  data-share-url="{% url 'dashboard:consultancy_job_detail' row.job_id %}"
+                  data-share-title="{{ row.title }} - {{ row.company }}"
+                >
+                  Share
+                </button>
               </div>
             </td>
           </tr>

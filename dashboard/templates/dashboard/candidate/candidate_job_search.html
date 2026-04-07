@@ -10,22 +10,26 @@
     <h2>Find Your Next Opportunity</h2>
     <p class="muted">Discover jobs tailored to your skills, experience, and location.</p>
   </div>
-  <form class="job-search-bar" method="get">
+  <form class="job-search-bar" method="get" data-suggestions-endpoint="{% url 'dashboard:candidate_job_search_suggestions_api' %}">
     <div class="search-field">
       <i class="fa-solid fa-magnifying-glass"></i>
-      <input type="text" name="search" value="{{ filters.search }}" placeholder="Job title or company" />
+      <input type="text" name="search" value="{{ filters.search }}" placeholder="Job title or company" list="candidate_job_search_list" data-suggest-field="search" />
     </div>
     <div class="search-field">
       <i class="fa-solid fa-location-dot"></i>
-      <input type="text" name="location" value="{{ filters.location }}" placeholder="City or remote" />
+      <input type="text" name="location" value="{{ filters.location }}" placeholder="City or remote" list="candidate_job_location_list" data-suggest-field="location" />
     </div>
     <button class="btn primary" type="submit">Search Jobs</button>
   </form>
   <div class="job-search-meta">
-    <span class="muted">Showing {{ jobs|length }} jobs</span>
+    <span class="muted">Show Entries: {{ entries_per_page|default:10 }}</span>
+    <span class="muted">Showing {{ showing_from|default:0 }} to {{ showing_to|default:0 }} of {{ total_jobs|default:0 }} Entries</span>
     <a class="link-button" href="{% url 'dashboard:candidate_job_search' %}">Clear Filters</a>
   </div>
 </section>
+
+<datalist id="candidate_job_search_list"></datalist>
+<datalist id="candidate_job_location_list"></datalist>
 
 <section class="job-search-layout">
   <div class="job-results-panel">
@@ -55,16 +59,41 @@
             <button
               class="btn ghost"
               type="button"
+              data-share-url="{% url 'dashboard:candidate_job_detail' job.job_id %}"
+              data-share-title="{{ job.title }} - {{ job.company }}"
+            >
+              Share
+            </button>
+            <button
+              class="btn ghost"
+              type="button"
               data-save-job-btn
               data-job-id="{{ job.job_id }}"
-              data-saved="{% if job.id in saved_job_ids %}1{% else %}0{% endif %}"
+              data-saved="{% if job.job_id in saved_job_ids %}1{% else %}0{% endif %}"
             >
-              {% if job.id in saved_job_ids %}Saved{% else %}Save{% endif %}
+              {% if job.job_id in saved_job_ids %}Saved{% else %}Save{% endif %}
             </button>
           </div>
         </article>
         {% endfor %}
       </div>
+      {% if page_obj and page_obj.paginator.num_pages > 1 %}
+      <div class="pagination">
+        {% if page_obj.has_previous %}
+          <a class="page-btn" href="?{% if query_without_page %}{{ query_without_page }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+        {% else %}
+          <span class="page-btn" style="opacity:.55; pointer-events:none;">Previous</span>
+        {% endif %}
+
+        <span class="page-btn active">{{ page_obj.number }}</span>
+
+        {% if page_obj.has_next %}
+          <a class="page-btn" href="?{% if query_without_page %}{{ query_without_page }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+        {% else %}
+          <span class="page-btn" style="opacity:.55; pointer-events:none;">Next</span>
+        {% endif %}
+      </div>
+      {% endif %}
     {% else %}
       <div class="analysis-card">
         <strong>No jobs found</strong>
@@ -73,5 +102,9 @@
     {% endif %}
   </div>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dashboard/js/registration-suggestions.js' %}?v={{ static_asset_version }}"></script>
 {% endblock %}
 

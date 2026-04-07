@@ -250,6 +250,7 @@
           </div>
         </header>
 
+        {% if comm_section != "chat-monitor" %}
         <section class="page-hero">
           <div>
             <p class="eyebrow">Communication Center</p>
@@ -257,6 +258,7 @@
             <p class="muted">{{ page_subtitle|default:"Send direct messages to companies, consultancies, and candidates." }}</p>
           </div>
         </section>
+        {% endif %}
 
         {% if comm_section == "bulk-email" %}
         <section class="card">

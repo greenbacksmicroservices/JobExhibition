@@ -110,6 +110,11 @@ urlpatterns = [
     path("candidate/profile/", views.candidate_profile_view, name="candidate_profile"),
     path("candidate/resume-manager/", views.candidate_resume_manager_view, name="candidate_resume_manager"),
     path("candidate/job-search/", views.candidate_job_search_view, name="candidate_job_search"),
+    path(
+        "candidate/api/job-search-suggestions/",
+        views.candidate_job_search_suggestions_api,
+        name="candidate_job_search_suggestions_api",
+    ),
     path("candidate/job-search/<str:job_id>/", views.candidate_job_detail_view, name="candidate_job_detail"),
     path("candidate/saved-jobs/", views.candidate_saved_jobs_view, name="candidate_saved_jobs"),
     path("candidate/applications/", views.candidate_applications_view, name="candidate_applications"),

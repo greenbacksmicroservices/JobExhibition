@@ -88,7 +88,7 @@
               <div class="nav-label">
                 <span class="nav-icon"><i class="fa-solid fa-comments"></i></span>
                 <span>Communication Center</span>
-                <span class="nav-count-badge" data-sidebar-notification-count {% if panel_notification_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_notification_unread_count|default:0 }}</span>
+                <span class="nav-count-badge" data-sidebar-notification-count {% if panel_sidebar_notification_count < 1 %}style="display:none"{% endif %}>{{ panel_sidebar_notification_count|default:0 }}</span>
               </div>
               <span class="caret">v</span>
             </button>
@@ -179,7 +179,7 @@
               </button>
               <a class="icon-btn compact" href="{% url 'dashboard:company_messages' %}" aria-label="Messages">
                 <i class="fa-solid fa-envelope"></i>
-                {% if panel_message_unread_count > 0 %}<span class="icon-count-badge">{{ panel_message_unread_count }}</span>{% endif %}
+                <span class="icon-count-badge" data-panel-message-count {% if panel_message_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_message_unread_count|default:0 }}</span>
               </a>
               <details class="notification-dropdown" data-panel-notification-root>
                 <summary class="icon-btn" aria-label="Notifications">
@@ -212,7 +212,13 @@
             </div>
             <details class="profile-dropdown">
               <summary class="profile-summary">
-                <div class="profile-avatar">{{ company.name|default:"C"|first|upper }}</div>
+                <div class="profile-avatar {% if company.profile_image %}has-image{% endif %}">
+                  {% if company.profile_image %}
+                    <img src="{{ company.profile_image.url }}" alt="Company logo" />
+                  {% else %}
+                    {{ company.name|default:"C"|first|upper }}
+                  {% endif %}
+                </div>
                 <div class="profile-meta">
                   <strong>{{ company.name|default:"company1" }}</strong>
                   <span>Company Account</span>

@@ -1,6 +1,7 @@
 """Email OTP delivery helpers for JobExhibition registration and login flows."""
 
 import logging
+import mimetypes
 from email import encoders
 from email.mime.base import MIMEBase
 from html import escape
@@ -99,7 +100,13 @@ def _resolve_otp_email_logo():
 
     base_dir = Path(getattr(settings, "BASE_DIR", Path.cwd()))
     candidates = [
+        base_dir / "static" / "dashboard" / "img" / "je-logo.png",
+        base_dir / "static" / "dashboard" / "img" / "je-logo.jpg",
+        base_dir / "static" / "dashboard" / "img" / "je-logo.jpeg",
         base_dir / "static" / "dashboard" / "img" / "je-logo.svg",
+        base_dir / "staticfiles" / "dashboard" / "img" / "je-logo.png",
+        base_dir / "staticfiles" / "dashboard" / "img" / "je-logo.jpg",
+        base_dir / "staticfiles" / "dashboard" / "img" / "je-logo.jpeg",
         base_dir / "staticfiles" / "dashboard" / "img" / "je-logo.svg",
     ]
     for logo_path in candidates:
@@ -114,11 +121,21 @@ def _render_otp_email_body(otp, to_name="User", logo_src=""):
     safe_name = escape((to_name or "User").strip() or "User")
     safe_otp = escape(str(otp or "").strip())
     safe_logo_src = escape(logo_src or "")
-    otp_logo_html = ""
+    header_logo_html = ""
     if safe_logo_src:
-        otp_logo_html = f"""
-                <div class="otp-brand-wrap">
-                    <img src="{safe_logo_src}" alt="{site_title} Logo" class="otp-brand-logo">
+        header_logo_html = f"""
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" class="header-logo-table">
+                    <tr>
+                        <td style="padding:0;margin:0;line-height:0;">
+                            <img src="{safe_logo_src}" alt="{site_title} Logo" class="header-logo" style="display:block;width:100%;max-width:600px;height:auto;border:0;outline:none;text-decoration:none;">
+                        </td>
+                    </tr>
+                </table>
+""".rstrip()
+    else:
+        header_logo_html = f"""
+                <div class="header-logo-wrap">
+                    <span class="header-logo-fallback">{site_title}</span>
                 </div>
 """.rstrip()
 
@@ -130,18 +147,21 @@ def _render_otp_email_body(otp, to_name="User", logo_src=""):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{site_title} Verification</title>
     <style>
+        :root {{ color-scheme: light only; supported-color-schemes: light; }}
         body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f9fafb; margin: 0; padding: 0; }}
         .wrapper {{ width: 100%; table-layout: fixed; background-color: #f9fafb; padding-bottom: 40px; }}
         .main-container {{ max-width: 600px; background-color: #ffffff; margin: 40px auto; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #eef0f2; }}
-        .header {{ background: #2563eb; padding: 40px 20px; text-align: center; color: #ffffff; }}
-        .header h1 {{ margin: 0; font-size: 28px; letter-spacing: 1px; font-weight: 800; }}
+        .header {{ background: #ffffff; padding: 0; text-align: center; color: #111827; border-bottom: 1px solid #e2e8f0; line-height: 0; }}
+        .header-logo-table {{ border-collapse: collapse; }}
+        .header-logo-wrap {{ display: block; width: 100%; background: #ffffff; padding: 18px 14px; }}
+        .header-logo {{ width: 100%; max-width: 600px; height: auto; display: block; }}
+        .header-logo-fallback {{ display: inline-block; color: #1e3a8a; font-size: 24px; font-weight: 800; letter-spacing: 0.4px; }}
         .body-content {{ padding: 40px; text-align: center; }}
         .body-content h2 {{ color: #1e293b; font-size: 22px; margin-bottom: 10px; }}
         .body-content p {{ color: #64748b; font-size: 16px; line-height: 1.6; }}
         .otp-container {{ margin: 30px 0; padding: 20px; background-color: #f1f5f9; border-radius: 8px; border: 1px solid #e2e8f0; }}
         .otp-code {{ font-size: 40px; font-weight: bold; color: #2563eb; letter-spacing: 10px; margin: 0; }}
-        .otp-brand-wrap {{ margin: 14px 0 6px; text-align: center; }}
-        .otp-brand-logo {{ width: min(260px, 92%); height: auto; border-radius: 10px; border: 1px solid #e2e8f0; background: #ffffff; padding: 8px 10px; }}
+        .otp-brand-text {{ margin: 12px 0 0; font-size: 18px; font-weight: 800; color: #1e3a8a; letter-spacing: 0.3px; }}
         .footer {{ background-color: #ffffff; padding: 40px 30px; text-align: center; border-top: 1px solid #f1f5f9; }}
         .company-info {{ font-size: 15px; color: #475569; line-height: 1.6; font-weight: 500; }}
         .security-note {{ font-size: 12px; color: #94a3b8; margin-top: 25px; padding-top: 20px; }}
@@ -151,7 +171,7 @@ def _render_otp_email_body(otp, to_name="User", logo_src=""):
     <div class="wrapper">
         <div class="main-container">
             <div class="header">
-                <h1>{site_title}</h1>
+                {header_logo_html}
             </div>
             <div class="body-content">
                 <h2>Verify Your Account</h2>
@@ -159,8 +179,8 @@ def _render_otp_email_body(otp, to_name="User", logo_src=""):
                 <p>Use the following One-Time Password (OTP) to complete your secure login. This code is valid for 10 minutes.</p>
                 <div class="otp-container">
                     <div class="otp-code">{safe_otp}</div>
+                    <div class="otp-brand-text">{site_title}</div>
                 </div>
-                {otp_logo_html}
                 <p>If you did not request this code, please ignore this email or contact support if you have concerns.</p>
             </div>
             <div class="footer">
@@ -227,11 +247,18 @@ def _send_message(
             with open(inline_logo_path, "rb") as logo_file:
                 logo_payload = logo_file.read()
             if logo_payload:
-                inline_logo = MIMEBase("image", "svg+xml")
+                mime_type, _ = mimetypes.guess_type(inline_logo_path)
+                maintype, subtype = "image", "svg+xml"
+                if mime_type and "/" in mime_type:
+                    guessed_main, guessed_sub = mime_type.split("/", 1)
+                    if guessed_main and guessed_sub:
+                        maintype, subtype = guessed_main, guessed_sub
+                inline_logo = MIMEBase(maintype, subtype)
                 inline_logo.set_payload(logo_payload)
                 encoders.encode_base64(inline_logo)
                 inline_logo.add_header("Content-ID", "<jobexhibition-logo>")
-                inline_logo.add_header("Content-Disposition", "inline", filename="jobexhibition-logo.svg")
+                filename = Path(inline_logo_path).name or f"jobexhibition-logo.{subtype}"
+                inline_logo.add_header("Content-Disposition", "inline", filename=filename)
                 msg.attach(inline_logo)
         except Exception:
             logger.exception("Failed to attach OTP inline logo from %s.", inline_logo_path)

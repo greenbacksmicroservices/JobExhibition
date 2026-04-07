@@ -94,13 +94,19 @@ def static_assets_context(request):
 
 
 def panel_notifications_context(request):
-    payload = build_panel_notifications(request, limit=8)
+    payload = build_panel_notifications(request, limit=8, only_unread=True)
     message_unread_count = 0
 
     candidate_id = request.session.get("candidate_id")
     company_id = request.session.get("company_id")
     consultancy_id = request.session.get("consultancy_id")
-    if candidate_id:
+    if request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser):
+        message_unread_count = (
+            Message.objects.filter(is_read=False)
+            .exclude(sender_role="admin")
+            .count()
+        )
+    elif candidate_id:
         message_unread_count = (
             Message.objects.filter(
                 thread__candidate_id=candidate_id,
@@ -128,10 +134,12 @@ def panel_notifications_context(request):
             .count()
         )
 
+    notification_unread_count = int(payload.get("unread_count", 0) or 0)
+
     return {
         "panel_notifications": payload.get("items", []),
-        "panel_notification_unread_count": payload.get("unread_count", 0),
-        "panel_sidebar_notification_count": payload.get("unread_count", 0),
+        "panel_notification_unread_count": notification_unread_count,
+        "panel_sidebar_notification_count": notification_unread_count,
         "panel_notification_role": payload.get("role"),
         "panel_message_unread_count": message_unread_count,
     }

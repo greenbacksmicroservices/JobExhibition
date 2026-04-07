@@ -138,6 +138,7 @@
             <th>Company</th>
             <th>Status</th>
             <th>Applications</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -147,6 +148,19 @@
             <td>{{ job.company }}</td>
             <td><span class="badge {% if job.status == 'Active' %}success{% elif job.status == 'Urgent' %}warning{% elif job.status == 'Closed' %}danger{% else %}neutral{% endif %}">{{ job.status }}</span></td>
             <td>{{ job.applications }}</td>
+            <td>
+              <div class="table-actions">
+                <a class="action-btn" href="{% url 'dashboard:consultancy_job_detail' job.job_id %}">View</a>
+                <button
+                  class="action-btn"
+                  type="button"
+                  data-share-url="{% url 'dashboard:consultancy_job_detail' job.job_id %}"
+                  data-share-title="{{ job.title }} - {{ job.company }}"
+                >
+                  Share
+                </button>
+              </div>
+            </td>
           </tr>
           {% endfor %}
         </tbody>

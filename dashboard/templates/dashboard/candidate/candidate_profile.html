@@ -38,7 +38,7 @@
     <button class="tab-pill" type="button" data-tab-target="resume">Resume Builder</button>
   </div>
 
-  <form class="company-form-grid" method="post" enctype="multipart/form-data" data-loading-form>
+  <form class="profile-form" method="post" enctype="multipart/form-data" data-loading-form>
     {% csrf_token %}
     <input type="hidden" name="action" value="update_profile" />
 
@@ -65,11 +65,11 @@
         </div>
         <div class="company-form-group">
           <label>Email ID {% if candidate.email_verified %}<span class="badge success">Verified</span>{% endif %}</label>
-          <input type="email" name="email" value="{{ candidate.email|default:'' }}" required />
+          <input type="email" name="email" value="{{ candidate.email|default:'' }}" readonly />
         </div>
         <div class="company-form-group">
           <label>Mobile Number {% if candidate.phone_verified %}<span class="badge success">Verified</span>{% endif %}</label>
-          <input type="text" name="phone" value="{{ candidate.phone|default:'' }}" />
+          <input type="text" name="phone" value="{{ candidate.phone|default:'' }}" readonly />
         </div>
         <div class="company-form-group">
           <label>Alternate Mobile Number</label>

@@ -51,7 +51,7 @@
               <div class="nav-label">
                 <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
                 <span>User Management</span>
-                <span class="nav-count-badge" data-sidebar-notification-count {% if panel_notification_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_notification_unread_count|default:0 }}</span>
+                <span class="nav-count-badge" data-sidebar-notification-count {% if panel_sidebar_notification_count < 1 %}style="display:none"{% endif %}>{{ panel_sidebar_notification_count|default:0 }}</span>
               </div>
               <span class="caret">v</span>
             </button>
@@ -246,6 +246,7 @@
               </button>
               <a class="icon-btn compact" href="{% url 'dashboard:message_monitor' %}" aria-label="Messages">
                 <i class="fa-solid fa-envelope"></i>
+                <span class="icon-count-badge" data-panel-message-count {% if panel_message_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_message_unread_count|default:0 }}</span>
               </a>
               <details class="notification-dropdown" data-panel-notification-root>
                 <summary class="icon-btn" aria-label="Notifications">
@@ -281,7 +282,13 @@
             </div>
             <details class="profile-dropdown">
               <summary class="profile-summary">
-                <div class="profile-avatar">{{ request.user.username|default:"A"|first|upper }}</div>
+                <div class="profile-avatar {% if admin_profile and admin_profile.photo %}has-image{% endif %}">
+                  {% if admin_profile and admin_profile.photo %}
+                  <img src="{{ admin_profile.photo.url }}" alt="Admin photo" />
+                  {% else %}
+                  {{ request.user.username|default:"A"|first|upper }}
+                  {% endif %}
+                </div>
                 <div class="profile-meta">
                   <strong>{{ request.user.username|default:"Admin" }}</strong>
                   <span>Platform Administrator</span>

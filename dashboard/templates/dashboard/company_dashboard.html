@@ -205,41 +205,21 @@
       </div>
     </div>
     <div class="calendar-grid" id="interviewCalendar">
-      <div class="calendar-day" data-count="1">
-        <span class="calendar-label">Mon</span>
-        <strong data-date>16</strong>
-        <span class="calendar-meta" data-meta>1 Interview</span>
-      </div>
-      <div class="calendar-day active" data-count="3">
-        <span class="calendar-label">Tue</span>
-        <strong data-date>17</strong>
-        <span class="calendar-meta" data-meta>3 Interviews</span>
-      </div>
-      <div class="calendar-day" data-count="2">
-        <span class="calendar-label">Wed</span>
-        <strong data-date>18</strong>
-        <span class="calendar-meta" data-meta>2 Interviews</span>
-      </div>
-      <div class="calendar-day" data-count="4">
-        <span class="calendar-label">Thu</span>
-        <strong data-date>19</strong>
-        <span class="calendar-meta" data-meta>4 Interviews</span>
-      </div>
-      <div class="calendar-day" data-count="1">
-        <span class="calendar-label">Fri</span>
-        <strong data-date>20</strong>
-        <span class="calendar-meta" data-meta>1 Interview</span>
-      </div>
-      <div class="calendar-day" data-count="0">
-        <span class="calendar-label">Sat</span>
-        <strong data-date>21</strong>
-        <span class="calendar-meta" data-meta>0 Interviews</span>
-      </div>
-      <div class="calendar-day" data-count="0">
-        <span class="calendar-label">Sun</span>
-        <strong data-date>22</strong>
-        <span class="calendar-meta" data-meta>0 Interviews</span>
-      </div>
+      {% if interview_calendar %}
+        {% for day in interview_calendar %}
+        <div class="calendar-day {% if day.is_today %}today{% endif %} {% if day.count > 0 %}has-interviews{% endif %}" data-count="{{ day.count }}">
+          <span class="calendar-label">{{ day.label }}</span>
+          <strong data-date>{{ day.date_day }}</strong>
+          <span class="calendar-meta" data-meta>{{ day.count }} {% if day.count == 1 %}Interview{% else %}Interviews{% endif %}</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="calendar-day" data-count="0">
+          <span class="calendar-label">Mon</span>
+          <strong data-date>--</strong>
+          <span class="calendar-meta" data-meta>0 Interviews</span>
+        </div>
+      {% endif %}
     </div>
   </article>
 
@@ -264,24 +244,10 @@
       {% else %}
         <div class="activity-item">
           <div>
-            <strong>Product Manager - Round 2</strong>
-            <span class="muted">With R. Sharma</span>
+            <strong>No scheduled meetings</strong>
+            <span class="muted">Upcoming interviews will appear here automatically.</span>
           </div>
-          <span class="activity-time">11:30 AM</span>
-        </div>
-        <div class="activity-item">
-          <div>
-            <strong>Frontend Developer - HR Call</strong>
-            <span class="muted">With A. Verma</span>
-          </div>
-          <span class="activity-time">2:00 PM</span>
-        </div>
-        <div class="activity-item">
-          <div>
-            <strong>Hiring Sync</strong>
-            <span class="muted">Recruitment team meeting</span>
-          </div>
-          <span class="activity-time">4:15 PM</span>
+          <span class="activity-time">--</span>
         </div>
       {% endif %}
     </div>

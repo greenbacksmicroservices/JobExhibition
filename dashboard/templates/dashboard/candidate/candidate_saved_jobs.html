@@ -44,6 +44,14 @@
               <div class="table-actions">
                 <a class="action-btn" href="{% url 'dashboard:candidate_job_detail' entry.job.job_id %}">Apply</a>
                 <button
+                  class="action-btn"
+                  type="button"
+                  data-share-url="{% url 'dashboard:candidate_job_detail' entry.job.job_id %}"
+                  data-share-title="{{ entry.job.title }} - {{ entry.job.company }}"
+                >
+                  Share
+                </button>
+                <button
                   class="action-btn danger"
                   type="button"
                   data-save-job-btn

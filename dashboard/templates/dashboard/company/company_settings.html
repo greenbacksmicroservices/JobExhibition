@@ -26,11 +26,11 @@
       </div>
       <div>
         <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Email Address</label>
-        <input type="email" name="email" value="{{ company.email }}" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+        <input type="email" name="email" value="{{ company.email }}" readonly style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; background: #f9fafb;">
       </div>
       <div>
         <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Phone Number</label>
-        <input type="tel" name="phone" value="{{ company.phone|default:'' }}" placeholder="+91 XXXXXXXXXX" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px;">
+        <input type="tel" name="phone" value="{{ company.phone|default:'' }}" readonly placeholder="+91 XXXXXXXXXX" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; background: #f9fafb;">
       </div>
       <div>
         <label style="font-size: 13px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 6px;">Location</label>

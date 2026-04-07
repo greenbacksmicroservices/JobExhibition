@@ -71,11 +71,11 @@
       </div>
       <div class="form-group">
         <label>Email</label>
-        <input type="email" name="email" value="{{ company.email }}" />
+        <input type="email" name="email" value="{{ company.email }}" readonly />
       </div>
       <div class="form-group">
         <label>Phone</label>
-        <input type="text" name="phone" value="{{ company.phone|default:'' }}" />
+        <input type="text" name="phone" value="{{ company.phone|default:'' }}" readonly />
       </div>
       <div class="form-group">
         <label>Location</label>

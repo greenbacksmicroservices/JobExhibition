@@ -72,7 +72,7 @@
           <a class="nav-item {% if request.resolver_match.url_name == 'candidate_notifications' %}active{% endif %}" href="{% url 'dashboard:candidate_notifications' %}">
             <span class="nav-icon"><i class="fa-solid fa-bell"></i></span>
             <span>Notifications</span>
-            <span class="nav-count-badge" data-sidebar-notification-count {% if panel_notification_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_notification_unread_count|default:0 }}</span>
+            <span class="nav-count-badge" data-sidebar-notification-count {% if panel_sidebar_notification_count < 1 %}style="display:none"{% endif %}>{{ panel_sidebar_notification_count|default:0 }}</span>
           </a>
           <a class="nav-item {% if request.resolver_match.url_name == 'candidate_profile' %}active{% endif %}" href="{% url 'dashboard:candidate_profile' %}">
             <span class="nav-icon"><i class="fa-solid fa-user"></i></span>
@@ -120,7 +120,7 @@
               </button>
               <a class="icon-btn compact" href="{% url 'dashboard:candidate_messages' %}" aria-label="Messages">
                 <i class="fa-solid fa-envelope"></i>
-                {% if panel_message_unread_count > 0 %}<span class="icon-count-badge">{{ panel_message_unread_count }}</span>{% endif %}
+                <span class="icon-count-badge" data-panel-message-count {% if panel_message_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_message_unread_count|default:0 }}</span>
               </a>
               <details class="notification-dropdown" data-panel-notification-root>
                 <summary class="icon-btn" aria-label="Notifications">
@@ -153,7 +153,13 @@
             </div>
             <details class="profile-dropdown">
               <summary class="profile-summary">
-                <div class="profile-avatar">{{ candidate.name|default:"C"|first|upper }}</div>
+                <div class="profile-avatar {% if candidate.profile_image %}has-image{% endif %}">
+                  {% if candidate.profile_image %}
+                    <img src="{{ candidate.profile_image.url }}" alt="Candidate photo" />
+                  {% else %}
+                    {{ candidate.name|default:"C"|first|upper }}
+                  {% endif %}
+                </div>
                 <div class="profile-meta">
                   <strong>{{ candidate.name|default:"candidate" }}</strong>
                   <span>Candidate Account</span>
@@ -171,7 +177,7 @@
         {% if messages %}
         <div class="message-stack" style="padding: 0 24px; margin-bottom: 16px;">
           {% for message in messages %}
-            <div class="alert alert-{{ message.tags|default:'info' }} mb-2">{{ message }}</div>
+            <div class="alert alert-{{ message.tags|default:'info' }} mb-2"{% if 'popup' in message.tags %} data-popup-message="1"{% endif %}>{{ message }}</div>
           {% endfor %}
         </div>
         {% endif %}
@@ -186,6 +192,16 @@
     <script src="{% static 'dashboard/js/candidate-ui.js' %}?v={{ static_asset_version }}"></script>
     <script src="{% static 'dashboard/js/candidate-job-actions.js' %}?v={{ static_asset_version }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      (function () {
+        const popupNode = document.querySelector('[data-popup-message="1"]');
+        if (!popupNode) return;
+        const messageText = (popupNode.textContent || '').trim();
+        if (messageText) {
+          window.alert(messageText);
+        }
+      })();
+    </script>
     {% block extra_js %}{% endblock %}
   </body>
 </html>

@@ -237,6 +237,14 @@
                 <a class="action-btn" href="{% url 'dashboard:consultancy_jobs' %}?action=view&job_id={{ job.job_id }}#post-new-job">View</a>
                 <a class="action-btn" href="{% url 'dashboard:consultancy_jobs' %}?action=edit&job_id={{ job.job_id }}#post-new-job">Edit</a>
                 <a class="action-btn" href="{% url 'dashboard:consultancy_applications' %}?job_id={{ job.job_id }}">Applications</a>
+                <button
+                  class="action-btn"
+                  type="button"
+                  data-share-url="{% url 'dashboard:consultancy_job_detail' job.job_id %}"
+                  data-share-title="{{ job.title }} - {{ job.company }}"
+                >
+                  Share
+                </button>
                 <form method="post" onsubmit="return confirm('Delete this job permanently?');">
                   {% csrf_token %}
                   <input type="hidden" name="action" value="delete" />

@@ -396,7 +396,7 @@ def _admin_feed(admin_user, seen_at):
     return feed
 
 
-def build_panel_notifications(request, limit=8):
+def build_panel_notifications(request, limit=8, only_unread=False):
     role = None
     account = None
     candidate_id = request.session.get("candidate_id")
@@ -441,8 +441,13 @@ def build_panel_notifications(request, limit=8):
 
     fallback_dt = timezone.make_aware(datetime(1970, 1, 1))
     items.sort(key=lambda row: row.get("created_at") or fallback_dt, reverse=True)
-    items = items[:limit]
-    unread_count = sum(1 for row in items if row.get("unread"))
+    if only_unread:
+        unread_items = [row for row in items if row.get("unread")]
+        unread_count = len(unread_items)
+        items = unread_items[:limit]
+    else:
+        unread_count = sum(1 for row in items if row.get("unread"))
+        items = items[:limit]
     return {"role": role, "items": items, "unread_count": unread_count}
 
 

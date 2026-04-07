@@ -109,6 +109,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  const applyInterviewCalendarPayload = (rows) => {
+    if (!Array.isArray(rows) || !rows.length) return;
+    const calendar = document.getElementById('interviewCalendar');
+    if (!calendar) return;
+    const days = Array.from(calendar.querySelectorAll('.calendar-day'));
+    if (!days.length) return;
+
+    rows.slice(0, days.length).forEach((row, index) => {
+      const card = days[index];
+      if (!card) return;
+      const count = toNumber(row?.count ?? 0);
+      card.dataset.count = String(count);
+      const labelCell = card.querySelector('.calendar-label');
+      if (labelCell && row?.label) {
+        labelCell.textContent = String(row.label);
+      }
+      const dateCell = card.querySelector('[data-date]');
+      if (dateCell && row?.date_day !== undefined && row?.date_day !== null) {
+        dateCell.textContent = String(row.date_day);
+      }
+      const metaCell = card.querySelector('[data-meta]');
+      if (metaCell) {
+        metaCell.textContent = `${count} ${count === 1 ? 'Interview' : 'Interviews'}`;
+      }
+    });
+  };
+
   const refreshMetrics = () => {
     fetch(endpoint, { credentials: 'same-origin' })
       .then((res) => res.ok ? res.json() : null)
@@ -122,6 +149,8 @@ document.addEventListener('DOMContentLoaded', () => {
         updateText('metricShortlistedBar', data.shortlisted ?? 0);
         updateText('metricOnHoldBar', data.on_hold ?? 0);
         updateText('metricRejectedBar', data.rejected ?? 0);
+        applyInterviewCalendarPayload(data.interview_calendar || []);
+        updateInterviewCalendar();
         updateBarChart();
       })
       .catch(() => {});

@@ -914,7 +914,18 @@ ${jobsSection}
     });
     showLoading(false);
     if (data.success) {
-      showToast('KYC status updated', 'success');
+      const normalizedStatus = String(status || '').trim().toLowerCase();
+      if (normalizedStatus === 'verified') {
+        if (data.approval_mail_sent) {
+          showToast('KYC approved and credentials email sent', 'success');
+        } else if (data.approval_mail_error) {
+          showToast(`KYC approved, but email failed: ${data.approval_mail_error}`, 'danger');
+        } else {
+          showToast('KYC approved', 'success');
+        }
+      } else {
+        showToast('KYC status updated', 'success');
+      }
       fetchList(currentPage);
       fetchRequests();
     } else {

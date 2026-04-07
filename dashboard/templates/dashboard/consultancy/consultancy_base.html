@@ -86,7 +86,7 @@
           <a class="nav-item {% if request.resolver_match.url_name == 'consultancy_messages' %}active{% endif %}" href="{% url 'dashboard:consultancy_messages' %}">
             <span class="nav-icon"><i class="fa-solid fa-comments"></i></span>
             <span>Messages</span>
-            <span class="nav-count-badge" data-sidebar-notification-count {% if panel_notification_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_notification_unread_count|default:0 }}</span>
+            <span class="nav-count-badge" data-sidebar-notification-count {% if panel_sidebar_notification_count < 1 %}style="display:none"{% endif %}>{{ panel_sidebar_notification_count|default:0 }}</span>
           </a>
           <a class="nav-item {% if request.resolver_match.url_name == 'consultancy_shortlisted' %}active{% endif %}" href="{% url 'dashboard:consultancy_shortlisted' %}">
             <span class="nav-icon"><i class="fa-solid fa-user-check"></i></span>
@@ -157,7 +157,7 @@
               </button>
               <a class="icon-btn compact" href="{% url 'dashboard:consultancy_messages' %}" aria-label="Messages">
                 <i class="fa-solid fa-envelope"></i>
-                {% if panel_message_unread_count > 0 %}<span class="icon-count-badge">{{ panel_message_unread_count }}</span>{% endif %}
+                <span class="icon-count-badge" data-panel-message-count {% if panel_message_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_message_unread_count|default:0 }}</span>
               </a>
               <details class="notification-dropdown" data-panel-notification-root>
                 <summary class="icon-btn" aria-label="Notifications">
@@ -190,7 +190,13 @@
             </div>
             <details class="profile-dropdown">
               <summary class="profile-summary">
-                <div class="profile-avatar">{{ consultancy.name|default:"C"|first|upper }}</div>
+                <div class="profile-avatar {% if consultancy.profile_image %}has-image{% endif %}">
+                  {% if consultancy.profile_image %}
+                    <img src="{{ consultancy.profile_image.url }}" alt="Consultancy logo" />
+                  {% else %}
+                    {{ consultancy.name|default:"C"|first|upper }}
+                  {% endif %}
+                </div>
                 <div class="profile-meta">
                   <strong>{{ consultancy.name|default:"consultancy" }}</strong>
                   <span>Consultancy Account</span>

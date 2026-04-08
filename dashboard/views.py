@@ -78,6 +78,7 @@ from .models import (
     CompanyKycDocument,
     Consultancy,
     ConsultancyKycDocument,
+    DeletedDataLog,
     EmailVerificationToken,
     Feedback,
     Interview,
@@ -138,6 +139,8 @@ CANDIDATE_DELETE_OTP_SESSION_KEY = "candidate_delete_otp_payload"
 COMPANY_DELETE_OTP_SESSION_KEY = "company_delete_otp_payload"
 CONSULTANCY_DELETE_OTP_SESSION_KEY = "consultancy_delete_otp_payload"
 OTP_TTL_SECONDS = 10 * 60
+REGISTRATION_SUCCESS_SESSION_KEY = "registration_success_payload"
+FORGOT_PASSWORD_SUCCESS_SESSION_KEY = "forgot_password_success_payload"
 MIN_PROFILE_COMPLETION_TO_APPLY = 0
 PASSWORD_RESET_TTL_MINUTES = 30
 SUBADMIN_USERNAME = "subadmin"
@@ -206,6 +209,7 @@ PAYMENT_STATUS_FAILURE = {"failed", "failure", "cancelled", "expired", "payment_
 PRIORITY_APPLICATION_TAG = "[PRIORITY_APPLICATION]"
 CANDIDATE_PREMIUM_PLAN_CODE = "Basic"
 CANDIDATE_PREMIUM_MONTHLY_PRICE = 199
+DELETED_DATA_CATEGORIES = ("company", "consultancy", "candidate")
 CANDIDATE_POST_JOB_RESTRICTED_MESSAGE = (
     "You are logged in as a candidate and cannot post jobs. "
     "Only verified company or consultancy accounts can post new jobs."
@@ -2720,6 +2724,17 @@ def _parse_int(value):
         return None
 
 
+def _validate_year_established(value):
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return None, ""
+    year_value = _parse_int(raw_value)
+    current_year = timezone.localdate().year
+    if year_value is None or year_value < 1900 or year_value > current_year:
+        return None, f"Year of establishment must be between 1900 and {current_year}."
+    return year_value, ""
+
+
 def _normalize_ampm_time(raw_time, period):
     value = (raw_time or "").strip()
     if not value:
@@ -2848,14 +2863,24 @@ def _send_approval_credentials_email(request, account, account_type, raw_passwor
     role = "Company" if (account_type or "").strip().lower() == "company" else "Consultancy"
     login_url = request.build_absolute_uri(reverse("dashboard:login"))
     subject = f"Job Exhibition: {role} registration approved"
+    if raw_password:
+        credential_lines = (
+            f"Login ID: {account.email}\n"
+            f"Password: {raw_password}\n"
+        )
+    else:
+        credential_lines = (
+            f"Login ID: {account.email}\n"
+            "Password: Use the password you set during registration.\n"
+        )
     message = (
         f"Hello {getattr(account, 'name', 'User')},\n\n"
-        f"Aapka {role} registration complete ho gaya hai.\n"
-        "Ab aap login kar sakte hain.\n\n"
-        f"Login ID: {account.email}\n"
-        f"Password: {raw_password}\n"
+        f"Your {role} registration is approved.\n"
+        "You can now login to your account.\n\n"
+        f"{credential_lines}"
         f"Login URL: {login_url}\n\n"
-        "Thanks,\n"
+        "If you did not request this, please contact support.\n\n"
+        "Regards,\n"
         "Job Exhibition Team"
     )
 
@@ -2869,6 +2894,62 @@ def _send_approval_credentials_email(request, account, account_type, raw_passwor
     if sent_count > 0:
         return True, ""
     return False, "email send failed"
+
+
+def _send_generated_password_email(request, account, account_type, raw_password):
+    if not account or not raw_password:
+        return False
+    recipient = (getattr(account, "email", "") or "").strip()
+    if not recipient:
+        return False
+    role = (account_type or "account").strip().title()
+    login_url = request.build_absolute_uri(reverse("dashboard:login"))
+    subject = "Job Exhibition password reset successful"
+    display_name = getattr(account, "name", "") or getattr(account, "username", "") or "User"
+    message = (
+        f"Hello {display_name},\n\n"
+        f"A new password has been generated for your {role} account.\n\n"
+        f"Login ID: {recipient}\n"
+        f"New Password: {raw_password}\n"
+        f"Login URL: {login_url}\n\n"
+        "Please login and change your password from the account settings section.\n\n"
+        "Regards,\n"
+        "Job Exhibition Team"
+    )
+    sent_count = send_mail(
+        subject,
+        message,
+        getattr(settings, "DEFAULT_FROM_EMAIL", None),
+        [recipient],
+        fail_silently=True,
+    )
+    return sent_count > 0
+
+
+def _queue_registration_success_payload(
+    request,
+    *,
+    role_label,
+    title,
+    lines=None,
+    redirect_seconds=5,
+):
+    request.session[REGISTRATION_SUCCESS_SESSION_KEY] = {
+        "role_label": role_label or "Account",
+        "title": title or "Registration successful.",
+        "lines": list(lines or []),
+        "redirect_seconds": max(3, int(redirect_seconds or 5)),
+    }
+    request.session.modified = True
+
+
+def _queue_forgot_password_success_payload(request, redirect_seconds=5):
+    request.session[FORGOT_PASSWORD_SUCCESS_SESSION_KEY] = {
+        "title": "Password Generated Successfully",
+        "message": "New password generated successfully. Please check your email and login.",
+        "redirect_seconds": max(3, int(redirect_seconds or 5)),
+    }
+    request.session.modified = True
 
 
 def _auto_approve_due_accounts():
@@ -3753,6 +3834,37 @@ def register_options_view(request):
     return render(request, "dashboard/register_options.html")
 
 
+def registration_success_view(request):
+    payload = request.session.pop(REGISTRATION_SUCCESS_SESSION_KEY, None)
+    if not payload:
+        return redirect("dashboard:login")
+
+    redirect_seconds = max(3, int(payload.get("redirect_seconds") or 5))
+    context = {
+        "role_label": payload.get("role_label") or "Account",
+        "title": payload.get("title") or "Registration successful.",
+        "lines": payload.get("lines") or [],
+        "redirect_seconds": redirect_seconds,
+        "login_url": reverse("dashboard:login"),
+    }
+    return render(request, "dashboard/registration_success.html", context)
+
+
+def forgot_password_success_view(request):
+    payload = request.session.pop(FORGOT_PASSWORD_SUCCESS_SESSION_KEY, None)
+    if not payload:
+        return redirect("dashboard:forgot_password")
+
+    context = {
+        "title": payload.get("title") or "Password Generated Successfully",
+        "message": payload.get("message")
+        or "New password generated successfully. Please check your email and login.",
+        "redirect_seconds": max(3, int(payload.get("redirect_seconds") or 5)),
+        "login_url": reverse("dashboard:login"),
+    }
+    return render(request, "dashboard/forgot_password_success.html", context)
+
+
 def login_view(request):
     _auto_approve_due_accounts()
     force_login = (request.GET.get("force_login") or request.GET.get("fresh") or "").strip().lower() in {
@@ -4260,28 +4372,26 @@ def forgot_password_view(request):
     form_data = {
         "identifier": "",
         "mobile_otp": "",
-        "new_password": "",
-        "confirm_new_password": "",
     }
 
     if request.method == "POST":
-        action = (request.POST.get("action") or "send_reset_link").strip().lower()
+        action = (request.POST.get("action") or "send_otp").strip().lower()
         action_aliases = {
-            "resend_reset_link": "send_reset_link",
-            "resend_link": "send_reset_link",
+            "resend_otp": "send_otp",
+            "resend_reset_link": "reset_now",
+            "resend_link": "reset_now",
+            "send_reset_link": "reset_now",
             "reset_password": "reset_now",
             "reset_password_now": "reset_now",
+            "generate_password": "reset_now",
+            "verify_otp": "reset_now",
         }
         action = action_aliases.get(action, action)
         identifier = (request.POST.get("identifier") or "").strip()
         mobile_otp = (request.POST.get("mobile_otp") or "").strip()
-        new_password = request.POST.get("new_password") or ""
-        confirm_new_password = request.POST.get("confirm_new_password") or ""
         form_data = {
             "identifier": identifier,
             "mobile_otp": mobile_otp,
-            "new_password": new_password,
-            "confirm_new_password": confirm_new_password,
         }
         if not identifier:
             messages.error(request, "Please enter your email address or mobile number.")
@@ -4323,61 +4433,61 @@ def forgot_password_view(request):
                 )
             return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
 
+        if action != "reset_now":
+            messages.error(request, "Invalid action.")
+            return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+
+        if not account:
+            messages.success(
+                request,
+                "If account exists, a new password has been sent to the registered email.",
+            )
+            return redirect("dashboard:forgot_password")
+
         requires_otp = getattr(settings, "FORGOT_PASSWORD_OTP_REQUIRED", True)
-        if action in {"send_reset_link", "reset_now"} and account:
-            if requires_otp:
-                if not phone:
-                    messages.error(request, "No mobile number found for this account. Please contact support.")
-                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
-                payload = request.session.get(PASSWORD_RESET_OTP_SESSION_KEY) or {}
-                if (
-                    (payload.get("account_type") or "").strip().lower() != (account_type or "").strip().lower()
-                    or str(payload.get("account_id") or "") != str(account.id)
-                    or (payload.get("email") or "").strip().lower() != (email or "").strip().lower()
-                ):
-                    messages.error(request, "Please request OTP first.")
-                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
-                if not mobile_otp:
-                    messages.error(request, "Please enter OTP to continue.")
-                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
-                if not _validate_session_otp(
-                    request,
-                    PASSWORD_RESET_OTP_SESSION_KEY,
-                    phone,
-                    mobile_otp,
-                ):
-                    messages.error(request, "Invalid or expired OTP. Please request a new OTP.")
-                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
-
-            if action == "reset_now":
-                if not new_password or not confirm_new_password:
-                    messages.error(request, "New password and confirm password are required.")
-                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
-                if new_password != confirm_new_password:
-                    messages.error(request, "New password and confirm password do not match.")
-                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
-                password_errors = _password_strength_errors(new_password)
-                if password_errors:
-                    for error in password_errors:
-                        messages.error(request, error)
-                    return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
-                _set_account_password(account_type, account, new_password)
-                _clear_session_otp(request, PASSWORD_RESET_OTP_SESSION_KEY)
-                messages.success(request, "Password reset successful. Please login with your new password.")
-                return redirect("dashboard:login")
-
-            if email:
-                _clear_session_otp(request, PASSWORD_RESET_OTP_SESSION_KEY)
-                _send_password_reset_link(request, account_type, account, email)
-            else:
-                messages.error(request, "No email found for this account. Please contact support.")
+        if requires_otp:
+            if not phone:
+                messages.error(request, "No mobile number found for this account. Please contact support.")
+                return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+            payload = request.session.get(PASSWORD_RESET_OTP_SESSION_KEY) or {}
+            if (
+                (payload.get("account_type") or "").strip().lower() != (account_type or "").strip().lower()
+                or str(payload.get("account_id") or "") != str(account.id)
+                or (payload.get("email") or "").strip().lower() != (email or "").strip().lower()
+            ):
+                messages.error(request, "Please request OTP first.")
+                return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+            if not mobile_otp:
+                messages.error(request, "Please enter OTP to continue.")
+                return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+            if not _validate_session_otp(
+                request,
+                PASSWORD_RESET_OTP_SESSION_KEY,
+                phone,
+                mobile_otp,
+            ):
+                messages.error(request, "Invalid or expired OTP. Please request a new OTP.")
                 return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
 
-        messages.success(
-            request,
-            "If account exists, reset instructions have been sent to the registered email.",
-        )
-        return redirect("dashboard:forgot_password")
+        generated_password = _generate_account_password(10)
+        _set_account_password(account_type, account, generated_password)
+        if hasattr(account, "pending_registration_password"):
+            account.pending_registration_password = generated_password
+            account.save(update_fields=["pending_registration_password"])
+
+        if not email:
+            _clear_session_otp(request, PASSWORD_RESET_OTP_SESSION_KEY)
+            messages.error(request, "No registered email found for this account. Please contact support.")
+            return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+
+        sent = _send_generated_password_email(request, account, account_type, generated_password)
+        _clear_session_otp(request, PASSWORD_RESET_OTP_SESSION_KEY)
+        if not sent:
+            messages.error(request, "Unable to send reset email right now. Please try again.")
+            return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
+
+        _queue_forgot_password_success_payload(request, redirect_seconds=5)
+        return redirect("dashboard:forgot_password_success")
 
     return render(request, "dashboard/forgot_password.html", {"form_data": form_data})
 
@@ -4444,6 +4554,7 @@ def company_register_view(request):
         "registration_document_name": temp_registration_doc.get("name", ""),
     }
     captcha_question = _get_registration_captcha_question(request, flow_key)
+    current_year = timezone.localdate().year
 
     if request.method == "POST":
         action = (request.POST.get("action") or "register").strip().lower()
@@ -4453,6 +4564,7 @@ def company_register_view(request):
         password = request.POST.get("password") or ""
         confirm_password = request.POST.get("confirm_password") or ""
         username = (request.POST.get("username") or "").strip()
+        email_login = (request.POST.get("email_login") or email).strip().lower()
         company_type = (request.POST.get("company_type") or "").strip()
         industry_type = (request.POST.get("industry_type") or "").strip()
         company_size = (request.POST.get("company_size") or "").strip()
@@ -4470,7 +4582,8 @@ def company_register_view(request):
         cin_number = (request.POST.get("cin_number") or "").strip()
         pan_number = (request.POST.get("pan_number") or "").strip()
         company_description = (request.POST.get("company_description") or "").strip()
-        year_established = _parse_int(request.POST.get("year_established"))
+        year_established_raw = (request.POST.get("year_established") or "").strip()
+        year_established, year_established_error = _validate_year_established(year_established_raw)
         employee_count = _parse_int(request.POST.get("employee_count"))
         registration_document = request.FILES.get("registration_document")
         logo_upload = request.FILES.get("logo_upload")
@@ -4503,6 +4616,7 @@ def company_register_view(request):
         form_data = {
             "name": name,
             "username": username,
+            "email_login": email_login,
             "email": email,
             "phone": phone,
             "password": password,
@@ -4524,7 +4638,7 @@ def company_register_view(request):
             "cin_number": cin_number,
             "pan_number": pan_number,
             "company_description": company_description,
-            "year_established": year_established,
+            "year_established": year_established_raw,
             "employee_count": employee_count,
             "contact_position": contact_position,
             "mobile_otp": mobile_otp,
@@ -4552,7 +4666,11 @@ def company_register_view(request):
             return render(
                 request,
                 "dashboard/register_company.html",
-                {"form_data": form_data, "captcha_question": captcha_question},
+                {
+                    "form_data": form_data,
+                    "captcha_question": captcha_question,
+                    "current_year": current_year,
+                },
             )
 
         if action == "send_otp":
@@ -4571,7 +4689,11 @@ def company_register_view(request):
             return render(
                 request,
                 "dashboard/register_company.html",
-                {"form_data": form_data, "captcha_question": captcha_question},
+                {
+                    "form_data": form_data,
+                    "captcha_question": captcha_question,
+                    "current_year": current_year,
+                },
             )
 
         errors = []
@@ -4593,8 +4715,11 @@ def company_register_view(request):
             "CIN/Registration number": cin_number,
             "PAN number": pan_number,
             "Username": username,
+            "Login email ID": email_login,
             "Password": password,
             "Confirm password": confirm_password,
+            "Email OTP": email_otp,
+            "Mobile OTP": mobile_otp,
         }
         missing_fields = [label for label, value in required_fields.items() if not value]
         if missing_fields:
@@ -4607,6 +4732,10 @@ def company_register_view(request):
             errors.append("Password and confirm password do not match.")
 
         errors.extend(_password_strength_errors(password))
+        if email_login and email and email_login != email:
+            errors.append("Login email ID must match Official Email ID.")
+        if year_established_error:
+            errors.append(year_established_error)
 
         if Company.objects.filter(name__iexact=name).exists():
             errors.append("Company with this name already exists.")
@@ -4642,7 +4771,11 @@ def company_register_view(request):
             return render(
                 request,
                 "dashboard/register_company.html",
-                {"form_data": form_data, "captcha_question": captcha_question},
+                {
+                    "form_data": form_data,
+                    "captcha_question": captcha_question,
+                    "current_year": current_year,
+                },
             )
 
         company = Company.objects.create(
@@ -4650,6 +4783,7 @@ def company_register_view(request):
             username=username,
             email=email,
             password=_hash_password(password),
+            pending_registration_password=password,
             phone=phone,
             location=location,
             address=full_address,
@@ -4690,40 +4824,43 @@ def company_register_view(request):
         if not registration_document and temp_registration_doc.get("path"):
             if _attach_registration_temp_upload(company, "registration_document", temp_registration_doc):
                 company.save(update_fields=["registration_document"])
-
+        success_lines = []
         if not _is_official_company_email(email):
-            messages.warning(request, "Official domain email is recommended (example: hr@company.com).")
+            success_lines.append("Official domain email is recommended (example: hr@company.com).")
 
         if email_otp_valid:
-            messages.success(
-                request,
-                "Company registration successful. Admin approval ke baad aapko login credentials email par mil jayenge.",
+            success_lines.append(
+                "Company registration successful. Admin approval ke baad aapko login credentials email par mil jayenge."
             )
         else:
             verify_url, mail_sent = _send_email_verification_message(request, company, "company")
             if mail_sent:
-                messages.success(
-                    request,
-                    "Company registered. Verification email sent. Email verify hone aur admin approval ke baad login enable hoga.",
+                success_lines.append(
+                    "Company registered. Verification email sent. Email verify hone aur admin approval ke baad login enable hoga."
                 )
             else:
-                messages.success(
-                    request,
-                    "Company registered. Email verification aur admin approval ke baad login enable hoga.",
-                )
-            if settings.DEBUG:
-                messages.info(request, f"Verification link: {verify_url}")
+                success_lines.append("Company registered. Email verification aur admin approval ke baad login enable hoga.")
+            if settings.DEBUG and verify_url:
+                success_lines.append(f"Verification link: {verify_url}")
+
+        _queue_registration_success_payload(
+            request,
+            role_label="Company",
+            title="Company registration completed successfully.",
+            lines=success_lines,
+            redirect_seconds=5,
+        )
 
         _clear_registration_otp(request, flow_key)
         _clear_registration_email_otp(request, flow_key)
         _clear_registration_temp_upload(request, flow_key, "registration_document")
         _set_registration_captcha(request, flow_key)
-        return redirect("dashboard:login")
+        return redirect("dashboard:registration_success")
 
     return render(
         request,
         "dashboard/register_company.html",
-        {"form_data": form_data, "captcha_question": captcha_question},
+        {"form_data": form_data, "captcha_question": captcha_question, "current_year": current_year},
     )
 
 
@@ -4731,6 +4868,7 @@ def consultancy_register_view(request):
     flow_key = "consultancy"
     form_data = {}
     captcha_question = _get_registration_captcha_question(request, flow_key)
+    current_year = timezone.localdate().year
 
     if request.method == "POST":
         action = (request.POST.get("action") or "register").strip().lower()
@@ -4752,7 +4890,8 @@ def consultancy_register_view(request):
         company_type = (request.POST.get("company_type") or "").strip()
         registration_number = (request.POST.get("registration_number") or "").strip()
         gst_number = (request.POST.get("gst_number") or "").strip()
-        year_established = _parse_int(request.POST.get("year_established"))
+        year_established_raw = (request.POST.get("year_established") or "").strip()
+        year_established, year_established_error = _validate_year_established(year_established_raw)
         website_url = (request.POST.get("website_url") or "").strip()
         alt_phone = (request.POST.get("alt_phone") or "").strip()
         office_landline = (request.POST.get("office_landline") or "").strip()
@@ -4788,7 +4927,7 @@ def consultancy_register_view(request):
             "company_type": company_type,
             "registration_number": registration_number,
             "gst_number": gst_number,
-            "year_established": year_established,
+            "year_established": year_established_raw,
             "website_url": website_url,
             "alt_phone": alt_phone,
             "office_landline": office_landline,
@@ -4829,7 +4968,11 @@ def consultancy_register_view(request):
             return render(
                 request,
                 "dashboard/register_consultancy.html",
-                {"form_data": form_data, "captcha_question": captcha_question},
+                {
+                    "form_data": form_data,
+                    "captcha_question": captcha_question,
+                    "current_year": current_year,
+                },
             )
 
         if action == "send_otp":
@@ -4848,7 +4991,11 @@ def consultancy_register_view(request):
             return render(
                 request,
                 "dashboard/register_consultancy.html",
-                {"form_data": form_data, "captcha_question": captcha_question},
+                {
+                    "form_data": form_data,
+                    "captcha_question": captcha_question,
+                    "current_year": current_year,
+                },
             )
 
         errors = []
@@ -4860,10 +5007,16 @@ def consultancy_register_view(request):
             "Create password": password,
             "Confirm password": confirm_password,
             "Owner/Director name": owner_name,
+            "Email OTP": email_otp,
+            "Mobile OTP": mobile_otp,
         }
         missing_fields = [label for label, value in required_fields.items() if not value]
         if missing_fields:
             errors.append("Please fill required fields: " + ", ".join(missing_fields) + ".")
+        if email and not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            errors.append("Enter a valid official email address.")
+        if phone and not re.match(r"^\+?\d{10,15}$", phone):
+            errors.append("Enter a valid mobile number (10 to 15 digits).")
 
         if email and not re.match(r"[^@]+@[^@]+\.[^@]+", email):
             errors.append("Enter a valid official email address.")
@@ -4875,6 +5028,8 @@ def consultancy_register_view(request):
         if password != confirm_password:
             errors.append("Password and confirm password do not match.")
         errors.extend(_password_strength_errors(password))
+        if year_established_error:
+            errors.append(year_established_error)
 
         if Consultancy.objects.filter(name__iexact=name).exists():
             errors.append("Consultancy with this name already exists.")
@@ -4909,13 +5064,18 @@ def consultancy_register_view(request):
             return render(
                 request,
                 "dashboard/register_consultancy.html",
-                {"form_data": form_data, "captcha_question": captcha_question},
+                {
+                    "form_data": form_data,
+                    "captcha_question": captcha_question,
+                    "current_year": current_year,
+                },
             )
 
         consultancy = Consultancy.objects.create(
             name=name,
             email=email,
             password=_hash_password(password),
+            pending_registration_password=password,
             phone=phone,
             location=location,
             contact_position=contact_position,
@@ -4962,24 +5122,30 @@ def consultancy_register_view(request):
             },
         )
         if uploaded_count:
-            messages.info(
-                request,
-                f"{uploaded_count} document(s) were also added to your consultancy KYC panel.",
-            )
+            form_data["uploaded_count"] = uploaded_count
 
-        messages.success(
+        success_lines = []
+        if uploaded_count:
+            success_lines.append(f"{uploaded_count} document(s) were also added to your consultancy KYC panel.")
+        success_lines.append(
+            "Consultancy registered successfully. Admin approval ke baad login credentials email par bheje jayenge."
+        )
+        _queue_registration_success_payload(
             request,
-            "Consultancy registered successfully. Admin approval ke baad login credentials email par bheje jayenge.",
+            role_label="Consultancy",
+            title="Consultancy registration completed successfully.",
+            lines=success_lines,
+            redirect_seconds=5,
         )
         _clear_registration_otp(request, flow_key)
         _clear_registration_email_otp(request, flow_key)
         _set_registration_captcha(request, flow_key)
-        return redirect("dashboard:login")
+        return redirect("dashboard:registration_success")
 
     return render(
         request,
         "dashboard/register_consultancy.html",
-        {"form_data": form_data, "captcha_question": captcha_question},
+        {"form_data": form_data, "captcha_question": captcha_question, "current_year": current_year},
     )
 
 
@@ -5101,8 +5267,20 @@ def candidate_register_view(request):
             )
 
         errors = []
-        if not name or not email or not phone or not password or not confirm_password:
-            errors.append("Name, email, mobile number, password, and confirm password are required.")
+        if (
+            not name
+            or not email
+            or not phone
+            or not password
+            or not confirm_password
+            or not email_otp
+            or not mobile_otp
+        ):
+            errors.append("Name, email, mobile number, login details, and OTP verification are required.")
+        if email and not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            errors.append("Enter a valid email address.")
+        if phone and not re.match(r"^\+?\d{10,15}$", phone):
+            errors.append("Enter a valid mobile number (10 to 15 digits).")
 
         if password != confirm_password:
             errors.append("Password and confirm password do not match.")
@@ -5222,33 +5400,33 @@ def candidate_register_view(request):
         candidate.profile_completion = _calculate_candidate_completion(candidate)
         candidate.save(update_fields=["profile_completion"])
 
+        success_lines = []
         if inferred_skills:
-            messages.info(
-                request,
-                f"Resume auto parsing detected skills: {', '.join(inferred_skills)}",
-            )
+            success_lines.append(f"Resume auto parsing detected skills: {', '.join(inferred_skills)}")
 
         if email_otp_valid:
-            messages.success(request, "Candidate registered and email verified via OTP.")
+            success_lines.append("Candidate registered and email verified via OTP.")
         else:
             verify_url, mail_sent = _send_email_verification_message(request, candidate, "candidate")
             if mail_sent:
-                messages.success(
-                    request,
-                    "Candidate registered. Verification email sent. Please verify email before login.",
-                )
+                success_lines.append("Candidate registered. Verification email sent. Please verify email before login.")
             else:
-                messages.success(
-                    request,
-                    "Candidate registered. Please verify your email using the link below before login.",
-                )
-            if settings.DEBUG:
-                messages.info(request, f"Verification link: {verify_url}")
+                success_lines.append("Candidate registered. Please verify your email using the link below before login.")
+            if settings.DEBUG and verify_url:
+                success_lines.append(f"Verification link: {verify_url}")
+
+        _queue_registration_success_payload(
+            request,
+            role_label="Candidate",
+            title="Candidate registration completed successfully.",
+            lines=success_lines,
+            redirect_seconds=5,
+        )
 
         _clear_registration_otp(request, flow_key)
         _clear_registration_email_otp(request, flow_key)
         _set_registration_captcha(request, flow_key)
-        return redirect("dashboard:login")
+        return redirect("dashboard:registration_success")
 
     return render(
         request,
@@ -6099,10 +6277,15 @@ def consultancy_dashboard_view(request):
         "-assigned_date",
         "-created_at",
     )
+    candidate_pool_qs = Candidate.objects.filter(source_consultancy=consultancy)
     applications_qs = Application.objects.filter(consultancy=consultancy)
+    today = timezone.localdate()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=6)
     interviews_qs = Interview.objects.filter(
         status__in=["scheduled", "rescheduled"],
         application__consultancy=consultancy,
+        interview_date__range=(week_start, week_end),
     )
     placements_qs = applications_qs.filter(status__in=SELECTED_STATUSES)
     commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
@@ -6110,7 +6293,7 @@ def consultancy_dashboard_view(request):
     metrics = {
         "assigned_jobs": assigned_qs.count(),
         "active_jobs": assigned_qs.filter(status__in=["Active", "Urgent"]).count(),
-        "candidates": applications_qs.values("candidate_email").distinct().count(),
+        "candidates": candidate_pool_qs.count(),
         "interviews": interviews_qs.count(),
         "placements": placements_qs.count(),
         "commission_total": placements_qs.count() * commission_rate,
@@ -6134,7 +6317,6 @@ def consultancy_dashboard_view(request):
             }
         )
 
-    today = timezone.localdate()
     interview_schedule = []
     for interview in Interview.objects.filter(
         interview_date=today,
@@ -6206,10 +6388,15 @@ def api_consultancy_metrics(request):
         return JsonResponse({"error": "unauthorized"}, status=401)
 
     assigned_qs = AssignedJob.objects.filter(consultancy=consultancy)
+    candidate_pool_qs = Candidate.objects.filter(source_consultancy=consultancy)
     applications_qs = Application.objects.filter(consultancy=consultancy)
+    today = timezone.localdate()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=6)
     interviews_qs = Interview.objects.filter(
         status__in=["scheduled", "rescheduled"],
         application__consultancy=consultancy,
+        interview_date__range=(week_start, week_end),
     )
     placements_qs = applications_qs.filter(status__in=SELECTED_STATUSES)
     commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
@@ -6218,7 +6405,7 @@ def api_consultancy_metrics(request):
     metrics = {
         "assigned_jobs": assigned_qs.count(),
         "active_jobs": assigned_qs.filter(status__in=["Active", "Urgent"]).count(),
-        "candidates": applications_qs.values("candidate_email").distinct().count(),
+        "candidates": candidate_pool_qs.count(),
         "interviews": interviews_qs.count(),
         "placements": placements_count,
         "pending_payments": placements_count * commission_rate,
@@ -6403,6 +6590,8 @@ def consultancy_jobs_view(request):
             else:
                 job = get_object_or_404(job_qs, job_id=job_id)
                 title = job.title
+                job._deleted_by_label = f"Consultancy ({consultancy.name or consultancy.email})"
+                job._delete_reason = "Deleted by consultancy from job management."
                 job.delete()
                 messages.success(request, f"Job deleted: {title}.")
             return redirect("dashboard:consultancy_jobs")
@@ -8225,26 +8414,29 @@ def consultancy_profile_settings_view(request):
                 return redirect("dashboard:consultancy_profile_settings")
 
             _clear_session_otp(request, CONSULTANCY_DELETE_OTP_SESSION_KEY)
-            consultancy_email = (consultancy.email or "").strip()
-            MessageThread.objects.filter(consultancy=consultancy).delete()
-            AssignedJob.objects.filter(consultancy=consultancy).delete()
-            Subscription.objects.filter(
-                account_type__iexact="Consultancy",
-                contact__iexact=consultancy_email,
-            ).delete()
+            consultancy._deleted_by_label = "Self (Consultancy Panel)"
+            consultancy._delete_reason = "Consultancy account deletion requested from profile settings."
             consultancy.delete()
             request.session.pop("consultancy_id", None)
             request.session.pop("consultancy_name", None)
             messages.success(request, "Consultancy account deleted successfully.")
             return redirect("dashboard:login")
 
-        consultancy.name = (request.POST.get("name") or consultancy.name).strip()
+        submitted_name = (request.POST.get("name") or "").strip()
+        submitted_contact_position = (request.POST.get("contact_position") or "").strip()
         consultancy.location = (request.POST.get("location") or "").strip()
         consultancy.address = (request.POST.get("address") or "").strip()
-        consultancy.contact_position = (request.POST.get("contact_position") or "").strip()
         if request.FILES.get("profile_image"):
             consultancy.profile_image = request.FILES["profile_image"]
-        consultancy.save(update_fields=["name", "location", "address", "contact_position", "profile_image"])
+        consultancy.save(update_fields=["location", "address", "profile_image"])
+        if (
+            (submitted_name and submitted_name != (consultancy.name or "").strip())
+            or (
+                submitted_contact_position
+                and submitted_contact_position != (consultancy.contact_position or "").strip()
+            )
+        ):
+            messages.info(request, "Name and Contact Position can be edited by admin only.")
         messages.success(request, "Consultancy profile updated.")
         return redirect("dashboard:consultancy_profile_settings")
 
@@ -10293,11 +10485,16 @@ def candidate_profile_view(request):
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
         if action == "update_profile":
-            name = (request.POST.get("name") or "").strip()
-            if not name:
-                messages.error(request, "Name is required.")
+            submitted_name = (request.POST.get("name") or "").strip()
+            if not (candidate.name or "").strip():
+                if not submitted_name:
+                    messages.error(request, "Name is required.")
+                    return redirect("dashboard:candidate_profile")
+                candidate.name = submitted_name
+                candidate.save(update_fields=["name"])
             else:
-                candidate.name = name
+                if submitted_name and submitted_name != (candidate.name or "").strip():
+                    messages.info(request, "Name can be edited by admin only.")
                 candidate.alt_phone = (request.POST.get("alt_phone") or "").strip()
                 candidate.date_of_birth = parse_date(request.POST.get("date_of_birth")) if request.POST.get("date_of_birth") else None
                 candidate.gender = (request.POST.get("gender") or "").strip()
@@ -11354,11 +11551,8 @@ def candidate_settings_view(request):
                 return redirect("dashboard:candidate_settings")
 
             _clear_session_otp(request, CANDIDATE_DELETE_OTP_SESSION_KEY)
-            candidate_email = (candidate.email or "").strip()
-            Application.objects.filter(candidate_email__iexact=candidate_email).delete()
-            Interview.objects.filter(candidate_email__iexact=candidate_email).delete()
-            MessageThread.objects.filter(candidate=candidate).delete()
-            CandidateSavedJob.objects.filter(candidate=candidate).delete()
+            candidate._deleted_by_label = "Self (Candidate Panel)"
+            candidate._delete_reason = "Candidate account deletion requested from settings."
             candidate.delete()
             request.session.pop("candidate_id", None)
             request.session.pop("candidate_name", None)
@@ -11866,6 +12060,7 @@ def company_dashboard_view(request):
             "plan_expiry": plan_expiry,
             "recent_applicants": recent_applicants,
             "interview_calendar": interview_calendar,
+            "server_today_iso": timezone.localdate().isoformat(),
             "scheduled_meetings": scheduled_meetings,
             "advertisement": advertisement,
         },
@@ -11893,6 +12088,7 @@ def api_company_metrics(request):
         "on_hold": applications.filter(status="On Hold").count(),
         "rejected": applications.filter(status="Rejected").count(),
         "interview_calendar": _build_company_interview_calendar(company_name),
+        "today_iso": timezone.localdate().isoformat(),
     }
     return JsonResponse(metrics)
 
@@ -11907,11 +12103,16 @@ def company_profile_view(request):
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
         if action == "update_info":
-            company.name = (request.POST.get("name") or company.name).strip()
+            submitted_name = (request.POST.get("name") or "").strip()
+            submitted_contact_position = (request.POST.get("contact_position") or "").strip()
             company.location = (request.POST.get("location") or "").strip()
             company.address = (request.POST.get("address") or "").strip()
-            company.contact_position = (request.POST.get("contact_position") or "").strip()
-            company.save(update_fields=["name", "location", "address", "contact_position"])
+            company.save(update_fields=["location", "address"])
+            if (
+                (submitted_name and submitted_name != (company.name or "").strip())
+                or (submitted_contact_position and submitted_contact_position != (company.contact_position or "").strip())
+            ):
+                messages.info(request, "Name and Contact Position can be edited by admin only.")
             messages.success(request, "Company information updated.")
         elif action == "upload_logo":
             if request.FILES.get("profile_image"):
@@ -12017,6 +12218,8 @@ def company_jobs_view(request):
                 messages.error(request, "Job not found for delete action.")
                 return redirect("dashboard:company_jobs")
             job_title = job.title
+            job._deleted_by_label = f"Company ({company.name or company.email})"
+            job._delete_reason = "Deleted by company from job management."
             job.delete()
             messages.success(request, f"Job deleted successfully: {job_title}.")
             return redirect("dashboard:company_jobs")
@@ -13564,9 +13767,11 @@ def company_settings_view(request):
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
         if action == "update_settings":
-            company.name = (request.POST.get("name") or company.name).strip()
+            submitted_name = (request.POST.get("name") or "").strip()
             company.location = (request.POST.get("location") or "").strip()
-            company.save(update_fields=["name", "location"])
+            company.save(update_fields=["location"])
+            if submitted_name and submitted_name != (company.name or "").strip():
+                messages.info(request, "Company Name can be edited by admin only.")
             messages.success(request, "Settings updated successfully.")
         elif action == "change_password":
             current_password = request.POST.get("current_password") or ""
@@ -13662,16 +13867,8 @@ def company_settings_view(request):
                 return redirect("dashboard:company_settings")
 
             _clear_session_otp(request, COMPANY_DELETE_OTP_SESSION_KEY)
-            company_name = (company.name or "").strip()
-            company_email = (company.email or "").strip()
-            Application.objects.filter(company__iexact=company_name).delete()
-            Interview.objects.filter(company__iexact=company_name).delete()
-            Job.objects.filter(company__iexact=company_name).delete()
-            MessageThread.objects.filter(company=company).delete()
-            Subscription.objects.filter(
-                account_type__iexact="Company",
-                contact__iexact=company_email,
-            ).delete()
+            company._deleted_by_label = "Self (Company Panel)"
+            company._delete_reason = "Company account deletion requested from settings."
             company.delete()
             request.session.pop("company_id", None)
             request.session.pop("company_name", None)
@@ -14925,6 +15122,270 @@ def settings_experience_levels_view(request):
     )
 
 
+def _extract_deleted_data_file_links(payload, prefix=""):
+    links = []
+    if isinstance(payload, dict):
+        file_url = (payload.get("url") or "").strip() if "url" in payload else ""
+        file_name = (payload.get("name") or "").strip() if "name" in payload else ""
+        if file_url:
+            links.append(
+                {
+                    "label": file_name or prefix or "Attachment",
+                    "url": file_url,
+                }
+            )
+        for key, value in payload.items():
+            next_prefix = f"{prefix}.{key}" if prefix else str(key)
+            links.extend(_extract_deleted_data_file_links(value, next_prefix))
+    elif isinstance(payload, list):
+        for index, value in enumerate(payload):
+            next_prefix = f"{prefix}[{index}]" if prefix else f"item[{index}]"
+            links.extend(_extract_deleted_data_file_links(value, next_prefix))
+    return links
+
+
+def _safe_int(value):
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _deleted_data_detail_rows(details):
+    payload = details if isinstance(details, dict) else {}
+    deleted_jobs_summary = payload.get("deleted_jobs_summary")
+    if not isinstance(deleted_jobs_summary, dict):
+        deleted_jobs_summary = {}
+    applications_block = payload.get("applications")
+    if not isinstance(applications_block, dict):
+        applications_block = {}
+    job_details = payload.get("job_details")
+    if not isinstance(job_details, dict):
+        job_details = {}
+
+    job_rows = []
+    summary_jobs = deleted_jobs_summary.get("jobs")
+    if isinstance(summary_jobs, list):
+        for row in summary_jobs:
+            if isinstance(row, dict):
+                job_rows.append(row)
+    if job_details:
+        direct_job_id = job_details.get("job_id") or job_details.get("id")
+        has_direct = any((row.get("job_id") or row.get("id")) == direct_job_id for row in job_rows)
+        if not has_direct:
+            job_rows.append(
+                {
+                    "job_id": direct_job_id,
+                    "title": job_details.get("title"),
+                    "company": job_details.get("company"),
+                    "category": job_details.get("category"),
+                    "location": job_details.get("location"),
+                    "status": job_details.get("status"),
+                    "lifecycle_status": job_details.get("lifecycle_status"),
+                    "applications_count": _safe_int(applications_block.get("count")),
+                    "applications": applications_block.get("items")
+                    if isinstance(applications_block.get("items"), list)
+                    else [],
+                }
+            )
+
+    candidate_profiles = payload.get("candidate_profiles")
+    if not isinstance(candidate_profiles, dict):
+        candidate_profiles = {}
+    summary_candidate_profiles = deleted_jobs_summary.get("candidate_profiles")
+    if isinstance(summary_candidate_profiles, dict):
+        for email, row in summary_candidate_profiles.items():
+            if email not in candidate_profiles:
+                candidate_profiles[email] = row
+
+    candidate_rows = []
+    for email, row in candidate_profiles.items():
+        if isinstance(row, dict):
+            candidate_rows.append(
+                {
+                    "name": row.get("name") or row.get("profile", {}).get("name") or "Candidate",
+                    "email": row.get("email") or email,
+                    "phone": row.get("phone") or row.get("profile", {}).get("phone") or "",
+                    "snapshot": row,
+                }
+            )
+    if not candidate_rows:
+        profile_snapshot = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+        if profile_snapshot:
+            candidate_rows.append(
+                {
+                    "name": profile_snapshot.get("name") or payload.get("display_name") or "Candidate",
+                    "email": profile_snapshot.get("email") or payload.get("reference") or "-",
+                    "phone": profile_snapshot.get("phone") or "-",
+                    "snapshot": profile_snapshot,
+                }
+            )
+
+    application_rows = []
+    seen_keys = set()
+
+    def _push_application(row, job_label=""):
+        if not isinstance(row, dict):
+            return
+        key = (
+            str(row.get("application_id") or "").strip(),
+            str(row.get("candidate_email") or "").strip().lower(),
+            str(row.get("job_title") or "").strip().lower(),
+            str(job_label or "").strip().lower(),
+        )
+        if key in seen_keys:
+            return
+        seen_keys.add(key)
+        application_rows.append(
+            {
+                "application_id": row.get("application_id") or "-",
+                "candidate_name": row.get("candidate_name") or "-",
+                "candidate_email": row.get("candidate_email") or "-",
+                "candidate_phone": row.get("candidate_phone") or "-",
+                "status": row.get("status") or "-",
+                "placement_status": row.get("placement_status") or "-",
+                "applied_date": row.get("applied_date") or "",
+                "updated_at": row.get("updated_at") or "",
+                "job_title": row.get("job_title") or job_label or "-",
+            }
+        )
+
+    app_items = applications_block.get("items")
+    if isinstance(app_items, list):
+        for row in app_items:
+            _push_application(row, job_details.get("title") if isinstance(job_details, dict) else "")
+
+    for job_row in job_rows:
+        job_label = job_row.get("title") or job_row.get("job_id") or ""
+        for app_row in job_row.get("applications") or []:
+            _push_application(app_row, job_label)
+
+    job_count = _safe_int(deleted_jobs_summary.get("jobs_count") or len(job_rows))
+    application_count = _safe_int(
+        applications_block.get("count")
+        or deleted_jobs_summary.get("applications_total")
+        or len(application_rows)
+    )
+    candidate_count = _safe_int(
+        payload.get("candidate_count")
+        or deleted_jobs_summary.get("candidate_profiles_count")
+        or len(candidate_rows)
+    )
+
+    top_candidates = [row.get("name") for row in candidate_rows if row.get("name")][:3]
+    resolved_job_id = ""
+    if job_details:
+        resolved_job_id = str(job_details.get("job_id") or job_details.get("id") or "")
+    if not resolved_job_id and job_rows:
+        resolved_job_id = str(job_rows[0].get("job_id") or job_rows[0].get("id") or "")
+
+    return {
+        "job_rows": job_rows,
+        "application_rows": application_rows,
+        "candidate_rows": candidate_rows,
+        "job_count": job_count,
+        "application_count": application_count,
+        "candidate_count": candidate_count,
+        "job_id": resolved_job_id,
+        "top_candidates": top_candidates,
+    }
+
+
+@login_required
+def deleted_data_view(request, category="company"):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
+    selected_category = (category or "").strip().lower()
+    if selected_category not in DELETED_DATA_CATEGORIES:
+        selected_category = "company"
+
+    records_qs = DeletedDataLog.objects.filter(category=selected_category).order_by("-created_at", "-id")
+    search_text = (request.GET.get("q") or "").strip()
+    if search_text:
+        records_qs = records_qs.filter(
+            Q(display_name__icontains=search_text)
+            | Q(reference__icontains=search_text)
+            | Q(source_id__icontains=search_text)
+            | Q(reason__icontains=search_text)
+            | Q(entity_type__icontains=search_text)
+        )
+
+    paginator = Paginator(records_qs, 30)
+    page_obj = paginator.get_page(request.GET.get("page") or 1)
+    rows = []
+    for entry in page_obj.object_list:
+        metrics = _deleted_data_detail_rows(entry.details if isinstance(entry.details, dict) else {})
+        rows.append(
+            {
+                "record": entry,
+                "apply_count": metrics["application_count"],
+                "candidate_count": metrics["candidate_count"],
+                "job_count": metrics["job_count"],
+                "job_id": (metrics["job_id"] or entry.source_id or ""),
+                "top_candidates": metrics["top_candidates"],
+            }
+        )
+
+    return render(
+        request,
+        "dashboard/delete_data.html",
+        {
+            "rows": rows,
+            "page_obj": page_obj,
+            "search_text": search_text,
+            "deleted_data_section": selected_category,
+            "deleted_data_categories": DELETED_DATA_CATEGORIES,
+            "page_title": "Deleted Data",
+            "page_subtitle": "Track deleted Company, Consultancy, Candidate, and Job records.",
+        },
+    )
+
+
+@login_required
+def deleted_data_detail_view(request, log_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
+    record = get_object_or_404(DeletedDataLog, id=log_id)
+    payload = record.details if isinstance(record.details, dict) else {}
+    try:
+        details_pretty = json.dumps(payload, indent=2, ensure_ascii=False, default=str)
+    except TypeError:
+        details_pretty = json.dumps({}, indent=2)
+    file_links = _extract_deleted_data_file_links(payload)
+    detail_rows = _deleted_data_detail_rows(payload)
+
+    return render(
+        request,
+        "dashboard/delete_data_detail.html",
+        {
+            "record": record,
+            "details_pretty": details_pretty,
+            "file_links": file_links,
+            "job_rows": detail_rows["job_rows"],
+            "application_rows": detail_rows["application_rows"],
+            "candidate_rows": detail_rows["candidate_rows"],
+            "job_count": detail_rows["job_count"],
+            "application_count": detail_rows["application_count"],
+            "candidate_count": detail_rows["candidate_count"],
+            "deleted_data_section": record.category if record.category in DELETED_DATA_CATEGORIES else "company",
+            "page_title": "Deleted Data Details",
+            "page_subtitle": "Detailed snapshot captured at delete time.",
+        },
+    )
+
+
+@login_required
+@require_http_methods(["POST"])
+def deleted_data_delete_record_view(request, log_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
+    record = get_object_or_404(DeletedDataLog, id=log_id)
+    category = record.category if record.category in DELETED_DATA_CATEGORIES else "company"
+    record.delete()
+    messages.success(request, "Deleted-data record removed successfully.")
+    return redirect("dashboard:deleted_data_category", category=category)
+
+
 def _get_model(user_type: str):
     return {
         "companies": Company,
@@ -15109,6 +15570,8 @@ def _apply_common_fields(obj, data, files):
     password = data.get("password", "").strip()
     if password:
         obj.password = _hash_password(password)
+        if hasattr(obj, "pending_registration_password"):
+            obj.pending_registration_password = password
     obj.location = data.get("location", "").strip()
     obj.address = data.get("address", "").strip()
     if hasattr(obj, "contact_position"):
@@ -15400,6 +15863,8 @@ def api_user_delete(request, user_type, pk):
     if not model:
         return JsonResponse({"success": False, "error": "Invalid user type"}, status=400)
     obj = get_object_or_404(model, pk=pk)
+    obj._deleted_by_label = f"Admin ({request.user.username})"
+    obj._delete_reason = "Deleted from admin user management."
     obj.delete()
     return JsonResponse({"success": True})
 
@@ -15419,7 +15884,10 @@ def api_user_bulk_delete(request, user_type):
     except json.JSONDecodeError:
         payload = {}
     ids = payload.get("ids", [])
-    model.objects.filter(id__in=ids).delete()
+    for obj in model.objects.filter(id__in=ids):
+        obj._deleted_by_label = f"Admin ({request.user.username})"
+        obj._delete_reason = "Bulk delete from admin user management."
+        obj.delete()
     return JsonResponse({"success": True})
 
 
@@ -15464,31 +15932,32 @@ def api_user_kyc(request, user_type, pk):
             update_fields.append("account_status")
 
         raw_password = ""
+        pending_password = (
+            (getattr(obj, "pending_registration_password", "") or "").strip()
+            if hasattr(obj, "pending_registration_password")
+            else ""
+        )
         stored_password_is_plain = bool(obj.password) and not _is_hashed_password(obj.password)
 
-        if stored_password_is_plain:
+        if pending_password:
+            raw_password = pending_password
+        elif stored_password_is_plain:
             raw_password = obj.password
+
+        if raw_password and not _check_raw_password(raw_password, obj.password):
             obj.password = _hash_password(raw_password)
             update_fields.append("password")
-            obj.save(update_fields=list(dict.fromkeys(update_fields)))
-            approval_mail_sent, approval_mail_error = _send_approval_credentials_email(
-                request,
-                obj,
-                "company" if user_type == "companies" else "consultancy",
-                raw_password,
-            )
-        else:
-            obj.save(update_fields=list(dict.fromkeys(update_fields)))
-            raw_password = _generate_account_password(10)
-            approval_mail_sent, approval_mail_error = _send_approval_credentials_email(
-                request,
-                obj,
-                "company" if user_type == "companies" else "consultancy",
-                raw_password,
-            )
-            if approval_mail_sent:
-                obj.password = _hash_password(raw_password)
-                obj.save(update_fields=["password"])
+
+        obj.save(update_fields=list(dict.fromkeys(update_fields)))
+        approval_mail_sent, approval_mail_error = _send_approval_credentials_email(
+            request,
+            obj,
+            "company" if user_type == "companies" else "consultancy",
+            raw_password,
+        )
+        if approval_mail_sent and pending_password and hasattr(obj, "pending_registration_password"):
+            obj.pending_registration_password = ""
+            obj.save(update_fields=["pending_registration_password"])
     else:
         obj.save(update_fields=list(dict.fromkeys(update_fields)))
 
@@ -16113,6 +16582,8 @@ def api_jobs_delete(request, job_id):
         return blocked
 
     job = get_object_or_404(Job, job_id=job_id)
+    job._deleted_by_label = f"Admin ({request.user.username})"
+    job._delete_reason = "Deleted from admin job management."
     job.delete()
     return JsonResponse({"success": True})
 

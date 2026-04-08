@@ -12,6 +12,14 @@ document.addEventListener('DOMContentLoaded', () => {
     return Number.isNaN(parsed) ? 0 : parsed;
   };
 
+  const localTodayIso = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const updateBarChart = () => {
     const rows = document.querySelectorAll('.bar-row');
     if (!rows.length) return;
@@ -67,11 +75,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const days = Array.from(calendar.querySelectorAll('.calendar-day'));
     if (!days.length) return;
-
-    const today = new Date();
-    const dayIndex = (today.getDay() + 6) % 7;
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - dayIndex);
+    const serverToday = (calendar.dataset.serverToday || '').trim();
+    const todayIso = serverToday || localTodayIso();
 
     let maxCount = 0;
     days.forEach((day) => {
@@ -79,21 +84,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if (count > maxCount) maxCount = count;
     });
 
-    days.forEach((day, index) => {
-      const date = new Date(monday);
-      date.setDate(monday.getDate() + index);
-      const dateCell = day.querySelector('[data-date]');
+    days.forEach((day) => {
       const metaCell = day.querySelector('[data-meta]');
       const count = toNumber(day.dataset.count);
+      const dayIso = (day.dataset.dateIso || '').trim();
 
-      if (dateCell) {
-        dateCell.textContent = date.getDate();
-      }
       if (metaCell) {
         metaCell.textContent = `${count} ${count === 1 ? 'Interview' : 'Interviews'}`;
       }
 
-      day.classList.toggle('today', date.toDateString() === today.toDateString());
+      day.classList.toggle('today', Boolean(dayIso) && dayIso === todayIso);
       day.classList.toggle('has-interviews', count > 0);
     });
 
@@ -129,6 +129,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (dateCell && row?.date_day !== undefined && row?.date_day !== null) {
         dateCell.textContent = String(row.date_day);
       }
+      if (row?.date_iso) {
+        card.dataset.dateIso = String(row.date_iso);
+      }
       const metaCell = card.querySelector('[data-meta]');
       if (metaCell) {
         metaCell.textContent = `${count} ${count === 1 ? 'Interview' : 'Interviews'}`;
@@ -141,6 +144,10 @@ document.addEventListener('DOMContentLoaded', () => {
       .then((res) => res.ok ? res.json() : null)
       .then((data) => {
         if (!data) return;
+        const calendar = document.getElementById('interviewCalendar');
+        if (calendar && data.today_iso) {
+          calendar.dataset.serverToday = String(data.today_iso);
+        }
         updateText('metricActiveJobs', data.active_jobs ?? 0);
         updateText('metricTotalApplications', data.total_applications ?? 0);
         updateText('metricShortlisted', data.shortlisted ?? 0);
@@ -160,5 +167,5 @@ document.addEventListener('DOMContentLoaded', () => {
   updateTrendChart();
   updateInterviewCalendar();
   refreshMetrics();
-  setInterval(refreshMetrics, 30000);
+  setInterval(refreshMetrics, 10000);
 });

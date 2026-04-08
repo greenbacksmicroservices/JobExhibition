@@ -10,20 +10,6 @@
     <h2>Job Management</h2>
     <p class="muted">Create, manage and track your job listings.</p>
   </div>
-  <div class="hero-badges">
-    <div class="hero-badge">
-      <span>Total Jobs</span>
-      <strong>{{ total_jobs }}</strong>
-    </div>
-    <div class="hero-badge">
-      <span>Approved</span>
-      <strong>{{ approved_jobs }}</strong>
-    </div>
-    <div class="hero-badge">
-      <span>Pending</span>
-      <strong>{{ pending_jobs }}</strong>
-    </div>
-  </div>
 </section>
 
 <section class="card section-block">
@@ -51,41 +37,6 @@
       <strong>{% if posting_quota.remaining == None %}Unlimited{% else %}{{ posting_quota.remaining }}{% endif %}</strong>
     </div>
   </div>
-</section>
-
-<section class="pill-grid">
-  <article class="pill-card gradient-1">
-    <div class="pill-icon"><i class="fa-solid fa-briefcase"></i></div>
-    <div>
-      <p class="pill-title">Total Jobs</p>
-      <strong class="pill-value">{{ total_jobs }}</strong>
-      <span class="pill-sub">All time</span>
-    </div>
-  </article>
-  <article class="pill-card gradient-2">
-    <div class="pill-icon"><i class="fa-solid fa-check-circle"></i></div>
-    <div>
-      <p class="pill-title">Approved Jobs</p>
-      <strong class="pill-value">{{ approved_jobs }}</strong>
-      <span class="pill-sub">Live listings</span>
-    </div>
-  </article>
-  <article class="pill-card gradient-3">
-    <div class="pill-icon"><i class="fa-solid fa-hourglass-half"></i></div>
-    <div>
-      <p class="pill-title">Pending Jobs</p>
-      <strong class="pill-value">{{ pending_jobs }}</strong>
-      <span class="pill-sub">Awaiting review</span>
-    </div>
-  </article>
-  <article class="pill-card gradient-4">
-    <div class="pill-icon"><i class="fa-solid fa-times-circle"></i></div>
-    <div>
-      <p class="pill-title">Rejected Jobs</p>
-      <strong class="pill-value">{{ rejected_jobs }}</strong>
-      <span class="pill-sub">Not approved</span>
-    </div>
-  </article>
 </section>
 
 {% if form_mode != "list" %}

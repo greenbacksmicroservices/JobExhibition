@@ -534,7 +534,7 @@
           </div>
           <div class="field">
             <label>Email ID</label>
-            <input type="email" id="company_email_login" name="email_login" value="{{ form_data.email|default:'' }}" />
+            <input type="email" id="company_email_login" name="email_login" value="{{ form_data.email_login|default:'' }}" required />
             
           </div>
         </div>
@@ -574,7 +574,7 @@
           </div>
           <div class="field">
             <label>Year of Establishment</label>
-            <input type="number" name="year_established" value="{{ form_data.year_established|default:'' }}" min="1900" max="2100" />
+            <input type="number" name="year_established" value="{{ form_data.year_established|default:'' }}" min="1900" max="{{ current_year|default:2100 }}" />
           </div>
         </div>
         <div class="grid-2">

@@ -204,17 +204,17 @@
         <p class="muted">Upcoming interview slots</p>
       </div>
     </div>
-    <div class="calendar-grid" id="interviewCalendar">
+    <div class="calendar-grid" id="interviewCalendar" data-server-today="{{ server_today_iso|default:'' }}">
       {% if interview_calendar %}
         {% for day in interview_calendar %}
-        <div class="calendar-day {% if day.is_today %}today{% endif %} {% if day.count > 0 %}has-interviews{% endif %}" data-count="{{ day.count }}">
+        <div class="calendar-day {% if day.is_today %}today{% endif %} {% if day.count > 0 %}has-interviews{% endif %}" data-count="{{ day.count }}" data-date-iso="{{ day.date_iso|default:'' }}">
           <span class="calendar-label">{{ day.label }}</span>
           <strong data-date>{{ day.date_day }}</strong>
           <span class="calendar-meta" data-meta>{{ day.count }} {% if day.count == 1 %}Interview{% else %}Interviews{% endif %}</span>
         </div>
         {% endfor %}
       {% else %}
-        <div class="calendar-day" data-count="0">
+        <div class="calendar-day" data-count="0" data-date-iso="">
           <span class="calendar-label">Mon</span>
           <strong data-date>--</strong>
           <span class="calendar-meta" data-meta>0 Interviews</span>

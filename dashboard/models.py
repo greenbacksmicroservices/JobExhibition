@@ -242,6 +242,7 @@ class Company(UserBase):
     plan_expiry = models.DateField(null=True, blank=True)
     payment_status = models.CharField(max_length=20, choices=PAYMENT_CHOICES, blank=True)
     auto_renew = models.BooleanField(default=False)
+    pending_registration_password = models.CharField(max_length=128, blank=True)
 
 
 class CompanyKycDocument(models.Model):
@@ -310,6 +311,7 @@ class Consultancy(UserBase):
         blank=True,
         default="Stage-wise commission release",
     )
+    pending_registration_password = models.CharField(max_length=128, blank=True)
 
 
 class ConsultancyKycDocument(models.Model):
@@ -938,3 +940,35 @@ class PasswordResetToken(models.Model):
 
     def __str__(self) -> str:
         return f"{self.account_type}:{self.account_id}"
+
+
+class DeletedDataLog(models.Model):
+    CATEGORY_CHOICES = [
+        ("company", "Company"),
+        ("consultancy", "Consultancy"),
+        ("candidate", "Candidate"),
+    ]
+
+    ENTITY_CHOICES = [
+        ("company_profile", "Company Profile"),
+        ("consultancy_profile", "Consultancy Profile"),
+        ("candidate_profile", "Candidate Profile"),
+        ("job", "Job"),
+    ]
+
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, db_index=True)
+    entity_type = models.CharField(max_length=40, choices=ENTITY_CHOICES, db_index=True)
+    source_model = models.CharField(max_length=80, blank=True)
+    source_id = models.CharField(max_length=64, blank=True)
+    display_name = models.CharField(max_length=255, blank=True)
+    reference = models.CharField(max_length=255, blank=True)
+    deleted_by = models.CharField(max_length=120, blank=True)
+    reason = models.CharField(max_length=255, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+
+    def __str__(self) -> str:
+        return f"{self.get_category_display()} - {self.display_name or self.reference or self.entity_type}"

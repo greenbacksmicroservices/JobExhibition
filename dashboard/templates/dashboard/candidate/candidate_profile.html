@@ -61,7 +61,7 @@
         </div>
         <div class="company-form-group">
           <label>Full Name</label>
-          <input type="text" name="name" value="{{ candidate.name|default:'' }}" required />
+          <input type="text" name="name" value="{{ candidate.name|default:'' }}" readonly required />
         </div>
         <div class="company-form-group">
           <label>Email ID {% if candidate.email_verified %}<span class="badge success">Verified</span>{% endif %}</label>

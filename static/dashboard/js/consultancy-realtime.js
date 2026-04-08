@@ -138,5 +138,5 @@ document.addEventListener('DOMContentLoaded', () => {
   updateBarChart();
   updateTrendChart();
   refreshMetrics();
-  setInterval(refreshMetrics, 30000);
+  setInterval(refreshMetrics, 10000);
 });

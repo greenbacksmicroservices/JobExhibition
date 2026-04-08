@@ -401,7 +401,7 @@
           </div>
           <div class="field">
             <label>Year of Establishment</label>
-            <input type="number" name="year_established" value="{{ form_data.year_established|default:'' }}" placeholder="e.g. 2015" />
+            <input type="number" name="year_established" value="{{ form_data.year_established|default:'' }}" placeholder="e.g. 2015" min="1900" max="{{ current_year|default:2100 }}" />
           </div>
           <div class="field">
             <label>Website URL (optional)</label>
@@ -487,7 +487,7 @@
         <div class="grid-2">
           <div class="field">
             <label>Owner / Director Name</label>
-            <input type="text" name="owner_name" value="{{ form_data.owner_name|default:'' }}" placeholder="Full name" />
+            <input type="text" name="owner_name" value="{{ form_data.owner_name|default:'' }}" placeholder="Full name" required />
           </div>
           <div class="field">
             <label>Designation</label>

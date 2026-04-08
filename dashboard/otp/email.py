@@ -1,11 +1,7 @@
 """Email OTP delivery helpers for JobExhibition registration and login flows."""
 
 import logging
-import mimetypes
-from email import encoders
-from email.mime.base import MIMEBase
 from html import escape
-from pathlib import Path
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives, get_connection
@@ -87,35 +83,14 @@ def _render_otp_email_subject():
 
 
 def _resolve_otp_email_logo():
-    """Resolve logo source for OTP mails (external URL or local inline CID)."""
+    """Resolve logo source for OTP mails (external URL only, no attachments)."""
     custom_url = (getattr(settings, "OTP_EMAIL_LOGO_URL", "") or "").strip()
     if custom_url:
         return custom_url, ""
-
-    custom_file = (getattr(settings, "OTP_EMAIL_LOGO_FILE", "") or "").strip()
-    if custom_file:
-        file_path = Path(custom_file)
-        if file_path.exists():
-            return "cid:jobexhibition-logo", str(file_path)
-
-    base_dir = Path(getattr(settings, "BASE_DIR", Path.cwd()))
-    candidates = [
-        base_dir / "static" / "dashboard" / "img" / "je-logo.png",
-        base_dir / "static" / "dashboard" / "img" / "je-logo.jpg",
-        base_dir / "static" / "dashboard" / "img" / "je-logo.jpeg",
-        base_dir / "static" / "dashboard" / "img" / "je-logo.svg",
-        base_dir / "staticfiles" / "dashboard" / "img" / "je-logo.png",
-        base_dir / "staticfiles" / "dashboard" / "img" / "je-logo.jpg",
-        base_dir / "staticfiles" / "dashboard" / "img" / "je-logo.jpeg",
-        base_dir / "staticfiles" / "dashboard" / "img" / "je-logo.svg",
-    ]
-    for logo_path in candidates:
-        if logo_path.exists():
-            return "cid:jobexhibition-logo", str(logo_path)
     return "", ""
 
 
-def _render_otp_email_body(otp, to_name="User", logo_src=""):
+def _render_otp_email_body(otp, to_name="User", logo_src="dashboard/img/je-logo.svg"):
     """Generate HTML + plain body for OTP mail using JobExhibition design."""
     site_title = getattr(settings, "SITE_TITLE", "JobExhibition")
     safe_name = escape((to_name or "User").strip() or "User")
@@ -242,26 +217,6 @@ def _send_message(
     )
     msg.attach_alternative(html_body, "text/html")
 
-    if inline_logo_path:
-        try:
-            with open(inline_logo_path, "rb") as logo_file:
-                logo_payload = logo_file.read()
-            if logo_payload:
-                mime_type, _ = mimetypes.guess_type(inline_logo_path)
-                maintype, subtype = "image", "svg+xml"
-                if mime_type and "/" in mime_type:
-                    guessed_main, guessed_sub = mime_type.split("/", 1)
-                    if guessed_main and guessed_sub:
-                        maintype, subtype = guessed_main, guessed_sub
-                inline_logo = MIMEBase(maintype, subtype)
-                inline_logo.set_payload(logo_payload)
-                encoders.encode_base64(inline_logo)
-                inline_logo.add_header("Content-ID", "<jobexhibition-logo>")
-                filename = Path(inline_logo_path).name or f"jobexhibition-logo.{subtype}"
-                inline_logo.add_header("Content-Disposition", "inline", filename=filename)
-                msg.attach(inline_logo)
-        except Exception:
-            logger.exception("Failed to attach OTP inline logo from %s.", inline_logo_path)
     return msg.send()
 
 

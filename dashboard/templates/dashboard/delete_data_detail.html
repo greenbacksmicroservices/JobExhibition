@@ -1,0 +1,620 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ page_title|default:"Deleted Data Detail" }} | Job Exhibition Admin</title>
+    <link rel="icon" href="{% static 'dashboard/favicon.ico' %}?v={{ static_asset_version }}" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}?v={{ static_asset_version }}" />
+    <style>
+      .detail-wrap {
+        padding: 0 24px 28px;
+      }
+      .detail-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .detail-head h2 {
+        margin: 0;
+        font-size: 1.4rem;
+      }
+      .detail-head p {
+        margin: 4px 0 0;
+        color: #64748b;
+      }
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .meta-item {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .meta-item .label {
+        font-size: 11px;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 4px;
+      }
+      .meta-item .value {
+        font-size: 13px;
+        color: #0f172a;
+        word-break: break-word;
+      }
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .summary-card {
+        border: 1px solid #dbeafe;
+        background: #eff6ff;
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .summary-card .label {
+        font-size: 11px;
+        color: #1e3a8a;
+      }
+      .summary-card .value {
+        font-size: 20px;
+        font-weight: 700;
+        color: #1d4ed8;
+      }
+      .section-card {
+        margin-bottom: 14px;
+      }
+      .section-card .table {
+        margin: 0;
+      }
+      .section-card td,
+      .section-card th {
+        font-size: 12.5px;
+        vertical-align: middle;
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      }
+      .file-links ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+      .file-links li {
+        margin-bottom: 4px;
+        font-size: 13px;
+      }
+      .json-card pre {
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 10px;
+        padding: 14px;
+        font-size: 12px;
+        overflow: auto;
+        max-height: 64vh;
+      }
+      .empty-row {
+        text-align: center;
+        color: #64748b;
+        padding: 14px;
+      }
+    </style>
+  </head>
+  <body class="user-management">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark"><img src="{% static 'dashboard/img/je-logo.svg' %}?v={{ static_asset_version }}" alt="Job Exhibition logo" /></div>
+          <div class="brand-text">
+            <h1 class="style-1"><span class="brand-job">Job</span> <span class="brand-exhibition">Exhibition</span></h1>
+            <span class="brand-subtitle">Admin Control</span>
+          </div>
+        </div>
+
+        <div class="company-user admin-user">
+          <div class="company-logo-stack">
+            <div class="company-logo" style="--progress: 100;">
+              {% if admin_profile and admin_profile.photo %}
+                <img src="{{ admin_profile.photo.url }}" alt="Admin photo" />
+              {% else %}
+                <span>{{ request.user.username|default:"A"|first|upper }}</span>
+              {% endif %}
+            </div>
+            <span class="profile-progress-text">100% Complete</span>
+          </div>
+          <div class="company-user-meta">
+            <strong>{{ request.user.username|default:"Admin" }}</strong>
+            <span>Platform Admin</span>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <a class="nav-item" href="{% url 'dashboard:dashboard' %}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+            <span>Dashboard</span>
+          </a>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="userManagement" aria-expanded="false" aria-controls="userManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span>User Management</span>
+                <span class="nav-count-badge" data-sidebar-notification-count {% if panel_sidebar_notification_count < 1 %}style="display:none"{% endif %}>{{ panel_sidebar_notification_count|default:0 }}</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="userManagement">
+              <a class="nav-sub" href="{% url 'dashboard:companies' %}">Companies</a>
+              <a class="nav-sub" href="{% url 'dashboard:consultancies' %}">Consultancies</a>
+              <a class="nav-sub" href="{% url 'dashboard:candidates' %}">Candidates</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="jobManagement" aria-expanded="false" aria-controls="jobManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M14,2H6A2,2 0 0,0 4,4V20a2,2 0 0,0 2,2H18a2,2 0 0,0 2,-2V8L14,2M18,20H6V4H13V9H18V20"/></svg>
+                <span>Job Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="jobManagement">
+              <a class="nav-sub" href="{% url 'dashboard:jobs' %}">All Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_pending' %}">Pending Approval</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_approved' %}">Approved Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_rejected' %}">Rejected Jobs</a>
+              <a class="nav-sub" href="{% url 'dashboard:jobs_reported' %}">Reported Jobs</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="applicationManagement" aria-expanded="false" aria-controls="applicationManagement">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75-3.54-4.3 5.41h13.2L11.96 6.29z"/></svg>
+                <span>Application Management</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="applicationManagement">
+              <a class="nav-sub" href="{% url 'dashboard:applications' %}">All Applications</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_interview' %}">Interview Scheduled</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_selected' %}">Selected</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_rejected' %}">Rejected</a>
+              <a class="nav-sub" href="{% url 'dashboard:applications_offer' %}">Offer Issued</a>
+            </div>
+          </div>
+
+          <a class="nav-item" href="{% url 'dashboard:admin_feedbacks' %}">
+            <i class="fa-solid fa-star nav-icon"></i>
+            <span>Feedbacks</span>
+          </a>
+
+          <div class="nav-section">
+            <button class="nav-item nav-toggle" type="button" data-target="subscriptionBilling" aria-expanded="false" aria-controls="subscriptionBilling">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+                <span>Subscription &amp; Billing</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="subscriptionBilling">
+              <a class="nav-sub" href="{% url 'dashboard:subscriptions' %}">Overview</a>
+              <a class="nav-sub" href="{% url 'dashboard:subscriptions_free_paid' %}">Who is Free / Paid</a>
+              <a class="nav-sub" href="{% url 'dashboard:subscriptions_expiry_alerts' %}">Expiry Alerts</a>
+              <a class="nav-sub" href="{% url 'dashboard:subscriptions_revenue' %}">Revenue Charts</a>
+              <a class="nav-sub" href="{% url 'dashboard:subscriptions_manual_assign' %}">Manual Plan Assign</a>
+            </div>
+          </div>
+
+          <a class="nav-item" href="{% url 'dashboard:advertisement_management' %}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75-3.54-4.3 5.41h13.2L11.96 6.29z"/></svg>
+            <span>Advertisement Management</span>
+          </a>
+
+          <div class="nav-section{% if comm_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="communicationCenter" aria-expanded="{% if comm_section %}true{% else %}false{% endif %}" aria-controls="communicationCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v16l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                <span>Communication Center</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="communicationCenter">
+              <a class="nav-sub{% if comm_section == 'bulk-email' %} active{% endif %}" href="{% url 'dashboard:communication_bulk_email' %}">Bulk Email</a>
+              <a class="nav-sub{% if comm_section == 'bulk-sms' %} active{% endif %}" href="{% url 'dashboard:communication_bulk_sms' %}">Bulk SMS</a>
+              <a class="nav-sub{% if comm_section == 'notifications' %} active{% endif %}" href="{% url 'dashboard:communication_notifications' %}">Notifications</a>
+              <a class="nav-sub{% if comm_section == 'whatsapp' %} active{% endif %}" href="{% url 'dashboard:communication_whatsapp' %}">WhatsApp Alerts</a>
+              <a class="nav-sub{% if comm_section == 'chat-monitor' %} active{% endif %}" href="{% url 'dashboard:message_monitor' %}">Chat Monitoring</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if support_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="supportCenter" aria-expanded="{% if support_section %}true{% else %}false{% endif %}" aria-controls="supportCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a7 7 0 0 1 7 7v2a5 5 0 0 1-5 5h-1v3h-2v-3H9a5 5 0 0 1-5-5V9a7 7 0 0 1 7-7zm0 2a5 5 0 0 0-5 5v2a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3V9a5 5 0 0 0-5-5z"/></svg>
+                <span>Customer Support</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="supportCenter">
+              <a class="nav-sub{% if support_section == 'dashboard' %} active{% endif %}" href="{% url 'dashboard:support_center' %}">Support Dashboard</a>
+              <a class="nav-sub{% if support_section == 'all' %} active{% endif %}" href="{% url 'dashboard:support_tickets' %}">All Tickets</a>
+              <a class="nav-sub{% if support_section == 'high' %} active{% endif %}" href="{% url 'dashboard:support_high_priority' %}">High Priority</a>
+              <a class="nav-sub{% if support_section == 'assigned' %} active{% endif %}" href="{% url 'dashboard:support_assigned' %}">Assigned Tickets</a>
+              <a class="nav-sub{% if support_section == 'unassigned' %} active{% endif %}" href="{% url 'dashboard:support_unassigned' %}">Unassigned</a>
+              <a class="nav-sub{% if support_section == 'closed' %} active{% endif %}" href="{% url 'dashboard:support_closed' %}">Closed</a>
+              <a class="nav-sub{% if support_section == 'analytics' %} active{% endif %}" href="{% url 'dashboard:support_analytics' %}">Support Analytics</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if grievance_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="grievanceCenter" aria-expanded="{% if grievance_section %}true{% else %}false{% endif %}" aria-controls="grievanceCenter">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 15h-1.5v-1.5H12V17zm0-4.5h-1.5V7H12v5.5z"/></svg>
+                <span>Grievance / Reports</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="grievanceCenter">
+              <a class="nav-sub{% if grievance_section == 'complaints' %} active{% endif %}" href="{% url 'dashboard:grievance_complaints' %}">User Complaints</a>
+              <a class="nav-sub{% if grievance_section == 'job-reports' %} active{% endif %}" href="{% url 'dashboard:grievance_job_reports' %}">Job Reports</a>
+              <a class="nav-sub{% if grievance_section == 'abuse-fraud' %} active{% endif %}" href="{% url 'dashboard:grievance_abuse_fraud' %}">Abuse / Fraud</a>
+              <a class="nav-sub{% if grievance_section == 'resolution-log' %} active{% endif %}" href="{% url 'dashboard:grievance_resolution_log' %}">Resolution Log</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if settings_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="settings" aria-expanded="{% if settings_section %}true{% else %}false{% endif %}" aria-controls="settings">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l1.72-1.34c.15-.12.19-.34.1-.51l-1.63-2.83c-.12-.22-.37-.29-.59-.22l-2.03.81c-.42-.32-.9-.6-1.44-.84l-.3-2.15c-.04-.24-.24-.42-.5-.42h-3.26c-.26 0-.46.18-.49.42l-.3 2.15c-.54.24-1.02.52-1.44.84l-2.03-.81c-.22-.09-.47 0-.59.22L2.74 8.87c-.1.17-.05.39.1.51l1.72 1.34c-.05.3-.07.62-.07.94s.02.64.07.94l-1.72 1.34c-.15.12-.19.34-.1.51l1.63 2.83c.12.22.37.29.59.22l2.03-.81c.42.32.9.6 1.44.84l.3 2.15c.03.24.23.42.49.42h3.26c.26 0 .46-.18.49-.42l.3-2.15c.54-.24 1.02-.52 1.44-.84l2.03.81c.22.09.47 0 .59-.22l1.63-2.83c.1-.17.05-.39-.1-.51l-1.72-1.34zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                <span>Settings</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="settings">
+              <a class="nav-sub{% if settings_section == 'platform' %} active{% endif %}" href="{% url 'dashboard:settings_platform' %}">Platform Settings</a>
+              <a class="nav-sub{% if settings_section == 'job-categories' %} active{% endif %}" href="{% url 'dashboard:settings_job_categories' %}">Job Categories</a>
+              <a class="nav-sub{% if settings_section == 'locations' %} active{% endif %}" href="{% url 'dashboard:settings_locations' %}">Locations</a>
+              <a class="nav-sub{% if settings_section == 'skills' %} active{% endif %}" href="{% url 'dashboard:settings_skills' %}">Skills Library</a>
+              <a class="nav-sub{% if settings_section == 'experience-levels' %} active{% endif %}" href="{% url 'dashboard:settings_experience_levels' %}">Experience Levels</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if audit_section %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="securityAudit" aria-expanded="{% if audit_section %}true{% else %}false{% endif %}" aria-controls="securityAudit">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+                <span>Security &amp; Audit</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="securityAudit">
+              <a class="nav-sub{% if audit_section == 'login-history' %} active{% endif %}" href="{% url 'dashboard:security_login_history' %}">Login History</a>
+              <a class="nav-sub{% if audit_section == 'ip-logs' %} active{% endif %}" href="{% url 'dashboard:security_ip_logs' %}">IP Logs</a>
+              <a class="nav-sub{% if audit_section == 'admin-activity' %} active{% endif %}" href="{% url 'dashboard:security_admin_activity' %}">Admin Activity Logs</a>
+              <a class="nav-sub{% if audit_section == 'role-permissions' %} active{% endif %}" href="{% url 'dashboard:security_role_permissions' %}">Role Permissions</a>
+            </div>
+          </div>
+
+          <div class="nav-section{% if audit_section == 'role-permissions' %} open{% endif %}">
+            <button class="nav-item nav-toggle" type="button" data-target="subAdmin" aria-expanded="{% if audit_section == 'role-permissions' %}true{% else %}false{% endif %}" aria-controls="subAdmin">
+              <div class="nav-label">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span>Sub-Admin</span>
+              </div>
+              <span class="caret">v</span>
+            </button>
+            <div class="nav-accordion-body" id="subAdmin">
+              <a class="nav-sub{% if audit_section == 'role-permissions' %} active{% endif %}" href="{% url 'dashboard:security_role_permissions' %}#subadmin-create">Add New Sub-Admin</a>
+              <a class="nav-sub{% if audit_section == 'role-permissions' %} active{% endif %}" href="{% url 'dashboard:security_role_permissions' %}#subadmin-roles">Sub-Admin Table</a>
+            </div>
+          </div>
+        </nav>
+      </aside>
+
+      <main class="main user-page">
+        <header class="page-header">
+          <div class="topbar">
+            <div class="top-actions">
+              <div class="sidebar-control">
+                <button class="sidebar-control-btn" type="button" data-sidebar-toggle aria-label="Toggle sidebar">
+                  <i class="fa-solid fa-bars"></i>
+                  <span>Responsive Collapsible Sidebar</span>
+                </button>
+              </div>
+              <button class="icon-btn fullscreen-toggle" type="button" data-fullscreen-toggle aria-label="Toggle fullscreen">
+                <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+              </button>
+              <button class="icon-btn compact" id="darkModeToggle" aria-label="Toggle dark mode">
+                <i class="fa-solid fa-moon"></i>
+              </button>
+              <a class="icon-btn compact" href="{% url 'dashboard:message_monitor' %}" aria-label="Messages">
+                <i class="fa-solid fa-envelope"></i>
+                <span class="icon-count-badge" data-panel-message-count {% if panel_message_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_message_unread_count|default:0 }}</span>
+              </a>
+              <details class="notification-dropdown" data-panel-notification-root>
+                <summary class="icon-btn" aria-label="Notifications">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
+                  <span class="icon-count-badge" data-panel-notification-count {% if panel_notification_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_notification_unread_count|default:0 }}</span>
+                </summary>
+                <div class="notification-menu">
+                  <h4>Notifications</h4>
+                  {% if panel_notifications %}
+                  <ul class="notification-list" data-panel-notification-list>
+                    {% for note in panel_notifications %}
+                    <li>
+                      {% if note.url %}
+                      <a href="{{ note.url }}" class="action-link">{{ note.title }}</a>
+                      {% else %}
+                      <strong>{{ note.title }}</strong>
+                      {% endif %}
+                      <div class="muted">{{ note.message }}</div>
+                    </li>
+                    {% endfor %}
+                  </ul>
+                  {% else %}
+                  <p class="muted" data-panel-notification-empty>No notifications yet.</p>
+                  {% endif %}
+                </div>
+              </details>
+            </div>
+            <details class="profile-dropdown">
+              <summary class="profile-summary">
+                <div class="profile-avatar {% if admin_profile and admin_profile.photo %}has-image{% endif %}">
+                  {% if admin_profile and admin_profile.photo %}
+                  <img src="{{ admin_profile.photo.url }}" alt="Admin photo" />
+                  {% else %}
+                  {{ request.user.username|default:"A"|first|upper }}
+                  {% endif %}
+                </div>
+                <div class="profile-meta">
+                  <strong>{{ request.user.username|default:"Admin" }}</strong>
+                  <span>Platform Administrator</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+              </summary>
+              <div class="profile-menu">
+                {% if request.user.last_login %}
+                <a class="menu-item last-login-info" href="{% url 'dashboard:admin_profile_last_login' %}">
+                  <strong>Last Login</strong>
+                  <span>{{ request.user.last_login|date:"M d, Y H:i" }}</span>
+                </a>
+                {% endif %}
+                <a class="menu-item" href="{% url 'dashboard:admin_profile' %}">
+                  <i class="fa-solid fa-user"></i> My Profile
+                </a>
+                <a class="menu-item" href="{% url 'dashboard:admin_profile_photo' %}">
+                  <i class="fa-solid fa-image"></i> Upload Photo
+                </a>
+                <a class="menu-item" href="{% url 'dashboard:admin_profile_password' %}">
+                  <i class="fa-solid fa-key"></i> Change Password
+                </a>
+                <a class="menu-item logout" href="{% url 'dashboard:logout' %}">
+                  <i class="fa-solid fa-right-from-bracket"></i> Logout
+                </a>
+              </div>
+            </details>
+          </div>
+        </header>
+
+        {% if messages %}
+        <div class="message-stack" style="padding: 0 24px; margin-bottom: 16px;">
+          {% for message in messages %}
+            <div class="alert alert-{{ message.tags|default:'info' }} mb-2">{{ message }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <section class="detail-wrap">
+          <div class="detail-head">
+            <div>
+              <h2>{{ page_title }}</h2>
+              <p>{{ page_subtitle }}</p>
+            </div>
+            <div class="d-flex gap-2">
+              <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:deleted_data_category' deleted_data_section %}">
+                <i class="fa-solid fa-arrow-left"></i> Back To List
+              </a>
+              <form method="post" action="{% url 'dashboard:deleted_data_delete_record' record.id %}" onsubmit="return confirm('Delete this record permanently from deleted-data log?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger">Delete Record</button>
+              </form>
+            </div>
+          </div>
+
+          <div class="meta-grid">
+            <div class="meta-item">
+              <div class="label">Category</div>
+              <div class="value">{{ record.get_category_display }}</div>
+            </div>
+            <div class="meta-item">
+              <div class="label">Entity Type</div>
+              <div class="value">{{ record.get_entity_type_display }}</div>
+            </div>
+            <div class="meta-item">
+              <div class="label">Name / Title</div>
+              <div class="value">{{ record.display_name|default:"-" }}</div>
+            </div>
+            <div class="meta-item">
+              <div class="label">Reference</div>
+              <div class="value mono">{{ record.reference|default:"-" }}</div>
+            </div>
+            <div class="meta-item">
+              <div class="label">Source Model</div>
+              <div class="value">{{ record.source_model|default:"-" }}</div>
+            </div>
+            <div class="meta-item">
+              <div class="label">Source ID</div>
+              <div class="value mono">{{ record.source_id|default:"-" }}</div>
+            </div>
+            <div class="meta-item">
+              <div class="label">Deleted By</div>
+              <div class="value">{{ record.deleted_by|default:"System" }}</div>
+            </div>
+            <div class="meta-item">
+              <div class="label">Deleted At</div>
+              <div class="value">{{ record.created_at|date:"d M Y, h:i A" }}</div>
+            </div>
+            <div class="meta-item">
+              <div class="label">Reason</div>
+              <div class="value">{{ record.reason|default:"-" }}</div>
+            </div>
+          </div>
+
+          <div class="summary-grid">
+            <div class="summary-card">
+              <div class="label">Deleted Jobs</div>
+              <div class="value">{{ job_count }}</div>
+            </div>
+            <div class="summary-card">
+              <div class="label">Applications</div>
+              <div class="value">{{ application_count }}</div>
+            </div>
+            <div class="summary-card">
+              <div class="label">Candidate Profiles</div>
+              <div class="value">{{ candidate_count }}</div>
+            </div>
+          </div>
+
+          <article class="card section-card">
+            <div class="card-header"><strong>Deleted Jobs Snapshot</strong></div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th>Job ID</th>
+                    <th>Title</th>
+                    <th>Company</th>
+                    <th>Category</th>
+                    <th>Location</th>
+                    <th>Status</th>
+                    <th>Applications</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if job_rows %}
+                    {% for job in job_rows %}
+                    <tr>
+                      <td class="mono">{{ job.job_id|default:job.id|default:"-" }}</td>
+                      <td>{{ job.title|default:"-" }}</td>
+                      <td>{{ job.company|default:"-" }}</td>
+                      <td>{{ job.category|default:"-" }}</td>
+                      <td>{{ job.location|default:"-" }}</td>
+                      <td>{{ job.status|default:job.lifecycle_status|default:"-" }}</td>
+                      <td>{{ job.applications_count|default:0 }}</td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                    <tr><td colspan="7" class="empty-row">No deleted-job snapshot found.</td></tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="card section-card">
+            <div class="card-header"><strong>Applications Snapshot</strong></div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th>Application ID</th>
+                    <th>Candidate</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Job</th>
+                    <th>Status</th>
+                    <th>Placement</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if application_rows %}
+                    {% for app in application_rows %}
+                    <tr>
+                      <td class="mono">{{ app.application_id|default:"-" }}</td>
+                      <td>{{ app.candidate_name|default:"-" }}</td>
+                      <td class="mono">{{ app.candidate_email|default:"-" }}</td>
+                      <td>{{ app.candidate_phone|default:"-" }}</td>
+                      <td>{{ app.job_title|default:"-" }}</td>
+                      <td>{{ app.status|default:"-" }}</td>
+                      <td>{{ app.placement_status|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                    <tr><td colspan="7" class="empty-row">No application snapshot found.</td></tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="card section-card">
+            <div class="card-header"><strong>Candidate Snapshot</strong></div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Profile Snapshot</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if candidate_rows %}
+                    {% for candidate in candidate_rows %}
+                    <tr>
+                      <td>{{ candidate.name|default:"-" }}</td>
+                      <td class="mono">{{ candidate.email|default:"-" }}</td>
+                      <td>{{ candidate.phone|default:"-" }}</td>
+                      <td class="mono">{{ candidate.snapshot.id|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                    <tr><td colspan="4" class="empty-row">No candidate snapshot found.</td></tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          {% if file_links %}
+          <div class="card file-links section-card">
+            <div class="card-body">
+              <h4>Attachments / File Links</h4>
+              <ul>
+                {% for item in file_links %}
+                <li><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.label }}</a></li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          {% endif %}
+
+          <div class="card json-card section-card">
+            <div class="card-header"><strong>Full Snapshot (JSON)</strong></div>
+            <div class="card-body">
+              <pre>{{ details_pretty }}</pre>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="{% static 'dashboard/js/dashboard.js' %}?v={{ static_asset_version }}"></script>
+  </body>
+</html>

@@ -24,8 +24,6 @@ def _get_seen_at(request, role, account):
             if timezone.is_naive(parsed):
                 return timezone.make_aware(parsed, timezone.get_current_timezone())
             return parsed
-    if account and getattr(account, "last_login", None):
-        return account.last_login
     return None
 
 
@@ -336,47 +334,51 @@ def _consultancy_feed(consultancy, seen_at):
 def _admin_feed(admin_user, seen_at):
     feed = []
 
-    latest_candidates = Candidate.objects.order_by("-registration_date")[:8]
-    for candidate in latest_candidates:
-        created_at = candidate.registration_date
-        message = f"{candidate.name} registered as Candidate ({candidate.email or 'email not set'})"
+    def _append_registration_summary(model, title, label, url_name):
+        registrations_qs = model.objects.all()
+        if seen_at:
+            registrations_qs = registrations_qs.filter(registration_date__gt=seen_at)
+        registrations_qs = registrations_qs.order_by("-registration_date")
+        total_new = registrations_qs.count()
+        if not total_new:
+            return
+        latest_item = registrations_qs.first()
+        latest_name = (getattr(latest_item, "name", "") or "").strip()
+        created_at = getattr(latest_item, "registration_date", None)
+        if total_new == 1 and latest_name:
+            message = f"{latest_name} registered as {label}."
+        else:
+            message = f"{total_new} new {label} registrations."
+            if latest_name:
+                message = f"{message} Latest: {latest_name}."
         feed.append(
             _note(
-                title="New candidate registration",
+                title=title,
                 message=message,
                 created_at=created_at,
-                url=reverse("dashboard:candidates"),
+                url=reverse(url_name),
                 unread=_mark_unread(created_at, seen_at),
             )
         )
 
-    latest_companies = Company.objects.order_by("-registration_date")[:8]
-    for company in latest_companies:
-        created_at = company.registration_date
-        message = f"{company.name} registered as Company ({company.email or 'email not set'})"
-        feed.append(
-            _note(
-                title="New company registration",
-                message=message,
-                created_at=created_at,
-                url=reverse("dashboard:companies"),
-                unread=_mark_unread(created_at, seen_at),
-            )
-        )
-
-    latest_consultancies = Consultancy.objects.order_by("-registration_date")[:8]
-    for consultancy in latest_consultancies:
-        created_at = consultancy.registration_date
-        message = f"{consultancy.name} registered as Consultancy ({consultancy.email or 'email not set'})"
-        feed.append(
-            _note(
-                title="New consultancy registration",
-                message=message,
-                created_at=created_at,
-                url=reverse("dashboard:consultancies"),
-                unread=_mark_unread(created_at, seen_at),
-            )
-        )
+    _append_registration_summary(
+        model=Candidate,
+        title="Candidate registrations",
+        label="candidate",
+        url_name="dashboard:candidates",
+    )
+    _append_registration_summary(
+        model=Company,
+        title="Company registrations",
+        label="company",
+        url_name="dashboard:companies",
+    )
+    _append_registration_summary(
+        model=Consultancy,
+        title="Consultancy registrations",
+        label="consultancy",
+        url_name="dashboard:consultancies",
+    )
 
     pending_apps = Application.objects.filter(status="Applied").order_by("-updated_at", "-created_at")
     pending_jobs = pending_apps.count()

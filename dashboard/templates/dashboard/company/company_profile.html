@@ -67,7 +67,7 @@
     <div class="form-grid">
       <div class="form-group">
         <label>Company Name</label>
-        <input type="text" name="name" value="{{ company.name }}" />
+        <input type="text" name="name" value="{{ company.name }}" readonly />
       </div>
       <div class="form-group">
         <label>Email</label>
@@ -83,7 +83,7 @@
       </div>
       <div class="form-group">
         <label>Contact Position</label>
-        <input type="text" name="contact_position" value="{{ company.contact_position|default:'' }}" />
+        <input type="text" name="contact_position" value="{{ company.contact_position|default:'' }}" readonly />
       </div>
       <div class="form-group" style="grid-column: 1 / -1;">
         <label>Address</label>

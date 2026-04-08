@@ -24,7 +24,7 @@
     <input type="hidden" name="action" value="update_profile" />
     <div class="company-form-group">
       <label>Consultancy Name</label>
-      <input type="text" name="name" value="{{ consultancy.name|default:'Consultancy Name' }}" />
+      <input type="text" name="name" value="{{ consultancy.name|default:'Consultancy Name' }}" readonly />
     </div>
     <div class="company-form-group">
       <label>Email</label>
@@ -40,7 +40,7 @@
     </div>
     <div class="company-form-group">
       <label>Contact Position</label>
-      <input type="text" name="contact_position" value="{{ consultancy.contact_position|default:'Manager' }}" />
+      <input type="text" name="contact_position" value="{{ consultancy.contact_position|default:'Manager' }}" readonly />
     </div>
     <div class="company-form-group company-form-full">
       <label>Address</label>

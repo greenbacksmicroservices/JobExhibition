@@ -11,8 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
   window.__dashboardCoreInitialized = true;
   const toggles = document.querySelectorAll('[data-sidebar-toggle]');
   const overlay = document.getElementById('sidebarOverlay');
-  const accordions = document.querySelectorAll('.nav-toggle');
-  const subAccordions = document.querySelectorAll('.nav-sub-toggle');
+  let accordions = Array.from(document.querySelectorAll('.nav-toggle'));
+  let subAccordions = Array.from(document.querySelectorAll('.nav-sub-toggle'));
   const darkToggle = document.getElementById('darkModeToggle');
   const fullscreenToggles = document.querySelectorAll('[data-fullscreen-toggle]');
   const messageLinks = document.querySelectorAll('a.icon-btn[aria-label="Messages"]');
@@ -54,7 +54,8 @@ document.addEventListener('DOMContentLoaded', () => {
     .trim()
     .toLowerCase();
   const isSubadminPanel = panelUserName === 'subadmin' || document.body.dataset.panelRole === 'subadmin';
-  const isAdminAccordionExclusive = Boolean(document.querySelector('.company-user.admin-user'));
+  // Keep only one sidebar accordion open across all panels for cleaner navigation context.
+  const isAccordionExclusive = true;
 
   const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
   const storage = {
@@ -549,17 +550,105 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('error', () => scheduleModalCleanup(20));
   window.addEventListener('unhandledrejection', () => scheduleModalCleanup(20));
 
+  const ensureAdminDeleteDataSidebarLink = () => {
+    const sidebarNav = document.querySelector('.sidebar-nav');
+    const isAdminPanel = Boolean(
+      document.querySelector('.company-user.admin-user') ||
+      document.body.classList.contains('user-management')
+    );
+    if (!sidebarNav || !isAdminPanel) return;
+
+    const normalizePath = (rawValue) => {
+      const raw = (rawValue || '').trim();
+      if (!raw || raw === '#') return '';
+      try {
+        const resolved = new URL(raw, window.location.origin);
+        const pathname = (resolved.pathname || '').replace(/\/+$/, '');
+        return pathname || '/';
+      } catch {
+        return '';
+      }
+    };
+
+    const basePath = '/admin-dashboard/delete-data/company/';
+    const currentPath = normalizePath(window.location.pathname);
+    const isDeleteDataPath = currentPath.startsWith('/admin-dashboard/delete-data');
+
+    const legacySection = sidebarNav.querySelector('.nav-section[data-delete-data-nav]');
+    if (legacySection) {
+      legacySection.remove();
+    }
+
+    let link = sidebarNav.querySelector('a.nav-item[data-delete-data-nav]');
+    if (!link) {
+      link = document.createElement('a');
+      link.className = 'nav-item';
+      link.setAttribute('data-delete-data-nav', '');
+      link.href = basePath;
+      link.innerHTML = `
+        <span class="nav-icon"><i class="fa-solid fa-trash"></i></span>
+        <span>Delete Data</span>
+      `;
+
+      const anchorNode =
+        sidebarNav.querySelector('.nav-item[href*="/settings/"]') ||
+        sidebarNav.querySelector('.nav-item[href*="/security/"]') ||
+        sidebarNav.lastElementChild;
+      if (anchorNode) {
+        sidebarNav.insertBefore(link, anchorNode);
+      } else {
+        sidebarNav.appendChild(link);
+      }
+    }
+
+    link.classList.toggle('active', isDeleteDataPath);
+  };
+
+  ensureAdminDeleteDataSidebarLink();
+  accordions = Array.from(document.querySelectorAll('.nav-toggle'));
+  subAccordions = Array.from(document.querySelectorAll('.nav-sub-toggle'));
+
   const closeMobileSidebar = () => {
     if (!isMobile()) return;
     document.body.classList.remove('sidebar-open');
     toggles.forEach((btn) => btn.setAttribute('aria-expanded', 'false'));
   };
 
+  const setSidebarPeekOpen = (enabled) => {
+    const shouldOpen = Boolean(enabled);
+    if (!document.body.classList.contains('sidebar-collapsed') || isMobile()) {
+      document.body.classList.remove('sidebar-peek-open');
+      return;
+    }
+    document.body.classList.toggle('sidebar-peek-open', shouldOpen);
+  };
+
+  const closeCollapsedAccordions = () => {
+    if (isMobile() || !document.body.classList.contains('sidebar-collapsed')) return;
+    const openedSections = Array.from(document.querySelectorAll('.nav-section.open'));
+    openedSections.forEach((section) => {
+      const toggleButton = section.querySelector('.nav-toggle');
+      section.classList.remove('open');
+      if (toggleButton) {
+        toggleButton.setAttribute('aria-expanded', 'false');
+      }
+      const body = section.querySelector('.nav-accordion-body');
+      if (body) {
+        body.style.display = '';
+        body.style.maxHeight = '';
+        body.style.overflow = '';
+      }
+    });
+    document.body.classList.remove('sidebar-peek-open');
+  };
+
   const applySidebarState = (collapsed) => {
     if (collapsed) {
       document.body.classList.add('sidebar-collapsed');
+      closeCollapsedAccordions();
     } else {
       document.body.classList.remove('sidebar-collapsed');
+      document.body.classList.remove('sidebar-peek-open');
     }
     storage.set('sidebar-collapsed', collapsed ? 'true' : 'false');
   };
@@ -573,6 +662,11 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const collapsed = document.body.classList.toggle('sidebar-collapsed');
+    if (collapsed) {
+      closeCollapsedAccordions();
+    } else {
+      document.body.classList.remove('sidebar-peek-open');
+    }
     storage.set('sidebar-collapsed', collapsed ? 'true' : 'false');
   };
 
@@ -594,10 +688,14 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', () => {
     if (isMobile()) {
       document.body.classList.remove('sidebar-collapsed');
+      document.body.classList.remove('sidebar-peek-open');
     } else {
       document.body.classList.remove('sidebar-open');
       const saved = storage.get('sidebar-collapsed');
       applySidebarState(saved === 'true');
+      if (saved !== 'true') {
+        closeCollapsedAccordions();
+      }
     }
   });
 
@@ -686,13 +784,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const sections = Array.from(document.querySelectorAll('.nav-section'));
     if (!sections.length) return;
     const activeSection = sections.find((section) => section.querySelector('.nav-sub.active'));
-    const preferredOpenSection = isAdminAccordionExclusive
-      ? activeSection || sections.find((section) => section.classList.contains('open')) || null
-      : null;
+    const collapsedDesktop = document.body.classList.contains('sidebar-collapsed') && !isMobile();
+    const preferredOpenSection = collapsedDesktop ? null : activeSection || null;
     sections.forEach((section) => {
-      const shouldOpen = isAdminAccordionExclusive
-        ? Boolean(preferredOpenSection && section === preferredOpenSection)
-        : section.classList.contains('open') || Boolean(activeSection && section === activeSection);
+      const shouldOpen = Boolean(preferredOpenSection && section === preferredOpenSection);
       const toggleButton = section.querySelector('.nav-toggle');
       const body = section.querySelector('.nav-accordion-body');
       section.classList.toggle('open', shouldOpen);
@@ -707,64 +802,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
-  // Save and restore sidebar accordion state
-  const saveSidebarState = () => {
-    const sections = Array.from(document.querySelectorAll('.nav-section'));
-    let expandedSections = sections
-      .filter((section) => section.classList.contains('open'))
-      .map((section) => section.querySelector('.nav-toggle')?.getAttribute('data-target'))
-      .filter((target) => target !== null);
-
-    if (isAdminAccordionExclusive && expandedSections.length > 1) {
-      expandedSections = expandedSections.slice(0, 1);
-    }
-    
-    try {
-      storage.set('sidebar-state', JSON.stringify(expandedSections));
-    } catch {
-      // Ignore storage errors
-    }
-  };
-
-  const restoreSidebarState = () => {
-    try {
-      const savedState = storage.get('sidebar-state');
-      if (!savedState) return;
-      const parsedState = JSON.parse(savedState);
-      const expandedSections = Array.isArray(parsedState)
-        ? parsedState.filter((entry) => typeof entry === 'string')
-        : [];
-      const sections = Array.from(document.querySelectorAll('.nav-section'));
-      const activeSection = sections.find((section) => section.querySelector('.nav-sub.active'));
-      const activeTarget = activeSection?.querySelector('.nav-toggle')?.getAttribute('data-target') || '';
-      const exclusiveTarget = isAdminAccordionExclusive
-        ? (activeTarget || expandedSections[0] || '')
-        : '';
-      
-      sections.forEach((section) => {
-        const target = section.querySelector('.nav-toggle')?.getAttribute('data-target');
-        const shouldBeOpen = isAdminAccordionExclusive
-          ? Boolean(exclusiveTarget && target === exclusiveTarget)
-          : expandedSections.includes(target);
-        const toggleButton = section.querySelector('.nav-toggle');
-        section.classList.toggle('open', shouldBeOpen);
-        if (toggleButton) {
-          toggleButton.setAttribute('aria-expanded', String(shouldBeOpen));
-        }
-        const body = section.querySelector('.nav-accordion-body');
-        if (body) {
-          body.style.display = shouldBeOpen ? 'block' : '';
-          body.style.maxHeight = '';
-          body.style.overflow = '';
-        }
-      });
-    } catch {
-      // Ignore parse errors and continue
-    }
-  };
-
   const closeSiblingAccordions = (currentSection) => {
-    if (!isAdminAccordionExclusive || !currentSection) return;
+    if (!isAccordionExclusive || !currentSection) return;
     const sections = Array.from(document.querySelectorAll('.nav-section'));
     sections.forEach((section) => {
       if (section === currentSection || !section.classList.contains('open')) return;
@@ -778,21 +817,22 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   normalizeAccordionState();
-  restoreSidebarState();
 
   // Main accordion menu items with smooth animation
   accordions.forEach((button) => {
     button.addEventListener('click', (e) => {
       const navUrl = button.dataset.navUrl;
       const caretClicked = Boolean(e.target.closest('.caret'));
-      if (navUrl && !caretClicked) {
+      const section = button.closest('.nav-section');
+      const hasSubmenu = Boolean(section?.querySelector('.nav-accordion-body .nav-sub'));
+      const isCollapsedMode = document.body.classList.contains('sidebar-collapsed') || isMobile();
+      if (navUrl && !caretClicked && (!hasSubmenu || !isCollapsedMode)) {
         window.location.href = navUrl;
         return;
       }
       e.preventDefault();
       e.stopPropagation();
       
-      const section = button.closest('.nav-section');
       if (!section) return;
 
       // Toggle current section
@@ -803,9 +843,9 @@ document.addEventListener('DOMContentLoaded', () => {
       animateAccordion(section, isOpen);
       section.classList.toggle('open', isOpen);
       button.setAttribute('aria-expanded', String(isOpen));
-      
-      // Save the sidebar state after toggling
-      saveSidebarState();
+      if (document.body.classList.contains('sidebar-collapsed') && !isMobile()) {
+        setSidebarPeekOpen(isOpen);
+      }
     });
   });
 
@@ -834,7 +874,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if (document.body.classList.contains('sidebar-open')) {
         closeMobileSidebar();
       }
+      if (document.body.classList.contains('sidebar-collapsed') && !isMobile()) {
+        closeCollapsedAccordions();
+      }
     });
+  });
+
+  document.addEventListener('click', (event) => {
+    if (isMobile() || !document.body.classList.contains('sidebar-collapsed')) return;
+    if (event.target.closest('.sidebar')) return;
+    closeCollapsedAccordions();
   });
 
   const closeAllNotificationDropdowns = () => {
@@ -1101,79 +1150,126 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const segments = normalizedPath.split('/').filter(Boolean);
     const prefixes = [];
-    for (let index = segments.length; index >= 1; index -= 1) {
+    const minimumDepth = segments.length > 1 ? 2 : 1;
+    for (let index = segments.length; index >= minimumDepth; index -= 1) {
       prefixes.push(`/${segments.slice(0, index).join('/')}`);
+    }
+    if (!prefixes.length) {
+      prefixes.push(normalizedPath);
     }
     return Array.from(new Set(prefixes));
   };
 
   const buildSidebarNotificationTargets = () => {
-    const nodes = Array.from(document.querySelectorAll('.sidebar-nav a[href], .sidebar-nav .nav-toggle[data-nav-url]'));
-    if (!nodes.length) {
+    const sidebarNav = document.querySelector('.sidebar-nav');
+    if (!sidebarNav) {
       return [];
     }
 
-    const targets = [];
-    const seen = new Set();
+    const targetsByKey = new Map();
     let hostCounter = 0;
 
-    nodes.forEach((node) => {
-      const rawUrl =
-        node.tagName === 'A' ? node.getAttribute('href') : node.getAttribute('data-nav-url');
+    const pushTarget = (host, rawUrl, role = 'section') => {
+      if (!host) return;
       const normalizedPath = normalizePanelPath(rawUrl);
       if (!normalizedPath) {
         return;
       }
-
-      let host = node;
-      if (node.classList.contains('nav-sub')) {
-        const parentToggle = node.closest('.nav-section')?.querySelector('.nav-toggle');
-        if (parentToggle) {
-          host = parentToggle;
-        }
-      }
-
       if (!host.dataset.notificationHostId) {
         hostCounter += 1;
         host.dataset.notificationHostId = `panel-notification-host-${hostCounter}`;
       }
-      const key = `${host.dataset.notificationHostId}:${normalizedPath}`;
-      if (seen.has(key)) {
+      const targetKey = `${host.dataset.notificationHostId}:${role}`;
+      if (!targetsByKey.has(targetKey)) {
+        targetsByKey.set(targetKey, {
+          host,
+          role,
+          prefixSet: new Set(),
+        });
+      }
+      const target = targetsByKey.get(targetKey);
+      buildPathPrefixes(normalizedPath).forEach((prefix) => {
+        if (prefix) {
+          target.prefixSet.add(prefix);
+        }
+      });
+    };
+
+    const sections = Array.from(sidebarNav.querySelectorAll(':scope > .nav-section'));
+    sections.forEach((section) => {
+      const toggle = section.querySelector(':scope > .nav-toggle');
+      const submenuLinks = Array.from(section.querySelectorAll(':scope > .nav-accordion-body a[href]'));
+      if (toggle && submenuLinks.length) {
+        submenuLinks.forEach((link) => {
+          const linkUrl = link.getAttribute('href');
+          pushTarget(toggle, linkUrl, 'section');
+          pushTarget(link, linkUrl, 'submenu');
+        });
         return;
       }
-      seen.add(key);
-      targets.push({
-        host,
-        prefixes: buildPathPrefixes(normalizedPath),
-      });
+      if (toggle) {
+        pushTarget(toggle, toggle.getAttribute('data-nav-url'), 'section');
+      }
     });
 
-    return targets;
+    const directLinks = Array.from(sidebarNav.querySelectorAll(':scope > a.nav-item[href]'));
+    directLinks.forEach((link) => {
+      pushTarget(link, link.getAttribute('href'), 'section');
+    });
+
+    return Array.from(targetsByKey.values()).map((target) => ({
+      host: target.host,
+      role: target.role,
+      prefixes: Array.from(target.prefixSet),
+    }));
   };
 
   const sidebarNotificationTargets = buildSidebarNotificationTargets();
 
-  const resolveSidebarNotificationHost = (noteUrl) => {
+  const resolveSidebarNotificationHosts = (noteUrl) => {
     const normalizedPath = normalizePanelPath(noteUrl);
     if (!normalizedPath || !sidebarNotificationTargets.length) {
-      return null;
+      return [];
     }
 
-    let bestHost = null;
-    let bestScore = -1;
+    let bestSectionTarget = null;
+    let bestSectionScore = -1;
+    let bestSubmenuTarget = null;
+    let bestSubmenuScore = -1;
+
     sidebarNotificationTargets.forEach((target) => {
+      let targetBestScore = -1;
       target.prefixes.forEach((prefix) => {
         if (!prefix) return;
         if (normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)) {
           const score = prefix.length;
-          if (score > bestScore) {
-            bestScore = score;
-            bestHost = target.host;
+          if (score > targetBestScore) {
+            targetBestScore = score;
           }
         }
       });
+      if (targetBestScore < 0) return;
+      if (target.role === 'submenu') {
+        if (targetBestScore > bestSubmenuScore) {
+          bestSubmenuScore = targetBestScore;
+          bestSubmenuTarget = target;
+        }
+        return;
+      }
+      if (targetBestScore > bestSectionScore) {
+        bestSectionScore = targetBestScore;
+        bestSectionTarget = target;
+      }
     });
-    return bestHost;
+
+    const hosts = [];
+    if (bestSectionTarget?.host) {
+      hosts.push(bestSectionTarget.host);
+    }
+    if (bestSubmenuTarget?.host && !hosts.includes(bestSubmenuTarget.host)) {
+      hosts.push(bestSubmenuTarget.host);
+    }
+    return hosts;
   };
 
   const clearSidebarSectionBadges = () => {
@@ -1216,12 +1312,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const sectionCounts = new Map();
+
+    const incrementCount = (map, host, amount = 1) => {
+      if (!host || amount < 1) return;
+      map.set(host, (map.get(host) || 0) + amount);
+    };
+
     rows.forEach((item) => {
-      const host = resolveSidebarNotificationHost(item.url);
-      if (!host) {
+      const hosts = resolveSidebarNotificationHosts(item.url);
+      if (!hosts.length) {
         return;
       }
-      sectionCounts.set(host, (sectionCounts.get(host) || 0) + 1);
+      Array.from(new Set(hosts)).forEach((host) => {
+        incrementCount(sectionCounts, host);
+      });
     });
 
     if (!sectionCounts.size) {
@@ -1244,9 +1348,31 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    const hideHosts = new Set(resolveSidebarNotificationHosts(window.location.pathname));
+
     sectionCounts.forEach((count, host) => {
+      if (hideHosts.has(host)) return;
       setSidebarHostBadgeCount(host, count);
     });
+  };
+
+  const countHiddenSidebarContextUnread = (items) => {
+    const currentHosts = new Set(resolveSidebarNotificationHosts(window.location.pathname));
+    if (!currentHosts.size) {
+      return 0;
+    }
+    const rows = Array.isArray(items) ? items : [];
+    return rows.reduce((total, item) => {
+      if (!item || !item.unread || !item.url) {
+        return total;
+      }
+      const hosts = resolveSidebarNotificationHosts(item.url);
+      if (!hosts.length) {
+        return total;
+      }
+      const belongsToCurrentContext = hosts.some((host) => currentHosts.has(host));
+      return belongsToCurrentContext ? total + 1 : total;
+    }, 0);
   };
 
   const renderPanelNotificationItems = (items) => {
@@ -1346,8 +1472,16 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   let panelNotificationPollHandle = null;
+  const markNotificationsSeenSilently = () =>
+    fetch(`${panelNotificationsApiUrl}?mark_seen=1`, {
+      credentials: 'same-origin',
+      keepalive: true,
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    }).catch(() => null);
+
   const refreshPanelNotifications = (markSeen = false) => {
-    if (!panelNotificationRoot) return Promise.resolve(null);
     const query = markSeen ? '?mark_seen=1' : '';
     return fetch(`${panelNotificationsApiUrl}${query}`, {
       credentials: 'same-origin',
@@ -1360,17 +1494,30 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!data || !data.success) return;
         const notificationUnread = Number(data.unread_count || 0);
         const messageUnread = Number(data.message_unread_count || 0);
-        setCountBadges(panelNotificationCountBadges, notificationUnread);
+        const rows = Array.isArray(data.items) ? data.items : [];
+        const hiddenContextCount = countHiddenSidebarContextUnread(rows);
+        const visibleNotificationUnread = Math.max(0, notificationUnread - hiddenContextCount);
+        setCountBadges(panelNotificationCountBadges, visibleNotificationUnread);
         setCountBadges(panelMessageCountBadges, messageUnread);
-        renderPanelNotificationItems(data.items || []);
-        updateSidebarSectionBadges(data.items || []);
+        if (panelNotificationRoot) {
+          renderPanelNotificationItems(rows);
+        }
+        updateSidebarSectionBadges(rows);
         return data;
       })
       .catch(() => null);
   };
 
-  if (panelNotificationRoot) {
-    const { readAllButton } = ensurePanelNotificationActions();
+  const shouldEnablePanelNotifications = Boolean(
+    panelNotificationRoot ||
+      (panelNotificationCountBadges && panelNotificationCountBadges.length) ||
+      (panelMessageCountBadges && panelMessageCountBadges.length) ||
+      (sidebarNotificationPlaceholders && sidebarNotificationPlaceholders.length) ||
+      (sidebarNotificationTargets && sidebarNotificationTargets.length)
+  );
+
+  if (shouldEnablePanelNotifications) {
+    const { readAllButton } = panelNotificationRoot ? ensurePanelNotificationActions() : {};
     if (readAllButton) {
       readAllButton.addEventListener('click', () => {
         const originalText = readAllButton.textContent;
@@ -1383,11 +1530,18 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    panelNotificationRoot.addEventListener('toggle', () => {
-      if (panelNotificationRoot.open) {
-        refreshPanelNotifications(false);
-      }
-    });
+    if (panelNotificationRoot) {
+      panelNotificationRoot.addEventListener('click', (event) => {
+        const actionLink = event.target.closest('[data-panel-notification-list] a[href]');
+        if (!actionLink) return;
+        markNotificationsSeenSilently();
+      });
+      panelNotificationRoot.addEventListener('toggle', () => {
+        if (panelNotificationRoot.open) {
+          refreshPanelNotifications(false);
+        }
+      });
+    }
 
     const startPanelNotificationPolling = () => {
       if (panelNotificationPollHandle) return;
@@ -1451,8 +1605,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && document.body.classList.contains('sidebar-open')) {
+    if (event.key !== 'Escape') return;
+    if (document.body.classList.contains('sidebar-open')) {
       closeMobileSidebar();
+      return;
+    }
+    if (document.body.classList.contains('sidebar-peek-open')) {
+      closeCollapsedAccordions();
     }
   });
 

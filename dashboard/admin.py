@@ -11,6 +11,7 @@ from .models import (
     CandidateProject,
     CandidateResume,
     CandidateSkill,
+    DeletedDataLog,
     Company,
     Consultancy,
     ConsultancyKycDocument,
@@ -43,3 +44,4 @@ admin.site.register(ConsultancyKycDocument)
 admin.site.register(AdminProfile)
 admin.site.register(SubscriptionPayment)
 admin.site.register(PaymentEventLog)
+admin.site.register(DeletedDataLog)

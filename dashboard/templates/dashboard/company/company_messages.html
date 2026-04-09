@@ -20,10 +20,20 @@
         <p class="muted">Applicant threads only.</p>
       </div>
     </div>
+    <div class="chat-thread-search">
+      <div style="display:flex; gap:8px;">
+        <input type="search" data-thread-search placeholder="Search conversations by name, job, or application..." />
+        <button type="button" class="action-btn" data-thread-search-btn>Search</button>
+      </div>
+    </div>
     <div class="chat-thread-list">
       {% if thread_cards %}
         {% for card in thread_cards %}
-        <a class="chat-thread {% if active_thread and card.thread.id == active_thread.id %}active{% endif %}" href="?thread={{ card.thread.id }}">
+        <a
+          class="chat-thread {% if active_thread and card.thread.id == active_thread.id %}active{% endif %}"
+          href="?thread={{ card.thread.id }}"
+          data-thread-search-text="{{ card.partner_name|default:''|lower }} {{ card.job_title|default:''|lower }} {{ card.application_id|default:''|lower }}"
+        >
           <div class="thread-avatar">
             {% if card.thread.candidate and card.thread.candidate.profile_image %}
             <img src="{{ card.thread.candidate.profile_image.url }}" alt="{{ card.partner_name|default:'Candidate' }}" />

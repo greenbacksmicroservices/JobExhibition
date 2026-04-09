@@ -294,17 +294,19 @@
           <div class="card-header">
             <div>
               <h3>Bulk Email</h3>
-              <p class="muted">Subject, rich text editor, attachments, and recipient targeting.</p>
+              <p class="muted">Subject, rich text editor, and targeted recipients with live delivery status.</p>
             </div>
             <div class="header-badges">
-              <span class="badge info">Open Rate Tracking (Advanced)</span>
+              <span class="badge info">SMTP Sender: {{ email_sender_address|default:"Not configured" }}</span>
             </div>
           </div>
-          <form class="comm-form">
+          <form class="comm-form" method="post" data-server-mode="1">
+            {% csrf_token %}
+            <input type="hidden" name="channel" value="Email" />
             <div class="form-grid">
               <div class="form-group" style="grid-column: 1 / -1;">
                 <label>Subject</label>
-                <input type="text" id="bulkEmailSubject" placeholder="Enter email subject" />
+                <input type="text" id="bulkEmailSubject" name="subject" placeholder="Enter email subject" />
               </div>
               <div class="form-group" style="grid-column: 1 / -1;">
                 <label>Message Editor (Rich Text)</label>
@@ -316,6 +318,7 @@
                   <button type="button" class="tool-btn"><i class="fa-solid fa-list"></i></button>
                 </div>
                 <div class="rich-editor" id="bulkEmailEditor" contenteditable="true" data-placeholder="Write your email message..."></div>
+                <textarea name="message" id="bulkEmailMessage" hidden></textarea>
                 <div class="variable-row">
                   <span class="muted">Dynamic variables:</span>
                   <div class="variable-chips">
@@ -326,26 +329,25 @@
                 </div>
               </div>
               <div class="form-group">
-                <label>Attachments</label>
-                <input type="file" multiple />
+                <label>Recipient Scope</label>
+                <select name="recipient_scope" data-custom-select="admin-email-custom">
+                  <option value="all">All Users</option>
+                  <option value="companies">Companies</option>
+                  <option value="consultancies">Consultancies</option>
+                  <option value="candidates">Candidates</option>
+                  <option value="custom">Custom Candidate Selection</option>
+                </select>
               </div>
               <div class="form-group">
-                <label>Select Recipients</label>
-                <div class="checkbox-grid">
-                  <label><input type="checkbox" /> All Applicants</label>
-                  <label><input type="checkbox" /> Shortlisted</label>
-                  <label><input type="checkbox" /> Interview Scheduled</label>
-                  <label><input type="checkbox" /> Selected</label>
-                  <label><input type="checkbox" data-custom-toggle="admin-email-custom" /> Custom Selected</label>
-                </div>
+                <label>Custom Candidate Picker</label>
                 {% include "dashboard/includes/custom_candidate_picker.html" with group_id="admin-email-custom" %}
               </div>
             </div>
             <div class="form-actions">
-              <button type="button" class="btn primary">Send Now</button>
-              <button type="button" class="btn ghost">Schedule Later</button>
+              <button type="submit" class="btn primary" name="action" value="send_now">Send Now</button>
+              <button type="submit" class="btn ghost" name="action" value="schedule_later">Schedule Later</button>
               <button type="button" class="btn ghost" id="emailPreviewBtn" data-bs-toggle="modal" data-bs-target="#emailPreviewModal">Preview</button>
-              <input type="datetime-local" />
+              <input type="datetime-local" name="schedule_at" />
             </div>
           </form>
         </section>
@@ -354,35 +356,52 @@
           <div class="card-header">
             <div>
               <h3>Email History</h3>
-              <p class="muted">Recent bulk email campaigns and status.</p>
+              <p class="muted">Latest bulk email sends and scheduled campaigns.</p>
             </div>
           </div>
           <div class="table-responsive">
             <table class="table table-hover">
               <thead class="table-light">
                 <tr>
+                  <th>Channel</th>
                   <th>Subject</th>
                   <th>Audience</th>
                   <th>Sent On</th>
+                  <th>Recipients</th>
+                  <th>Delivered</th>
+                  <th>Failed</th>
                   <th>Status</th>
                   <th>Open Rate</th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td>Hiring Drive - March</td>
-                  <td>All Applicants</td>
-                  <td>2026-02-12</td>
-                  <td><span class="badge success">Delivered</span></td>
-                  <td>42%</td>
-                </tr>
-                <tr>
-                  <td>Shortlisted Interview Update</td>
-                  <td>Shortlisted</td>
-                  <td>2026-02-10</td>
-                  <td><span class="badge warning">Scheduled</span></td>
-                  <td>-</td>
-                </tr>
+                {% if sent_history_items %}
+                  {% for row in sent_history_items %}
+                  <tr>
+                    <td><span class="badge info">{{ row.channel|default:"Email" }}</span></td>
+                    <td>{{ row.title|default:"-" }}</td>
+                    <td>{{ row.audience|default:"All Users" }}</td>
+                    <td>{{ row.date_time|default:row.created_on|default:"-" }}</td>
+                    <td>{{ row.recipients|default:0 }}</td>
+                    <td>{{ row.delivered|default:0 }}</td>
+                    <td>{{ row.failed|default:0 }}</td>
+                    <td>
+                      {% if row.status == "Delivered" %}
+                        <span class="badge success">Delivered</span>
+                      {% elif row.status == "Scheduled" %}
+                        <span class="badge warning">Scheduled</span>
+                      {% else %}
+                        <span class="badge danger">{{ row.status|default:"Failed" }}</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ row.open_rate|default:"-" }}</td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="9" class="muted text-center">No email campaign activity yet.</td>
+                  </tr>
+                {% endif %}
               </tbody>
             </table>
           </div>
@@ -967,10 +986,20 @@
                 <p class="muted">Live monitoring with admin reply access.</p>
               </div>
             </div>
+            <div class="chat-thread-search">
+              <div style="display:flex; gap:8px;">
+                <input type="search" data-thread-search placeholder="Search conversations by name, job, or application..." />
+                <button type="button" class="action-btn" data-thread-search-btn>Search</button>
+              </div>
+            </div>
             <div class="chat-thread-list">
               {% if thread_cards %}
                 {% for card in thread_cards %}
-                <a class="chat-thread {% if active_thread and card.thread.id == active_thread.id %}active{% endif %}" href="?thread={{ card.thread.id }}">
+                <a
+                  class="chat-thread {% if active_thread and card.thread.id == active_thread.id %}active{% endif %}"
+                  href="?thread={{ card.thread.id }}"
+                  data-thread-search-text="{{ card.partner_name|default:''|lower }} {{ card.job_title|default:''|lower }} {{ card.application_id|default:''|lower }}"
+                >
                   <div class="thread-avatar">{{ card.partner_name|default:"?"|first|upper }}</div>
                   <div class="thread-meta">
                     <strong>{{ card.partner_name }}</strong>

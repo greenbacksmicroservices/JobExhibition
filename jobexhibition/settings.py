@@ -419,6 +419,9 @@ if not DEBUG:
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 SERVE_MEDIA_FILES = _env_bool("SERVE_MEDIA_FILES", default=True)
+USE_DATABASE_MEDIA_STORAGE = _env_bool("USE_DATABASE_MEDIA_STORAGE", default=True)
+if USE_DATABASE_MEDIA_STORAGE:
+    DEFAULT_FILE_STORAGE = "dashboard.storage.DatabaseMediaStorage"
 
 # Email (SMTP) configuration
 EMAIL_BACKEND = _env_str("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")

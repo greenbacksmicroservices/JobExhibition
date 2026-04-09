@@ -236,6 +236,9 @@
                               <a class="menu-item" href="{% url 'dashboard:admin_profile_photo' %}">
                                 <i class="fa-solid fa-image"></i> Upload Photo
                               </a>
+                              <a class="menu-item" href="{% url 'dashboard:admin_profile' %}#panel-logo">
+                                <i class="fa-solid fa-flag"></i> Upload Panel Logo
+                              </a>
                               <a class="menu-item" href="{% url 'dashboard:admin_profile_password' %}">
                                 <i class="fa-solid fa-key"></i> Change Password
                               </a>
@@ -252,7 +255,7 @@
           <div>
             <p class="eyebrow">Admin Profile</p>
             <h2>{{ page_title|default:"Profile & Security" }}</h2>
-            <p class="muted">{{ page_subtitle|default:"Update personal details, password, and profile photo." }}</p>
+            <p class="muted">{{ page_subtitle|default:"Update personal details, password, profile photo, and panel branding." }}</p>
           </div>
         </section>
 
@@ -319,7 +322,7 @@
         </section>
         {% endif %}
 
-        {% if section == "all" or section == "photo" or section == "password" %}
+        {% if section == "all" or section == "photo" or section == "password" or section == "branding" or section == "media-vault" %}
         <section class="card-grid section-block">
           {% if section == "all" or section == "photo" %}
           <article class="card" id="profile-photo">
@@ -354,6 +357,38 @@
           </article>
 
           {% endif %}
+          {% if section == "all" or section == "branding" %}
+          <article class="card" id="panel-logo">
+            <div class="card-header">
+              <div>
+                <h3>Panel Logo</h3>
+                <p class="muted">Upload a logo that appears across all panels in realtime.</p>
+              </div>
+            </div>
+            <div class="logo-upload">
+              <div class="logo-preview">
+                {% if panel_logo_url %}
+                  <img src="{{ panel_logo_url }}" alt="Panel logo" />
+                {% else %}
+                  <img src="{% static 'dashboard/img/je-logo.svg' %}" alt="Default panel logo" />
+                {% endif %}
+              </div>
+              <div class="logo-actions">
+                <form method="post" enctype="multipart/form-data">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="upload_logo" />
+                  <input type="file" name="logo" accept="image/*" />
+                  <button class="btn primary" type="submit">Upload Logo</button>
+                </form>
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="remove_logo" />
+                  <button class="btn ghost" type="submit">Remove Logo</button>
+                </form>
+              </div>
+            </div>
+          </article>
+          {% endif %}
           {% if section == "all" or section == "password" %}
           <article class="card" id="change-password">
             <div class="card-header">
@@ -379,6 +414,57 @@
             </form>
           </article>
           {% endif %}
+        </section>
+        {% endif %}
+
+        {% if section == "all" or section == "media-vault" %}
+        <section class="card section-block" id="media-vault">
+          <div class="card-header">
+            <div>
+              <h3>Database Media Vault</h3>
+              <p class="muted">All uploaded photos and documents from panels are stored directly in database.</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Type</th>
+                  <th>Size</th>
+                  <th>Uploaded At</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if media_assets %}
+                  {% for media in media_assets %}
+                  <tr>
+                    <td class="mono">{{ media.original_name }}</td>
+                    <td>{{ media.content_type }}</td>
+                    <td>{{ media.size_label }}</td>
+                    <td>{{ media.uploaded_at|date:"d M Y, h:i A" }}</td>
+                    <td>
+                      <div class="table-actions">
+                        <a class="btn btn-sm btn-outline-primary" href="{{ media.url }}" target="_blank" rel="noopener">View</a>
+                        <form method="post" onsubmit="return confirm('Delete this media from database storage?');">
+                          {% csrf_token %}
+                          <input type="hidden" name="action" value="delete_media_asset" />
+                          <input type="hidden" name="file_key" value="{{ media.file_key }}" />
+                          <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="5" class="muted text-center">No uploaded media assets found.</td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
         </section>
         {% endif %}
         {% endif %}

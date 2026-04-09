@@ -308,6 +308,24 @@
             <h2>{{ page_title|default:"Support Dashboard" }}</h2>
             <p class="muted">{{ page_subtitle|default:"Overview of ticket workload." }}</p>
           </div>
+          <div class="header-badges">
+            <span class="badge success" id="supportLiveStatus">Realtime</span>
+            <span class="badge info" id="supportLastSync">Syncing...</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <h3>Live Ticket Search</h3>
+              <p class="muted">Filter support tickets instantly by ticket id, company, status, or subject.</p>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <input type="search" data-support-search placeholder="Search tickets across visible table..." />
+            </div>
+          </div>
         </section>
 
         {% if support_section == "dashboard" %}

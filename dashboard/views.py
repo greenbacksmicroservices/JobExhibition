@@ -40,7 +40,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime, parse_time
-from django.utils.html import escape
+from django.utils.html import escape, strip_tags
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -96,6 +96,7 @@ from .models import (
     SubscriptionPayment,
     SubscriptionPlan,
     SubscriptionLog,
+    StoredMediaAsset,
 )
 from .otp.sms import send_otp_sms
 
@@ -214,12 +215,82 @@ PRIORITY_APPLICATION_TAG = "[PRIORITY_APPLICATION]"
 CANDIDATE_PREMIUM_PLAN_CODE = "Basic"
 CANDIDATE_PREMIUM_MONTHLY_PRICE = 199
 DELETED_DATA_CATEGORIES = ("company", "consultancy", "candidate")
+DELETED_DATA_ENTITY_FILTERS = ("all", "jobs", "candidates")
 CANDIDATE_POST_JOB_RESTRICTED_MESSAGE = (
     "You are logged in as a candidate and cannot post jobs. "
     "Only verified company or consultancy accounts can post new jobs."
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_file_url(file_field):
+    if not file_field:
+        return ""
+    try:
+        return file_field.url or ""
+    except (ValueError, OSError):
+        return ""
+
+
+def _platform_logo_url_for_request(request):
+    if request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser):
+        profile = getattr(request.user, "admin_profile", None)
+        if profile and getattr(profile, "logo", None):
+            current_url = _safe_file_url(profile.logo)
+            if current_url:
+                return current_url
+    latest_with_logo = (
+        AdminProfile.objects.filter(logo__isnull=False)
+        .exclude(logo="")
+        .order_by("-updated_at", "-id")
+        .first()
+    )
+    if latest_with_logo and getattr(latest_with_logo, "logo", None):
+        return _safe_file_url(latest_with_logo.logo)
+    return ""
+
+
+def _bulk_email_recipients_from_request(request):
+    target_scope = (request.POST.get("recipient_scope") or "all").strip().lower()
+    selected_candidate_ids = []
+    for item in request.POST.getlist("custom_candidate_ids"):
+        value = str(item or "").strip()
+        if value.isdigit():
+            selected_candidate_ids.append(int(value))
+    if target_scope == "custom" and selected_candidate_ids:
+        rows = Candidate.objects.filter(id__in=selected_candidate_ids).values_list("email", flat=True)
+        return sorted({(email or "").strip().lower() for email in rows if (email or "").strip()})
+    if target_scope == "companies":
+        rows = Company.objects.values_list("email", flat=True)
+        return sorted({(email or "").strip().lower() for email in rows if (email or "").strip()})
+    if target_scope == "consultancies":
+        rows = Consultancy.objects.values_list("email", flat=True)
+        return sorted({(email or "").strip().lower() for email in rows if (email or "").strip()})
+    if target_scope == "candidates":
+        rows = Candidate.objects.values_list("email", flat=True)
+        return sorted({(email or "").strip().lower() for email in rows if (email or "").strip()})
+
+    company_rows = Company.objects.values_list("email", flat=True)
+    consultancy_rows = Consultancy.objects.values_list("email", flat=True)
+    candidate_rows = Candidate.objects.values_list("email", flat=True)
+    recipients = set()
+    for email in list(company_rows) + list(consultancy_rows) + list(candidate_rows):
+        value = (email or "").strip().lower()
+        if value:
+            recipients.add(value)
+    return sorted(recipients)
+
+
+def _human_file_size(size_value):
+    size = int(size_value or 0)
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    if size < 1024 * 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f} MB"
+    return f"{size / (1024 * 1024 * 1024):.1f} GB"
 
 
 _HOST_TARGET_PATTERN = re.compile(
@@ -6167,6 +6238,35 @@ def panel_notifications_api(request):
             "items": items,
         }
     )
+
+
+@require_http_methods(["GET"])
+def api_platform_branding(request):
+    return JsonResponse(
+        {
+            "success": True,
+            "logo_url": _platform_logo_url_for_request(request),
+        }
+    )
+
+
+@require_http_methods(["GET"])
+def db_media_file_view(request, file_key):
+    normalized_key = (file_key or "").strip().lstrip("/")
+    if not normalized_key:
+        return HttpResponse(status=404)
+
+    asset = StoredMediaAsset.objects.filter(file_key=normalized_key).first()
+    if not asset:
+        return HttpResponse(status=404)
+
+    data = bytes(asset.content or b"")
+    guessed_type, _ = mimetypes.guess_type(asset.original_name or normalized_key)
+    content_type = (asset.content_type or "").strip() or guessed_type or "application/octet-stream"
+    response = HttpResponse(data, content_type=content_type)
+    response["Content-Length"] = str(asset.size or len(data))
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 def _safe_session_get(request, key, default=None):
@@ -14542,6 +14642,19 @@ def subscriptions_manual_assign_view(request):
 
 @login_required
 def advertisement_management_view(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
+
+    def _is_valid_media(upload):
+        content_type = (getattr(upload, "content_type", "") or "").lower()
+        ext = os.path.splitext(upload.name)[1].lower()
+        return bool(
+            content_type.startswith("image/")
+            or content_type.startswith("video/")
+            or ext in AD_IMAGE_EXTENSIONS
+            or ext in AD_VIDEO_EXTENSIONS
+        )
+
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
 
@@ -14556,14 +14669,7 @@ def advertisement_management_view(request):
                 messages.error(request, "Please choose an image or video to upload.")
                 return redirect("dashboard:advertisement_management")
 
-            content_type = (getattr(media_file, "content_type", "") or "").lower()
-            ext = os.path.splitext(media_file.name)[1].lower()
-            if not (
-                content_type.startswith("image/")
-                or content_type.startswith("video/")
-                or ext in AD_IMAGE_EXTENSIONS
-                or ext in AD_VIDEO_EXTENSIONS
-            ):
+            if not _is_valid_media(media_file):
                 messages.error(request, "Only image or video files are allowed.")
                 return redirect("dashboard:advertisement_management")
 
@@ -14572,9 +14678,63 @@ def advertisement_management_view(request):
             messages.success(request, "Media uploaded successfully for this advertisement.")
             return redirect("dashboard:advertisement_management")
 
+        if action == "delete_ad":
+            ad_id = (request.POST.get("ad_id") or "").strip()
+            ad = Advertisement.objects.filter(id=ad_id).first()
+            if not ad:
+                messages.error(request, "Advertisement not found.")
+                return redirect("dashboard:advertisement_management")
+            ad.delete()
+            messages.success(request, "Advertisement deleted successfully.")
+            return redirect("dashboard:advertisement_management")
+
+        if action == "update_ad":
+            ad_id = (request.POST.get("ad_id") or "").strip()
+            ad = Advertisement.objects.filter(id=ad_id).first()
+            if not ad:
+                messages.error(request, "Advertisement not found.")
+                return redirect("dashboard:advertisement_management")
+
+            audience = (request.POST.get("audience") or ad.audience or "").strip()
+            segment = (request.POST.get("segment") or "").strip()
+            title = (request.POST.get("title") or "").strip()
+            message_body = (request.POST.get("message") or "").strip()
+            media_file = request.FILES.get("media_file")
+            is_active_raw = (request.POST.get("is_active") or "").strip().lower()
+            is_active = is_active_raw in {"1", "true", "yes", "on", "active"}
+
+            if audience not in {"company", "consultancy", "candidate"}:
+                messages.error(request, "Invalid audience selected.")
+                return redirect("dashboard:advertisement_management")
+            if media_file and not _is_valid_media(media_file):
+                messages.error(request, "Only image or video files are allowed.")
+                return redirect("dashboard:advertisement_management")
+            if not message_body and not media_file and not ad.media_file:
+                messages.error(request, "Message is required when no media is attached.")
+                return redirect("dashboard:advertisement_management")
+
+            if is_active:
+                conflict_qs = Advertisement.objects.filter(audience=audience, is_active=True).exclude(id=ad.id)
+                if segment:
+                    conflict_qs = conflict_qs.filter(segment=segment)
+                else:
+                    conflict_qs = conflict_qs.filter(Q(segment="") | Q(segment__isnull=True))
+                conflict_qs.update(is_active=False)
+
+            ad.audience = audience
+            ad.segment = segment
+            ad.title = title
+            ad.message = message_body
+            ad.is_active = is_active
+            if media_file:
+                ad.media_file = media_file
+            ad.save()
+            messages.success(request, "Advertisement updated successfully.")
+            return redirect("dashboard:advertisement_management")
+
         audience = (request.POST.get("audience") or "").strip()
         segment = (request.POST.get("segment") or "").strip()
-        message = (request.POST.get("message") or "").strip()
+        message_body = (request.POST.get("message") or "").strip()
         title = (request.POST.get("title") or "").strip()
         media_file = request.FILES.get("media_file")
         has_error = False
@@ -14584,21 +14744,13 @@ def advertisement_management_view(request):
         elif audience not in ["company", "consultancy", "candidate"]:
             messages.error(request, "Invalid audience selected.")
             has_error = True
-        elif not message and not media_file:
+        elif not message_body and not media_file:
             messages.error(request, "Message or media is required.")
             has_error = True
-        elif media_file:
-            content_type = (getattr(media_file, "content_type", "") or "").lower()
-            ext = os.path.splitext(media_file.name)[1].lower()
-            if not (
-                content_type.startswith("image/")
-                or content_type.startswith("video/")
-                or ext in AD_IMAGE_EXTENSIONS
-                or ext in AD_VIDEO_EXTENSIONS
-            ):
-                messages.error(request, "Only image or video files are allowed.")
-                has_error = True
-                return redirect("dashboard:advertisement_management")
+        elif media_file and not _is_valid_media(media_file):
+            messages.error(request, "Only image or video files are allowed.")
+            has_error = True
+            return redirect("dashboard:advertisement_management")
         if has_error:
             return redirect("dashboard:advertisement_management")
 
@@ -14616,7 +14768,7 @@ def advertisement_management_view(request):
             audience=audience,
             segment=segment,
             title=title,
-            message=message,
+            message=message_body,
             media_file=media_file,
             is_active=True,
             posted_by=request.user.username or "Admin",
@@ -14627,22 +14779,62 @@ def advertisement_management_view(request):
             messages.success(request, "Advertisement posted successfully.")
         return redirect("dashboard:advertisement_management")
 
-    recent_ads = Advertisement.objects.filter(is_active=True).order_by("-created_at")[:10]
-    return render(request, "dashboard/advertisement_management.html", {"recent_ads": recent_ads})
+    recent_ads = Advertisement.objects.order_by("-created_at", "-id")[:120]
+    selected_view_ad = None
+    selected_ad_id = (request.GET.get("view") or "").strip()
+    if selected_ad_id:
+        selected_view_ad = Advertisement.objects.filter(id=selected_ad_id).first()
+    return render(
+        request,
+        "dashboard/advertisement_management.html",
+        {
+            "recent_ads": recent_ads,
+            "selected_view_ad": selected_view_ad,
+        },
+    )
 
 
 @login_required
 def communication_center_view(request):
-    return render(
-        request,
-        "dashboard/communication_center.html",
-        {
-            "comm_section": "bulk-email",
-            "page_title": "Bulk Email",
-            "page_subtitle": "Send email campaigns with subject, rich text editor, and attachments.",
-            "communication_candidates": _communication_candidate_options(),
-        },
-    )
+    return communication_bulk_email_view(request)
+
+
+def _admin_comm_session_key(user_id, suffix):
+    return f"admin_comm_{suffix}_{user_id}"
+
+
+def _admin_comm_load(request, user_id, suffix):
+    payload = request.session.get(_admin_comm_session_key(user_id, suffix)) or []
+    return payload if isinstance(payload, list) else []
+
+
+def _admin_comm_store(request, user_id, suffix, value):
+    request.session[_admin_comm_session_key(user_id, suffix)] = value
+    request.session.modified = True
+
+
+def _admin_comm_scope_label(scope_value):
+    mapping = {
+        "all": "All Users",
+        "companies": "Companies",
+        "consultancies": "Consultancies",
+        "candidates": "Candidates",
+        "custom": "Custom Selection",
+    }
+    return mapping.get((scope_value or "").strip().lower(), "All Users")
+
+
+def _admin_communication_context(request, *, comm_section, page_title, page_subtitle):
+    owner_id = request.user.id or 0
+    return {
+        "comm_section": comm_section,
+        "page_title": page_title,
+        "page_subtitle": page_subtitle,
+        "communication_candidates": _communication_candidate_options(),
+        "sent_history_items": _admin_comm_load(request, owner_id, "sent"),
+        "scheduled_message_items": _admin_comm_load(request, owner_id, "scheduled"),
+        "email_sender_address": getattr(settings, "EMAIL_HOST_USER", ""),
+    }
 
 
 @login_required
@@ -14799,99 +14991,226 @@ def api_thread_send_message(request, thread_id):
 
 @login_required
 def communication_bulk_email_view(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
+
+    owner_id = request.user.id or 0
+    sent_history = _admin_comm_load(request, owner_id, "sent")
+    scheduled_messages = _admin_comm_load(request, owner_id, "scheduled")
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip().lower()
+        now = timezone.localtime(timezone.now())
+        now_display = now.strftime("%d %b %Y, %I:%M %p")
+        scope = (request.POST.get("recipient_scope") or "all").strip().lower()
+        audience_label = _admin_comm_scope_label(scope)
+        subject = (request.POST.get("subject") or "").strip() or "Job Exhibition Update"
+        message_html = (request.POST.get("message") or "").strip()
+        message_text = strip_tags(message_html).strip() if message_html else ""
+        schedule_at = (request.POST.get("schedule_at") or "").strip()
+        recipients = _bulk_email_recipients_from_request(request)
+        entry_id = f"{int(timezone.now().timestamp() * 1000)}"
+
+        if action == "schedule_later":
+            if not schedule_at:
+                messages.error(request, "Please choose date and time for scheduling.")
+                return redirect(request.path)
+            if not message_text and not message_html:
+                messages.error(request, "Please type a message before scheduling.")
+                return redirect(request.path)
+            if not recipients:
+                messages.error(request, "No valid recipient email addresses found.")
+                return redirect(request.path)
+            scheduled_entry = {
+                "id": entry_id,
+                "channel": "Email",
+                "title": subject,
+                "audience": audience_label,
+                "scheduled_for": schedule_at.replace("T", " "),
+                "created_on": now_display,
+                "recipients": len(recipients),
+            }
+            scheduled_messages = [scheduled_entry] + scheduled_messages[:149]
+            _admin_comm_store(request, owner_id, "scheduled", scheduled_messages)
+            history_entry = {
+                "id": entry_id,
+                "channel": "Email",
+                "title": subject,
+                "audience": audience_label,
+                "date_time": now_display,
+                "recipients": len(recipients),
+                "delivered": 0,
+                "failed": 0,
+                "status": "Scheduled",
+                "open_rate": "-",
+            }
+            sent_history = [history_entry] + sent_history[:299]
+            _admin_comm_store(request, owner_id, "sent", sent_history)
+            messages.success(request, "Bulk email scheduled successfully.")
+            return redirect(request.path)
+
+        if action != "send_now":
+            messages.error(request, "Unsupported email action.")
+            return redirect(request.path)
+
+        if not message_text and not message_html:
+            messages.error(request, "Please type a message before sending.")
+            return redirect(request.path)
+        if not recipients:
+            messages.error(request, "No valid recipient email addresses found.")
+            return redirect(request.path)
+
+        sent_total = 0
+        error_text = ""
+        batch_size = 80
+        try:
+            for index in range(0, len(recipients), batch_size):
+                recipient_batch = recipients[index : index + batch_size]
+                batch_sent = send_mail(
+                    subject,
+                    message_text or "Job Exhibition update",
+                    getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                    recipient_batch,
+                    fail_silently=False,
+                    html_message=message_html or None,
+                )
+                if batch_sent:
+                    sent_total += len(recipient_batch)
+        except Exception as exc:
+            error_text = str(exc)
+            logger.warning("Bulk email send failed: %s", exc)
+
+        failed_count = max(len(recipients) - sent_total, 0)
+        status_label = "Delivered" if sent_total else "Failed"
+        history_entry = {
+            "id": entry_id,
+            "channel": "Email",
+            "title": subject,
+            "audience": audience_label,
+            "date_time": now_display,
+            "recipients": len(recipients),
+            "delivered": sent_total,
+            "failed": failed_count,
+            "status": status_label,
+            "open_rate": "-",
+        }
+        sent_history = [history_entry] + sent_history[:299]
+        _admin_comm_store(request, owner_id, "sent", sent_history)
+
+        if sent_total:
+            messages.success(request, f"Bulk email sent to {sent_total} recipient(s).")
+        else:
+            messages.error(
+                request,
+                f"Bulk email failed. {error_text or 'Please verify SMTP credentials and recipient list.'}",
+            )
+        return redirect(request.path)
+
     return render(
         request,
         "dashboard/communication_center.html",
-        {
-            "comm_section": "bulk-email",
-            "page_title": "Bulk Email",
-            "page_subtitle": "Send email campaigns with subject, rich text editor, and attachments.",
-            "communication_candidates": _communication_candidate_options(),
-        },
+        _admin_communication_context(
+            request,
+            comm_section="bulk-email",
+            page_title="Bulk Email",
+            page_subtitle="Send email campaigns with subject, rich text editor, and attachments.",
+        ),
     )
 
 
 @login_required
 def communication_bulk_sms_view(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
     return render(
         request,
         "dashboard/communication_center.html",
-        {
-            "comm_section": "bulk-sms",
-            "page_title": "Bulk SMS",
-            "page_subtitle": "Send SMS messages with character limits and delivery reports.",
-            "communication_candidates": _communication_candidate_options(),
-        },
+        _admin_communication_context(
+            request,
+            comm_section="bulk-sms",
+            page_title="Bulk SMS",
+            page_subtitle="Send SMS messages with character limits and delivery reports.",
+        ),
     )
 
 
 @login_required
 def communication_notifications_view(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
     return render(
         request,
         "dashboard/communication_center.html",
-        {
-            "comm_section": "notifications",
-            "page_title": "Notifications",
-            "page_subtitle": "In-app alerts with read/unread tracking.",
-            "communication_candidates": _communication_candidate_options(),
-        },
+        _admin_communication_context(
+            request,
+            comm_section="notifications",
+            page_title="Notifications",
+            page_subtitle="In-app alerts with read/unread tracking.",
+        ),
     )
 
 
 @login_required
 def communication_whatsapp_view(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
     return render(
         request,
         "dashboard/communication_center.html",
-        {
-            "comm_section": "whatsapp",
-            "page_title": "WhatsApp Alerts",
-            "page_subtitle": "Send approved WhatsApp templates with delivery status.",
-            "communication_candidates": _communication_candidate_options(),
-        },
+        _admin_communication_context(
+            request,
+            comm_section="whatsapp",
+            page_title="WhatsApp Alerts",
+            page_subtitle="Send approved WhatsApp templates with delivery status.",
+        ),
     )
 
 
 @login_required
 def communication_templates_view(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
     return render(
         request,
         "dashboard/communication_center.html",
-        {
-            "comm_section": "templates",
-            "page_title": "Message Templates",
-            "page_subtitle": "Reusable templates with dynamic variables for faster outreach.",
-            "communication_candidates": _communication_candidate_options(),
-        },
+        _admin_communication_context(
+            request,
+            comm_section="templates",
+            page_title="Message Templates",
+            page_subtitle="Reusable templates with dynamic variables for faster outreach.",
+        ),
     )
 
 
 @login_required
 def communication_sent_history_view(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
     return render(
         request,
         "dashboard/communication_center.html",
-        {
-            "comm_section": "sent-history",
-            "page_title": "Sent History",
-            "page_subtitle": "Track email, SMS, WhatsApp, and notification delivery status.",
-            "communication_candidates": _communication_candidate_options(),
-        },
+        _admin_communication_context(
+            request,
+            comm_section="sent-history",
+            page_title="Sent History",
+            page_subtitle="Track email, SMS, WhatsApp, and notification delivery status.",
+        ),
     )
 
 
 @login_required
 def communication_scheduled_view(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("dashboard:login")
     return render(
         request,
         "dashboard/communication_center.html",
-        {
-            "comm_section": "scheduled",
-            "page_title": "Scheduled Messages",
-            "page_subtitle": "Plan future sends with automatic delivery and cancellation options.",
-            "communication_candidates": _communication_candidate_options(),
-        },
+        _admin_communication_context(
+            request,
+            comm_section="scheduled",
+            page_title="Scheduled Messages",
+            page_subtitle="Plan future sends with automatic delivery and cancellation options.",
+        ),
     )
 
 
@@ -14902,7 +15221,7 @@ def admin_profile_view(request, section="all"):
 
     profile, _ = AdminProfile.objects.get_or_create(user=request.user)
     section = (section or "all").strip().lower()
-    valid_sections = {"all", "profile", "photo", "password", "last-login"}
+    valid_sections = {"all", "profile", "photo", "password", "last-login", "branding", "media-vault"}
     if section not in valid_sections:
         section = "all"
 
@@ -14936,6 +15255,36 @@ def admin_profile_view(request, section="all"):
                 messages.success(request, "Profile photo removed.")
             return redirect(request.path)
 
+        if action == "upload_logo":
+            if request.FILES.get("logo"):
+                profile.logo = request.FILES["logo"]
+                profile.save(update_fields=["logo"])
+                messages.success(request, "Panel logo updated successfully.")
+            else:
+                messages.error(request, "Please choose a logo to upload.")
+            return redirect(request.path)
+
+        if action == "remove_logo":
+            if profile.logo:
+                profile.logo.delete(save=False)
+                profile.logo = None
+                profile.save(update_fields=["logo"])
+                messages.success(request, "Panel logo removed.")
+            return redirect(request.path)
+
+        if action == "delete_media_asset":
+            file_key = (request.POST.get("file_key") or "").strip()
+            if not file_key:
+                messages.error(request, "Media identifier missing.")
+                return redirect(request.path)
+            asset = StoredMediaAsset.objects.filter(file_key=file_key).first()
+            if not asset:
+                messages.error(request, "Media asset not found.")
+                return redirect(request.path)
+            asset.delete()
+            messages.success(request, "Media asset deleted from database storage.")
+            return redirect(request.path)
+
         if action == "change_password":
             password = (request.POST.get("password") or "").strip()
             confirm = (request.POST.get("confirm_password") or "").strip()
@@ -14949,15 +15298,31 @@ def admin_profile_view(request, section="all"):
             return redirect(request.path)
 
     section_map = {
-        "all": ("Profile & Security", "Update personal details, password, and profile photo."),
+        "all": ("Profile & Security", "Update personal details, password, profile photo, and panel branding."),
         "profile": ("My Profile", "Update your personal admin details."),
         "photo": ("Upload Photo", "Update your admin profile photo."),
+        "branding": ("Panel Branding", "Upload panel logo for all dashboard panels."),
         "password": ("Change Password", "Update your admin login password."),
         "last-login": ("Last Login", "Review the latest login activity for this account."),
+        "media-vault": ("Database Media Vault", "All uploaded panel files stored directly in database."),
     }
     page_title, page_subtitle = section_map.get(
-        section, ("Profile & Security", "Update personal details, password, and profile photo.")
+        section, ("Profile & Security", "Update personal details, password, profile photo, and panel branding.")
     )
+
+    media_assets = []
+    for asset in StoredMediaAsset.objects.only("file_key", "original_name", "content_type", "size", "uploaded_at").order_by("-uploaded_at", "-id")[:150]:
+        media_assets.append(
+            {
+                "file_key": asset.file_key,
+                "original_name": asset.original_name or asset.file_key,
+                "content_type": asset.content_type or "application/octet-stream",
+                "size": asset.size,
+                "size_label": _human_file_size(asset.size),
+                "uploaded_at": asset.uploaded_at,
+                "url": reverse("dashboard:db_media_file", kwargs={"file_key": asset.file_key}),
+            }
+        )
 
     return render(
         request,
@@ -14967,6 +15332,8 @@ def admin_profile_view(request, section="all"):
             "profile_section": section,
             "page_title": page_title,
             "page_subtitle": page_subtitle,
+            "panel_logo_url": _safe_file_url(profile.logo),
+            "media_assets": media_assets,
         },
     )
 
@@ -15496,23 +15863,33 @@ def _deleted_data_detail_rows(details):
     candidate_rows = []
     for email, row in candidate_profiles.items():
         if isinstance(row, dict):
+            try:
+                snapshot_pretty = json.dumps(row, indent=2, ensure_ascii=False, default=str)
+            except TypeError:
+                snapshot_pretty = json.dumps({}, indent=2)
             candidate_rows.append(
                 {
                     "name": row.get("name") or row.get("profile", {}).get("name") or "Candidate",
                     "email": row.get("email") or email,
                     "phone": row.get("phone") or row.get("profile", {}).get("phone") or "",
                     "snapshot": row,
+                    "snapshot_pretty": snapshot_pretty,
                 }
             )
     if not candidate_rows:
         profile_snapshot = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
         if profile_snapshot:
+            try:
+                fallback_snapshot_pretty = json.dumps(profile_snapshot, indent=2, ensure_ascii=False, default=str)
+            except TypeError:
+                fallback_snapshot_pretty = json.dumps({}, indent=2)
             candidate_rows.append(
                 {
                     "name": profile_snapshot.get("name") or payload.get("display_name") or "Candidate",
                     "email": profile_snapshot.get("email") or payload.get("reference") or "-",
                     "phone": profile_snapshot.get("phone") or "-",
                     "snapshot": profile_snapshot,
+                    "snapshot_pretty": fallback_snapshot_pretty,
                 }
             )
 
@@ -15593,6 +15970,9 @@ def deleted_data_view(request, category="company"):
     selected_category = (category or "").strip().lower()
     if selected_category not in DELETED_DATA_CATEGORIES:
         selected_category = "company"
+    selected_entity = (request.GET.get("entity") or "all").strip().lower()
+    if selected_entity not in DELETED_DATA_ENTITY_FILTERS:
+        selected_entity = "all"
 
     records_qs = DeletedDataLog.objects.filter(category=selected_category).order_by("-created_at", "-id")
     search_text = (request.GET.get("q") or "").strip()
@@ -15605,12 +15985,17 @@ def deleted_data_view(request, category="company"):
             | Q(entity_type__icontains=search_text)
         )
 
-    paginator = Paginator(records_qs, 30)
-    page_obj = paginator.get_page(request.GET.get("page") or 1)
-    rows = []
-    for entry in page_obj.object_list:
+    filtered_rows = []
+    for entry in records_qs:
         metrics = _deleted_data_detail_rows(entry.details if isinstance(entry.details, dict) else {})
-        rows.append(
+        include_row = True
+        if selected_entity == "jobs":
+            include_row = metrics["job_count"] > 0 or entry.entity_type == "job"
+        elif selected_entity == "candidates":
+            include_row = metrics["candidate_count"] > 0 or entry.entity_type == "candidate_profile"
+        if not include_row:
+            continue
+        filtered_rows.append(
             {
                 "record": entry,
                 "apply_count": metrics["application_count"],
@@ -15621,13 +16006,17 @@ def deleted_data_view(request, category="company"):
             }
         )
 
+    paginator = Paginator(filtered_rows, 30)
+    page_obj = paginator.get_page(request.GET.get("page") or 1)
+
     return render(
         request,
         "dashboard/delete_data.html",
         {
-            "rows": rows,
+            "rows": page_obj.object_list,
             "page_obj": page_obj,
             "search_text": search_text,
+            "selected_entity_filter": selected_entity,
             "deleted_data_section": selected_category,
             "deleted_data_categories": DELETED_DATA_CATEGORIES,
             "page_title": "Deleted Data",
@@ -15648,6 +16037,11 @@ def deleted_data_detail_view(request, log_id):
         details_pretty = json.dumps({}, indent=2)
     file_links = _extract_deleted_data_file_links(payload)
     detail_rows = _deleted_data_detail_rows(payload)
+    profile_snapshot = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    try:
+        profile_snapshot_pretty = json.dumps(profile_snapshot, indent=2, ensure_ascii=False, default=str)
+    except TypeError:
+        profile_snapshot_pretty = json.dumps({}, indent=2)
 
     return render(
         request,
@@ -15662,6 +16056,8 @@ def deleted_data_detail_view(request, log_id):
             "job_count": detail_rows["job_count"],
             "application_count": detail_rows["application_count"],
             "candidate_count": detail_rows["candidate_count"],
+            "profile_snapshot": profile_snapshot,
+            "profile_snapshot_pretty": profile_snapshot_pretty,
             "deleted_data_section": record.category if record.category in DELETED_DATA_CATEGORIES else "company",
             "page_title": "Deleted Data Details",
             "page_subtitle": "Detailed snapshot captured at delete time.",

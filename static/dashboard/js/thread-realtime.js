@@ -1,4 +1,54 @@
 (() => {
+  const initThreadSearch = () => {
+    const inputs = Array.from(document.querySelectorAll('[data-thread-search]'));
+    if (!inputs.length) return;
+
+    inputs.forEach((input) => {
+      const panel = input.closest('.chat-thread-panel');
+      if (!panel) return;
+      const list = panel.querySelector('.chat-thread-list');
+      if (!list) return;
+      const rows = Array.from(list.querySelectorAll('.chat-thread'));
+      if (!rows.length) return;
+      const searchButton = panel.querySelector('[data-thread-search-btn]');
+
+      let empty = list.querySelector('[data-thread-search-empty]');
+      if (!empty) {
+        empty = document.createElement('div');
+        empty.className = 'analysis-card';
+        empty.setAttribute('data-thread-search-empty', '');
+        empty.innerHTML = '<strong>No matching conversation</strong><p class="muted">Try another name, job title, or application id.</p>';
+        empty.hidden = true;
+        list.appendChild(empty);
+      }
+
+      const applySearch = () => {
+        const query = (input.value || '').trim().toLowerCase();
+        let visibleCount = 0;
+        rows.forEach((row) => {
+          const haystack = (
+            row.getAttribute('data-thread-search-text') ||
+            row.innerText ||
+            row.textContent ||
+            ''
+          ).toLowerCase();
+          const shouldShow = !query || haystack.includes(query);
+          row.classList.toggle('hidden-by-search', !shouldShow);
+          if (shouldShow) visibleCount += 1;
+        });
+        empty.hidden = !(query && visibleCount === 0);
+      };
+
+      input.addEventListener('input', applySearch);
+      if (searchButton) {
+        searchButton.addEventListener('click', applySearch);
+      }
+      applySearch();
+    });
+  };
+
+  initThreadSearch();
+
   const threadPanels = Array.from(document.querySelectorAll('[data-thread-live="1"]'));
   if (!threadPanels.length) return;
 

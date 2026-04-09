@@ -4,6 +4,8 @@
   }
 
   const toastContainer = document.getElementById('toastContainer');
+  const liveStatusEl = document.getElementById('supportLiveStatus');
+  const lastSyncEl = document.getElementById('supportLastSync');
 
   const showToast = (message, type = 'success') => {
     if (!toastContainer) return;
@@ -15,6 +17,33 @@
   };
 
   const normalizeAction = (text) => (text || '').trim().toLowerCase();
+  const nowLabel = () =>
+    new Date().toLocaleString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+  const refreshLiveStamp = () => {
+    if (liveStatusEl) {
+      liveStatusEl.textContent = 'Realtime Active';
+      liveStatusEl.classList.remove('warning', 'danger');
+      liveStatusEl.classList.add('success');
+    }
+    if (lastSyncEl) {
+      lastSyncEl.textContent = `Last Sync: ${nowLabel()}`;
+    }
+  };
+
+  refreshLiveStamp();
+  setInterval(() => {
+    if (document.hidden) return;
+    refreshLiveStamp();
+  }, 7000);
 
   const findCellByHeader = (row, label) => {
     if (!row) return null;
@@ -125,4 +154,17 @@
       showToast('This module will be enabled in next update.', 'info');
     });
   });
+
+  const searchInput = document.querySelector('[data-support-search]');
+  if (searchInput) {
+    const ticketRows = Array.from(document.querySelectorAll('.support-table tbody tr'));
+    searchInput.addEventListener('input', () => {
+      const query = (searchInput.value || '').trim().toLowerCase();
+      ticketRows.forEach((row) => {
+        const text = (row.innerText || row.textContent || '').toLowerCase();
+        const visible = !query || text.includes(query);
+        row.style.display = visible ? '' : 'none';
+      });
+    });
+  }
 })();

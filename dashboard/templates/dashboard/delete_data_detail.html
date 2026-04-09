@@ -507,6 +507,15 @@
             </div>
           </div>
 
+          {% if profile_snapshot %}
+          <article class="card section-card">
+            <div class="card-header"><strong>Deleted Profile Snapshot</strong></div>
+            <div class="card-body">
+              <pre style="margin:0; white-space:pre-wrap; word-break:break-word;">{{ profile_snapshot_pretty }}</pre>
+            </div>
+          </article>
+          {% endif %}
+
           <article class="card section-card">
             <div class="card-header"><strong>Deleted Jobs Snapshot</strong></div>
             <div class="table-responsive">
@@ -598,7 +607,17 @@
                       <td>{{ candidate.name|default:"-" }}</td>
                       <td class="mono">{{ candidate.email|default:"-" }}</td>
                       <td>{{ candidate.phone|default:"-" }}</td>
-                      <td class="mono">{{ candidate.snapshot.id|default:"-" }}</td>
+                      <td>
+                        <button
+                          class="btn btn-sm btn-outline-primary"
+                          type="button"
+                          data-candidate-snapshot-btn
+                          data-candidate-name="{{ candidate.name|default:'Candidate' }}"
+                          data-candidate-json="{{ candidate.snapshot_pretty|escapejs }}"
+                        >
+                          View Candidate
+                        </button>
+                      </td>
                     </tr>
                     {% endfor %}
                   {% else %}
@@ -606,6 +625,15 @@
                   {% endif %}
                 </tbody>
               </table>
+            </div>
+          </article>
+
+          <article class="card section-card" id="candidateSnapshotViewer" hidden>
+            <div class="card-header">
+              <strong id="candidateSnapshotTitle">Candidate Snapshot</strong>
+            </div>
+            <div class="card-body">
+              <pre id="candidateSnapshotPre" style="margin:0; white-space:pre-wrap; word-break:break-word;"></pre>
             </div>
           </article>
 
@@ -633,5 +661,28 @@
     </div>
 
     <script src="{% static 'dashboard/js/dashboard.js' %}?v={{ static_asset_version }}"></script>
+    <script>
+      (() => {
+        const viewer = document.getElementById('candidateSnapshotViewer');
+        const titleEl = document.getElementById('candidateSnapshotTitle');
+        const preEl = document.getElementById('candidateSnapshotPre');
+        if (!viewer || !titleEl || !preEl) return;
+        document.querySelectorAll('[data-candidate-snapshot-btn]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const candidateName = btn.getAttribute('data-candidate-name') || 'Candidate';
+            const snapshotJson = btn.getAttribute('data-candidate-json') || '{}';
+            titleEl.textContent = `${candidateName} Snapshot`;
+            try {
+              const parsed = JSON.parse(snapshotJson);
+              preEl.textContent = JSON.stringify(parsed, null, 2);
+            } catch (error) {
+              preEl.textContent = snapshotJson;
+            }
+            viewer.hidden = false;
+            viewer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        });
+      })();
+    </script>
   </body>
 </html>

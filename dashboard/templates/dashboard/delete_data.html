@@ -452,14 +452,21 @@
               <p>{{ page_subtitle }}</p>
             </div>
             <form method="get" class="delete-search">
+              <input type="hidden" name="entity" value="{{ selected_entity_filter|default:'all' }}" />
               <input type="text" name="q" value="{{ search_text }}" placeholder="Search by name, email, id, reason..." />
             </form>
           </div>
 
           <div class="delete-tabs" style="margin-bottom: 14px;">
-            <a class="delete-tab{% if deleted_data_section == 'company' %} active{% endif %}" href="{% url 'dashboard:deleted_data_category' 'company' %}">Company</a>
-            <a class="delete-tab{% if deleted_data_section == 'consultancy' %} active{% endif %}" href="{% url 'dashboard:deleted_data_category' 'consultancy' %}">Consultancy</a>
-            <a class="delete-tab{% if deleted_data_section == 'candidate' %} active{% endif %}" href="{% url 'dashboard:deleted_data_category' 'candidate' %}">Candidate</a>
+            <a class="delete-tab{% if deleted_data_section == 'company' %} active{% endif %}" href="{% url 'dashboard:deleted_data_category' 'company' %}?entity={{ selected_entity_filter|default:'all' }}{% if search_text %}&q={{ search_text|urlencode }}{% endif %}">Company</a>
+            <a class="delete-tab{% if deleted_data_section == 'consultancy' %} active{% endif %}" href="{% url 'dashboard:deleted_data_category' 'consultancy' %}?entity={{ selected_entity_filter|default:'all' }}{% if search_text %}&q={{ search_text|urlencode }}{% endif %}">Consultancy</a>
+            <a class="delete-tab{% if deleted_data_section == 'candidate' %} active{% endif %}" href="{% url 'dashboard:deleted_data_category' 'candidate' %}?entity={{ selected_entity_filter|default:'all' }}{% if search_text %}&q={{ search_text|urlencode }}{% endif %}">Candidate</a>
+          </div>
+
+          <div class="delete-tabs" style="margin-bottom: 14px;">
+            <a class="delete-tab{% if selected_entity_filter == 'all' %} active{% endif %}" href="?entity=all{% if search_text %}&q={{ search_text|urlencode }}{% endif %}">All Data</a>
+            <a class="delete-tab{% if selected_entity_filter == 'jobs' %} active{% endif %}" href="?entity=jobs{% if search_text %}&q={{ search_text|urlencode }}{% endif %}">Jobs</a>
+            <a class="delete-tab{% if selected_entity_filter == 'candidates' %} active{% endif %}" href="?entity=candidates{% if search_text %}&q={{ search_text|urlencode }}{% endif %}">Candidates</a>
           </div>
 
           <div class="card delete-table">
@@ -530,10 +537,10 @@
             <div class="muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</div>
             <div class="d-flex gap-2">
               {% if page_obj.has_previous %}
-              <a class="btn btn-sm btn-outline-secondary" href="?page={{ page_obj.previous_page_number }}{% if search_text %}&q={{ search_text|urlencode }}{% endif %}">Previous</a>
+              <a class="btn btn-sm btn-outline-secondary" href="?page={{ page_obj.previous_page_number }}&entity={{ selected_entity_filter|default:'all' }}{% if search_text %}&q={{ search_text|urlencode }}{% endif %}">Previous</a>
               {% endif %}
               {% if page_obj.has_next %}
-              <a class="btn btn-sm btn-outline-secondary" href="?page={{ page_obj.next_page_number }}{% if search_text %}&q={{ search_text|urlencode }}{% endif %}">Next</a>
+              <a class="btn btn-sm btn-outline-secondary" href="?page={{ page_obj.next_page_number }}&entity={{ selected_entity_filter|default:'all' }}{% if search_text %}&q={{ search_text|urlencode }}{% endif %}">Next</a>
               {% endif %}
             </div>
           </div>

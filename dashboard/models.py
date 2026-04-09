@@ -205,10 +205,26 @@ class AdminProfile(models.Model):
     phone = models.CharField(max_length=50, blank=True)
     bio = models.TextField(blank=True)
     photo = models.FileField(upload_to="profiles/admins/", null=True, blank=True)
+    logo = models.FileField(upload_to="branding/", null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:
         return f"{self.user.username} Profile"
+
+
+class StoredMediaAsset(models.Model):
+    file_key = models.CharField(max_length=255, unique=True, db_index=True)
+    original_name = models.CharField(max_length=255, blank=True)
+    content_type = models.CharField(max_length=120, blank=True)
+    size = models.PositiveBigIntegerField(default=0)
+    content = models.BinaryField()
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-uploaded_at", "-id")
+
+    def __str__(self) -> str:
+        return self.original_name or self.file_key
 
 
 class Company(UserBase):

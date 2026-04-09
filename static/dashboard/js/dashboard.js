@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let panelNotificationCountBadges = document.querySelectorAll('[data-panel-notification-count]');
   const sidebarNotificationPlaceholders = document.querySelectorAll('[data-sidebar-notification-count]');
   const panelNotificationsApiUrl = '/api/panel-notifications/';
+  const platformBrandingApiUrl = '/api/platform-branding/';
   if (panelNotificationRoot && (!panelNotificationCountBadges || !panelNotificationCountBadges.length)) {
     const summary = panelNotificationRoot.querySelector('summary');
     if (summary) {
@@ -1304,56 +1305,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const updateSidebarSectionBadges = (items) => {
     clearSidebarSectionBadges();
-    const rows = (Array.isArray(items) ? items : []).filter(
-      (item) => item && item.unread && item.url
-    );
-    if (!rows.length) {
-      return;
-    }
-
-    const sectionCounts = new Map();
-
-    const incrementCount = (map, host, amount = 1) => {
-      if (!host || amount < 1) return;
-      map.set(host, (map.get(host) || 0) + amount);
-    };
-
-    rows.forEach((item) => {
-      const hosts = resolveSidebarNotificationHosts(item.url);
-      if (!hosts.length) {
-        return;
-      }
-      Array.from(new Set(hosts)).forEach((host) => {
-        incrementCount(sectionCounts, host);
-      });
-    });
-
-    if (!sectionCounts.size) {
-      if (sidebarNotificationPlaceholders.length) {
-        const fallbackBadge = sidebarNotificationPlaceholders[0];
-        const fallbackHost = fallbackBadge.closest('.nav-item, .nav-toggle, .nav-sub');
-        if (fallbackHost) {
-          sectionCounts.set(fallbackHost, rows.length);
-        }
-      } else {
-        const genericHost =
-          document.querySelector('.sidebar-nav .nav-item[href*="notification"]') ||
-          document.querySelector('.sidebar-nav .nav-sub[href*="notification"]') ||
-          document.querySelector('.sidebar-nav .nav-toggle[data-nav-url*="communication"]') ||
-          document.querySelector('.sidebar-nav .nav-item[href*="communication"]') ||
-          document.querySelector('.sidebar-nav .nav-item[href]');
-        if (genericHost) {
-          sectionCounts.set(genericHost, rows.length);
-        }
-      }
-    }
-
-    const hideHosts = new Set(resolveSidebarNotificationHosts(window.location.pathname));
-
-    sectionCounts.forEach((count, host) => {
-      if (hideHosts.has(host)) return;
-      setSidebarHostBadgeCount(host, count);
-    });
+    // Sidebar notification counters are intentionally disabled across all panels.
+    void items;
   };
 
   const renderPanelNotificationItems = (items) => {
@@ -1504,6 +1457,39 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(() => null);
   };
 
+  const applyPlatformLogo = (logoUrl) => {
+    const normalizedUrl = String(logoUrl || '').trim();
+    const brandImages = document.querySelectorAll('.brand-mark img');
+    if (!brandImages.length) return;
+    brandImages.forEach((img) => {
+      if (!img) return;
+      if (!img.dataset.defaultSrc) {
+        img.dataset.defaultSrc = img.getAttribute('src') || '';
+      }
+      if (normalizedUrl) {
+        if (img.getAttribute('src') !== normalizedUrl) {
+          img.setAttribute('src', normalizedUrl);
+        }
+      } else if (img.dataset.defaultSrc && img.getAttribute('src') !== img.dataset.defaultSrc) {
+        img.setAttribute('src', img.dataset.defaultSrc);
+      }
+    });
+  };
+
+  const refreshPlatformBranding = () =>
+    fetch(platformBrandingApiUrl, {
+      credentials: 'same-origin',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!data || !data.success) return;
+        applyPlatformLogo(data.logo_url || '');
+      })
+      .catch(() => null);
+
   const shouldEnablePanelNotifications = Boolean(
     panelNotificationRoot ||
       (panelNotificationCountBadges && panelNotificationCountBadges.length) ||
@@ -1511,6 +1497,12 @@ document.addEventListener('DOMContentLoaded', () => {
       (sidebarNotificationPlaceholders && sidebarNotificationPlaceholders.length) ||
       (sidebarNotificationTargets && sidebarNotificationTargets.length)
   );
+
+  refreshPlatformBranding();
+  setInterval(() => {
+    if (document.hidden) return;
+    refreshPlatformBranding();
+  }, 45000);
 
   if (shouldEnablePanelNotifications) {
     const { readAllButton } = panelNotificationRoot ? ensurePanelNotificationActions() : {};

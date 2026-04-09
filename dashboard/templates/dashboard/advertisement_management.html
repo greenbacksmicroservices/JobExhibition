@@ -367,36 +367,125 @@
           <div class="card-header">
             <div>
               <h3>Recent Advertisements</h3>
-              <p class="muted">Update media for already posted advertisements.</p>
+              <p class="muted">Realtime management table with live status, message edit, and actions.</p>
             </div>
           </div>
-          <div class="recent-ads-list">
-            {% if recent_ads %}
-              {% for ad in recent_ads %}
-              <article class="recent-ad-item">
-                <div class="recent-ad-meta">
-                  <h4>{{ ad.get_audience_display }} - {{ ad.segment|default:"general"|cut:"_"|title }}</h4>
-                  <p class="muted">{{ ad.message|default:"No message"|truncatewords:18 }}</p>
-                  <div class="recent-ad-tags">
-                    <span class="tag">{{ ad.created_at|date:"d M Y H:i" }}</span>
-                    <span class="tag {% if ad.media_file %}tag-success{% else %}tag-muted{% endif %}">
-                      {% if ad.media_file %}Media attached{% else %}No media{% endif %}
-                    </span>
-                  </div>
-                </div>
-                <form class="recent-ad-upload" method="post" enctype="multipart/form-data">
-                  {% csrf_token %}
-                  <input type="hidden" name="action" value="update_media" />
-                  <input type="hidden" name="ad_id" value="{{ ad.id }}" />
-                  <label class="label">Replace / Add Media</label>
-                  <input class="ad-file" type="file" name="media_file" accept="image/*,video/*" required />
-                  <button class="btn ghost" type="submit">Upload Media</button>
-                </form>
-              </article>
-              {% endfor %}
-            {% else %}
-              <p class="muted">No advertisements posted yet.</p>
+          {% if selected_view_ad %}
+          <div class="analysis-card" style="margin-bottom: 16px;">
+            <strong>View Advertisement #{{ selected_view_ad.id }}</strong>
+            <p class="muted" style="margin: 6px 0 10px;">{{ selected_view_ad.get_audience_display }} | {{ selected_view_ad.segment|default:"general"|cut:"_"|title }} | {{ selected_view_ad.created_at|date:"d M Y, h:i A" }}</p>
+            <p style="margin:0 0 8px;">{{ selected_view_ad.message|default:"No message available." }}</p>
+            {% if selected_view_ad.media_file %}
+              <a class="action-link" href="{{ selected_view_ad.media_file.url }}" target="_blank" rel="noopener">Open media</a>
             {% endif %}
+          </div>
+          {% endif %}
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>ID</th>
+                  <th>Audience</th>
+                  <th>Segment</th>
+                  <th>Title</th>
+                  <th>Message</th>
+                  <th>Status</th>
+                  <th>Media</th>
+                  <th>Created At</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if recent_ads %}
+                  {% for ad in recent_ads %}
+                  <tr>
+                    <td>#{{ ad.id }}</td>
+                    <td>{{ ad.get_audience_display }}</td>
+                    <td>{{ ad.segment|default:"general"|cut:"_"|title }}</td>
+                    <td>{{ ad.title|default:"-" }}</td>
+                    <td>{{ ad.message|default:"No message"|truncatechars:100 }}</td>
+                    <td>
+                      {% if ad.is_active %}
+                      <span class="badge success">Active</span>
+                      {% else %}
+                      <span class="badge danger">No Live</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if ad.media_file %}
+                      <a class="action-link" href="{{ ad.media_file.url }}" target="_blank" rel="noopener">View</a>
+                      {% else %}
+                      <span class="muted">No media</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ ad.created_at|date:"d M Y, h:i A" }}</td>
+                    <td>
+                      <div class="table-actions">
+                        <a class="btn btn-sm btn-outline-primary" href="?view={{ ad.id }}">View</a>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-ad-edit-toggle="{{ ad.id }}">Edit</button>
+                        <form method="post" onsubmit="return confirm('Delete this advertisement permanently?');">
+                          {% csrf_token %}
+                          <input type="hidden" name="action" value="delete_ad" />
+                          <input type="hidden" name="ad_id" value="{{ ad.id }}" />
+                          <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr data-ad-edit-row="{{ ad.id }}" hidden>
+                    <td colspan="9">
+                      <form class="recent-ad-upload" method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="update_ad" />
+                        <input type="hidden" name="ad_id" value="{{ ad.id }}" />
+                        <div class="ad-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                          <div>
+                            <label class="label">Audience</label>
+                            <select class="ad-file" name="audience">
+                              <option value="company" {% if ad.audience == 'company' %}selected{% endif %}>Company</option>
+                              <option value="consultancy" {% if ad.audience == 'consultancy' %}selected{% endif %}>Consultancy</option>
+                              <option value="candidate" {% if ad.audience == 'candidate' %}selected{% endif %}>Candidate</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label class="label">Segment</label>
+                            <select class="ad-file" name="segment">
+                              <option value="" {% if not ad.segment %}selected{% endif %}>General</option>
+                              <option value="subscribed" {% if ad.segment == 'subscribed' %}selected{% endif %}>Subscribed</option>
+                              <option value="non_subscribed" {% if ad.segment == 'non_subscribed' %}selected{% endif %}>Non-Subscribed</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label class="label">Live Status</label>
+                            <select class="ad-file" name="is_active">
+                              <option value="1" {% if ad.is_active %}selected{% endif %}>Active (Green)</option>
+                              <option value="0" {% if not ad.is_active %}selected{% endif %}>No Live (Red)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label class="label">Title</label>
+                            <input class="ad-file" type="text" name="title" value="{{ ad.title|default:'' }}" />
+                          </div>
+                        </div>
+                        <label class="label" style="margin-top: 8px;">Message</label>
+                        <textarea class="ad-textarea" rows="3" name="message">{{ ad.message|default:'' }}</textarea>
+                        <label class="label">Replace Media (optional)</label>
+                        <input class="ad-file" type="file" name="media_file" accept="image/*,video/*" />
+                        <div class="ad-actions" style="justify-content: flex-start; gap: 8px;">
+                          <button class="btn primary" type="submit">Save Edit</button>
+                          <button class="btn ghost" type="button" data-ad-edit-cancel="{{ ad.id }}">Cancel</button>
+                        </div>
+                      </form>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="9" class="muted text-center">No advertisements posted yet.</td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
           </div>
         </section>
       </main>
@@ -404,6 +493,32 @@
 
     <script src="{% static 'dashboard/js/dashboard.js' %}?v={{ static_asset_version }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      (() => {
+        const closeAll = () => {
+          document.querySelectorAll('[data-ad-edit-row]').forEach((row) => {
+            row.hidden = true;
+          });
+        };
+        document.querySelectorAll('[data-ad-edit-toggle]').forEach((button) => {
+          button.addEventListener('click', () => {
+            const id = button.getAttribute('data-ad-edit-toggle');
+            const row = document.querySelector(`[data-ad-edit-row="${id}"]`);
+            if (!row) return;
+            const willOpen = row.hidden;
+            closeAll();
+            row.hidden = !willOpen;
+          });
+        });
+        document.querySelectorAll('[data-ad-edit-cancel]').forEach((button) => {
+          button.addEventListener('click', () => {
+            const id = button.getAttribute('data-ad-edit-cancel');
+            const row = document.querySelector(`[data-ad-edit-row="${id}"]`);
+            if (row) row.hidden = true;
+          });
+        });
+      })();
+    </script>
   </body>
 </html>
 

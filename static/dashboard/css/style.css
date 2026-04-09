@@ -577,7 +577,7 @@ body.sidebar-collapsed.sidebar-peek-open .nav-section.open .nav-accordion-body {
 .sidebar-nav .nav-label > span:not(.nav-icon):not(.nav-count-badge),
 .sidebar-nav .nav-item > span:not(.nav-icon):not(.nav-count-badge) {
     min-width: 0;
-    white-space: normal;
+    white-space: nowrap;
     overflow: visible;
     text-overflow: clip;
     text-align: left;
@@ -3032,6 +3032,11 @@ body:not(.sidebar-collapsed) .nav-count-badge {
     flex: 0 0 auto;
 }
 
+.sidebar [data-sidebar-notification-count],
+.sidebar [data-dynamic-sidebar-badge] {
+    display: none !important;
+}
+
 .notification-menu {
     position: absolute;
     top: 42px;
@@ -5392,6 +5397,25 @@ body:not(.sidebar-collapsed) .nav-count-badge {
     background: #f9fafb;
 }
 
+.chat-thread-search {
+    padding: 12px 16px 0;
+}
+
+.chat-thread-search > div {
+    display: flex;
+    gap: 8px;
+}
+
+.chat-thread-search input {
+    flex: 1;
+    width: auto;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 13px;
+    background: #ffffff;
+}
+
 .chat-thread-list {
     display: flex;
     flex-direction: column;
@@ -5420,6 +5444,10 @@ body:not(.sidebar-collapsed) .nav-count-badge {
 .chat-thread.active {
     border-color: #6366f1;
     background: #eef2ff;
+}
+
+.chat-thread.hidden-by-search {
+    display: none;
 }
 
 .thread-avatar {
@@ -6067,6 +6095,12 @@ body.dark-mode .chat-threaded-window,
 body.dark-mode .chat-panel-header {
     background: #0f172a;
     border-color: #1f2937;
+}
+
+body.dark-mode .chat-thread-search input {
+    background: #111827;
+    border-color: #334155;
+    color: #e2e8f0;
 }
 
 body.dark-mode .chat-thread {

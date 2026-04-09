@@ -58,6 +58,7 @@
               <div class="nav-label">
                 <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
                 <span>User Management</span>
+                <span class="nav-count-badge" data-sidebar-notification-count {% if panel_sidebar_notification_count < 1 %}style="display:none"{% endif %}>{{ panel_sidebar_notification_count|default:0 }}</span>
               </div>
               <span class="caret">v</span>
             </button>
@@ -197,22 +198,50 @@
               </button>
               <a class="icon-btn compact" href="{% url 'dashboard:message_monitor' %}" aria-label="Messages">
                 <i class="fa-solid fa-envelope"></i>
+                <span class="icon-count-badge" data-panel-message-count {% if panel_message_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_message_unread_count|default:0 }}</span>
               </a>
-              <details class="notification-dropdown">
+              <details class="notification-dropdown" data-panel-notification-root>
                 <summary class="icon-btn" aria-label="Notifications">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.2l-1.4 2.7a1 1 0 0 0 .9 1.5h11a1 1 0 0 0 .9-1.5L17 11.2V8a5 5 0 0 0-5-5Zm0 18a2.5 2.5 0 0 0 2.3-1.5h-4.6A2.5 2.5 0 0 0 12 21Z" /></svg>
-                  {% if messages %}<span class="notif-dot"></span>{% endif %}
+                  <span class="icon-count-badge" data-panel-notification-count {% if panel_notification_unread_count < 1 %}style="display:none"{% endif %}>{{ panel_notification_unread_count|default:0 }}</span>
                 </summary>
                 <div class="notification-menu">
                   <h4>Notifications</h4>
-                  {% if messages %}
-                  <ul class="notification-list">
-                    {% for message in messages %}
-                    <li>{{ message }}</li>
+                  {% if panel_notifications %}
+                  <ul class="notification-list" data-panel-notification-list>
+                    {% for note in panel_notifications %}
+                    <li class="notification-item" data-note-id="{{ note.id|default:'' }}">
+                      {% if note.url %}
+                      <a href="{{ note.url }}" class="notification-card action-link" data-note-id="{{ note.id|default:'' }}">
+                        <div class="notification-card-body">
+                          <div class="notification-card-title-row">
+                            {% if note.unread %}<span class="notification-card-dot" aria-hidden="true"></span>{% endif %}
+                            <strong class="notification-card-title">{{ note.title }}</strong>
+                          </div>
+                          <div class="notification-card-message">{{ note.message }}</div>
+                          <div class="notification-card-meta">{{ note.created_label }}</div>
+                        </div>
+                      </a>
+                      {% else %}
+                      <div class="notification-card notification-card-static">
+                        <div class="notification-card-body">
+                          <div class="notification-card-title-row">
+                            {% if note.unread %}<span class="notification-card-dot" aria-hidden="true"></span>{% endif %}
+                            <strong class="notification-card-title">{{ note.title }}</strong>
+                          </div>
+                          <div class="notification-card-message">{{ note.message }}</div>
+                          <div class="notification-card-meta">{{ note.created_label }}</div>
+                        </div>
+                      </div>
+                      {% endif %}
+                    </li>
                     {% endfor %}
                   </ul>
+                  <div style="margin-top: 10px;">
+                    <a href="{% url 'dashboard:communication_notifications' %}" class="action-link">View all notifications</a>
+                  </div>
                   {% else %}
-                  <p class="muted">No notifications yet.</p>
+                  <p class="muted" data-panel-notification-empty>No notifications yet.</p>
                   {% endif %}
                 </div>
               </details>
@@ -402,13 +431,6 @@
                   <label><input type="checkbox" data-custom-toggle="admin-sms-custom" /> Custom Selected</label>
                 </div>
                 {% include "dashboard/includes/custom_candidate_picker.html" with group_id="admin-sms-custom" %}
-              </div>
-              <div class="form-group">
-                <label>SMS Credits</label>
-                <div class="credit-card">
-                  <strong>12,500</strong>
-                  <span class="muted">Credits available</span>
-                </div>
               </div>
             </div>
             <div class="form-actions">

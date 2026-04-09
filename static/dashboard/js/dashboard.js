@@ -1356,25 +1356,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
-  const countHiddenSidebarContextUnread = (items) => {
-    const currentHosts = new Set(resolveSidebarNotificationHosts(window.location.pathname));
-    if (!currentHosts.size) {
-      return 0;
-    }
-    const rows = Array.isArray(items) ? items : [];
-    return rows.reduce((total, item) => {
-      if (!item || !item.unread || !item.url) {
-        return total;
-      }
-      const hosts = resolveSidebarNotificationHosts(item.url);
-      if (!hosts.length) {
-        return total;
-      }
-      const belongsToCurrentContext = hosts.some((host) => currentHosts.has(host));
-      return belongsToCurrentContext ? total + 1 : total;
-    }, 0);
-  };
-
   const renderPanelNotificationItems = (items) => {
     if (!panelNotificationRoot) return;
     const menu = panelNotificationRoot.querySelector('.notification-menu');
@@ -1412,13 +1393,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     list.innerHTML = rows
       .map((item) => {
+        const noteId = escapeHtml(String(item.id || '').trim());
         const title = escapeHtml(item.title || 'Notification');
         const message = escapeHtml(item.message || '');
-        const meta = item.created_label ? `<div class="muted">${escapeHtml(item.created_label)}</div>` : '';
+        const meta = item.created_label
+          ? `<div class="notification-card-meta">${escapeHtml(item.created_label)}</div>`
+          : '';
+        const unreadDot = item.unread ? '<span class="notification-card-dot" aria-hidden="true"></span>' : '';
+        const body = `<div class="notification-card-body"><div class="notification-card-title-row">${unreadDot}<strong class="notification-card-title">${title}</strong></div><div class="notification-card-message">${message}</div>${meta}</div>`;
         if (item.url) {
-          return `<li><a href="${escapeHtml(item.url)}" class="action-link">${title}</a><div class="muted">${message}</div>${meta}</li>`;
+          return `<li class="notification-item" data-note-id="${noteId}"><a href="${escapeHtml(item.url)}" class="notification-card action-link" data-note-id="${noteId}">${body}</a></li>`;
         }
-        return `<li><strong>${title}</strong><div class="muted">${message}</div>${meta}</li>`;
+        return `<li class="notification-item" data-note-id="${noteId}"><div class="notification-card notification-card-static">${body}</div></li>`;
       })
       .join('');
     list.style.display = 'grid';
@@ -1472,14 +1458,26 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   let panelNotificationPollHandle = null;
-  const markNotificationsSeenSilently = () =>
-    fetch(`${panelNotificationsApiUrl}?mark_seen=1`, {
+  const markNotificationItemsSeen = (ids) => {
+    const cleaned = Array.from(
+      new Set(
+        (Array.isArray(ids) ? ids : [])
+          .map((value) => String(value || '').trim())
+          .filter((value) => Boolean(value))
+      )
+    );
+    if (!cleaned.length) {
+      return Promise.resolve(null);
+    }
+    const query = `?mark_item_ids=${encodeURIComponent(cleaned.join(','))}`;
+    return fetch(`${panelNotificationsApiUrl}${query}`, {
       credentials: 'same-origin',
       keepalive: true,
       headers: {
         'X-Requested-With': 'XMLHttpRequest',
       },
     }).catch(() => null);
+  };
 
   const refreshPanelNotifications = (markSeen = false) => {
     const query = markSeen ? '?mark_seen=1' : '';
@@ -1495,9 +1493,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const notificationUnread = Number(data.unread_count || 0);
         const messageUnread = Number(data.message_unread_count || 0);
         const rows = Array.isArray(data.items) ? data.items : [];
-        const hiddenContextCount = countHiddenSidebarContextUnread(rows);
-        const visibleNotificationUnread = Math.max(0, notificationUnread - hiddenContextCount);
-        setCountBadges(panelNotificationCountBadges, visibleNotificationUnread);
+        setCountBadges(panelNotificationCountBadges, notificationUnread);
         setCountBadges(panelMessageCountBadges, messageUnread);
         if (panelNotificationRoot) {
           renderPanelNotificationItems(rows);
@@ -1532,9 +1528,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (panelNotificationRoot) {
       panelNotificationRoot.addEventListener('click', (event) => {
-        const actionLink = event.target.closest('[data-panel-notification-list] a[href]');
+        const actionLink = event.target.closest('[data-panel-notification-list] a[href][data-note-id]');
         if (!actionLink) return;
-        markNotificationsSeenSilently();
+        const noteId = String(actionLink.getAttribute('data-note-id') || '').trim();
+        if (noteId) {
+          markNotificationItemsSeen([noteId]);
+        }
       });
       panelNotificationRoot.addEventListener('toggle', () => {
         if (panelNotificationRoot.open) {

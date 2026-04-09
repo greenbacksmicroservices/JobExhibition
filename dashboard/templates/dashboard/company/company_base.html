@@ -191,13 +191,30 @@
                   {% if panel_notifications %}
                   <ul class="notification-list" data-panel-notification-list>
                     {% for note in panel_notifications %}
-                    <li>
+                    <li class="notification-item" data-note-id="{{ note.id|default:'' }}">
                       {% if note.url %}
-                        <a href="{{ note.url }}" class="action-link">{{ note.title }}</a>
+                        <a href="{{ note.url }}" class="notification-card action-link" data-note-id="{{ note.id|default:'' }}">
+                          <div class="notification-card-body">
+                            <div class="notification-card-title-row">
+                              {% if note.unread %}<span class="notification-card-dot" aria-hidden="true"></span>{% endif %}
+                              <strong class="notification-card-title">{{ note.title }}</strong>
+                            </div>
+                            <div class="notification-card-message">{{ note.message }}</div>
+                            <div class="notification-card-meta">{{ note.created_label }}</div>
+                          </div>
+                        </a>
                       {% else %}
-                        <strong>{{ note.title }}</strong>
+                        <div class="notification-card notification-card-static">
+                          <div class="notification-card-body">
+                            <div class="notification-card-title-row">
+                              {% if note.unread %}<span class="notification-card-dot" aria-hidden="true"></span>{% endif %}
+                              <strong class="notification-card-title">{{ note.title }}</strong>
+                            </div>
+                            <div class="notification-card-message">{{ note.message }}</div>
+                            <div class="notification-card-meta">{{ note.created_label }}</div>
+                          </div>
+                        </div>
                       {% endif %}
-                      <div class="muted">{{ note.message }}</div>
                     </li>
                     {% endfor %}
                   </ul>

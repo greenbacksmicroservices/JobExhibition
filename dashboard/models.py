@@ -119,6 +119,12 @@ INTERVIEW_STATUS_CHOICES = [
     ("no_show", "No Show"),
 ]
 
+INTERVIEW_CANDIDATE_CONFIRMATION_CHOICES = [
+    ("pending", "Pending"),
+    ("accepted", "Accepted"),
+    ("declined", "Declined"),
+]
+
 INTERVIEW_MODE_CHOICES = [
     ("Online", "Online"),
     ("Offline", "Offline"),
@@ -764,6 +770,13 @@ class Interview(models.Model):
     panel_interviewers = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=INTERVIEW_STATUS_CHOICES, default="scheduled")
+    candidate_confirmation = models.CharField(
+        max_length=20,
+        choices=INTERVIEW_CANDIDATE_CONFIRMATION_CHOICES,
+        default="pending",
+    )
+    candidate_confirmation_note = models.TextField(blank=True)
+    candidate_confirmed_at = models.DateTimeField(null=True, blank=True)
     feedback_rating = models.PositiveSmallIntegerField(null=True, blank=True)
     technical_skills = models.TextField(blank=True)
     communication_skills = models.TextField(blank=True)

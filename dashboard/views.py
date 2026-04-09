@@ -55,7 +55,11 @@ from jobexhibition.Payment import (
     should_fallback_to_internal_gateway,
 )
 
-from .notifications import build_panel_notifications, mark_panel_notifications_seen
+from .notifications import (
+    build_panel_notifications,
+    mark_panel_notification_items_seen,
+    mark_panel_notifications_seen,
+)
 from .models import (
     AD_IMAGE_EXTENSIONS,
     AD_VIDEO_EXTENSIONS,
@@ -4050,8 +4054,13 @@ def login_view(request):
             if password and company.password and not _is_hashed_password(company.password):
                 company.password = make_password(password)
                 company.save(update_fields=["password"])
+            completion = _calculate_company_completion(company)
+            update_fields = ["last_login"]
+            if completion != company.profile_completion:
+                company.profile_completion = completion
+                update_fields.append("profile_completion")
             company.last_login = timezone.now()
-            company.save(update_fields=["last_login"])
+            company.save(update_fields=update_fields)
             request.session["company_id"] = company.id
             request.session["company_name"] = company.name
             _record_login_history(
@@ -4072,8 +4081,13 @@ def login_view(request):
             if password and consultancy.password and not _is_hashed_password(consultancy.password):
                 consultancy.password = make_password(password)
                 consultancy.save(update_fields=["password"])
+            completion = _calculate_consultancy_completion(consultancy)
+            update_fields = ["last_login"]
+            if completion != consultancy.profile_completion:
+                consultancy.profile_completion = completion
+                update_fields.append("profile_completion")
             consultancy.last_login = timezone.now()
-            consultancy.save(update_fields=["last_login"])
+            consultancy.save(update_fields=update_fields)
             request.session["consultancy_id"] = consultancy.id
             request.session["consultancy_name"] = consultancy.name
             _record_login_history(
@@ -4094,7 +4108,7 @@ def login_view(request):
             if password and candidate.password and not _is_hashed_password(candidate.password):
                 candidate.password = make_password(password)
                 candidate.save(update_fields=["password"])
-            completion = candidate.profile_completion or _calculate_candidate_completion(candidate)
+            completion = _calculate_candidate_completion(candidate)
             update_fields = ["last_login"]
             if completion != candidate.profile_completion:
                 candidate.profile_completion = completion
@@ -6052,8 +6066,26 @@ def panel_notifications_api(request):
     candidate_id = request.session.get("candidate_id")
     company_id = request.session.get("company_id")
     consultancy_id = request.session.get("consultancy_id")
+    mark_item_id = (request.GET.get("mark_item_id") or "").strip()
+    mark_item_ids_raw = (request.GET.get("mark_item_ids") or "").strip()
+    mark_item_ids = []
+    if mark_item_id:
+        mark_item_ids.append(mark_item_id)
+    if mark_item_ids_raw:
+        mark_item_ids.extend(
+            [value.strip() for value in mark_item_ids_raw.split(",") if value.strip()]
+        )
+    if mark_item_ids:
+        mark_panel_notification_items_seen(request, mark_item_ids, role=role)
+        payload = build_panel_notifications(request, limit=8, only_unread=True)
+
     if (request.GET.get("mark_seen") or "").strip() == "1":
-        mark_panel_notifications_seen(request, role=role)
+        current_item_ids = [
+            str(note.get("id", "")).strip()
+            for note in payload.get("items", [])
+            if str(note.get("id", "")).strip()
+        ]
+        mark_panel_notifications_seen(request, role=role, item_ids=current_item_ids)
         if role == "admin":
             Message.objects.filter(is_read=False).exclude(sender_role="admin").update(is_read=True)
         elif candidate_id:
@@ -6112,6 +6144,7 @@ def panel_notifications_api(request):
     for note in payload.get("items", []):
         items.append(
             {
+                "id": note.get("id", ""),
                 "title": note.get("title", ""),
                 "message": note.get("message", ""),
                 "url": note.get("url", ""),
@@ -6170,11 +6203,20 @@ def _redirect_candidate_if_post_job_blocked(request):
 def company_login_required(view_func):
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
-        if not _safe_session_get(request, "company_id"):
+        company_id = _safe_session_get(request, "company_id")
+        if not company_id:
             blocked_redirect = _redirect_candidate_if_post_job_blocked(request)
             if blocked_redirect is not None:
                 return blocked_redirect
             return redirect("dashboard:login")
+        company = Company.objects.filter(id=company_id).first()
+        if not company:
+            request.session.pop("company_id", None)
+            request.session.pop("company_name", None)
+            return redirect("dashboard:login")
+        completion = _calculate_company_completion(company)
+        if completion != company.profile_completion:
+            Company.objects.filter(pk=company.pk).update(profile_completion=completion)
         return view_func(request, *args, **kwargs)
 
     return _wrapped
@@ -6205,11 +6247,20 @@ def company_logout_view(request):
 def consultancy_login_required(view_func):
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
-        if not _safe_session_get(request, "consultancy_id"):
+        consultancy_id = _safe_session_get(request, "consultancy_id")
+        if not consultancy_id:
             blocked_redirect = _redirect_candidate_if_post_job_blocked(request)
             if blocked_redirect is not None:
                 return blocked_redirect
             return redirect("dashboard:login")
+        consultancy = Consultancy.objects.filter(id=consultancy_id).first()
+        if not consultancy:
+            request.session.pop("consultancy_id", None)
+            request.session.pop("consultancy_name", None)
+            return redirect("dashboard:login")
+        completion = _calculate_consultancy_completion(consultancy)
+        if completion != consultancy.profile_completion:
+            Consultancy.objects.filter(pk=consultancy.pk).update(profile_completion=completion)
         return view_func(request, *args, **kwargs)
 
     return _wrapped
@@ -6235,8 +6286,17 @@ def consultancy_logout_view(request):
 def candidate_login_required(view_func):
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
-        if not _safe_session_get(request, "candidate_id"):
+        candidate_id = _safe_session_get(request, "candidate_id")
+        if not candidate_id:
             return redirect("dashboard:login")
+        candidate = Candidate.objects.filter(id=candidate_id).first()
+        if not candidate:
+            request.session.pop("candidate_id", None)
+            request.session.pop("candidate_name", None)
+            return redirect("dashboard:login")
+        completion = _calculate_candidate_completion(candidate)
+        if completion != candidate.profile_completion:
+            Candidate.objects.filter(pk=candidate.pk).update(profile_completion=completion)
         return view_func(request, *args, **kwargs)
 
     return _wrapped
@@ -6277,23 +6337,53 @@ def consultancy_dashboard_view(request):
         "-assigned_date",
         "-created_at",
     )
+    posted_jobs_qs = _consultancy_posted_jobs_queryset(consultancy)
+    assigned_job_ids = list(assigned_qs.values_list("job_id", flat=True))
+    applications_qs = (
+        Application.objects.filter(
+            Q(consultancy=consultancy)
+            | Q(job__in=posted_jobs_qs)
+            | Q(job_id__in=assigned_job_ids)
+        )
+        .distinct()
+    )
     candidate_pool_qs = Candidate.objects.filter(source_consultancy=consultancy)
-    applications_qs = Application.objects.filter(consultancy=consultancy)
+    pool_candidate_count = candidate_pool_qs.count()
+    applied_candidate_count = (
+        applications_qs.exclude(candidate_email__exact="")
+        .values("candidate_email")
+        .distinct()
+        .count()
+    )
     today = timezone.localdate()
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
-    interviews_qs = Interview.objects.filter(
-        status__in=["scheduled", "rescheduled"],
-        application__consultancy=consultancy,
-        interview_date__range=(week_start, week_end),
+    interviews_qs = (
+        Interview.objects.filter(
+            status__in=["scheduled", "rescheduled"],
+            interview_date__range=(week_start, week_end),
+        )
+        .filter(
+            Q(application__consultancy=consultancy)
+            | Q(application__job__in=posted_jobs_qs)
+            | Q(company__iexact=consultancy.name)
+        )
+        .distinct()
     )
     placements_qs = applications_qs.filter(status__in=SELECTED_STATUSES)
     commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
+    active_assigned_job_ids = list(
+        assigned_qs.filter(status__in=["Active", "Urgent"]).values_list("job_id", flat=True)
+    )
+    active_posted_job_ids = list(
+        posted_jobs_qs.filter(lifecycle_status="Active").values_list("id", flat=True)
+    )
+    active_jobs_count = len(set(active_assigned_job_ids).union(active_posted_job_ids))
 
     metrics = {
         "assigned_jobs": assigned_qs.count(),
-        "active_jobs": assigned_qs.filter(status__in=["Active", "Urgent"]).count(),
-        "candidates": candidate_pool_qs.count(),
+        "active_jobs": active_jobs_count,
+        "candidates": max(pool_candidate_count, applied_candidate_count),
         "interviews": interviews_qs.count(),
         "placements": placements_qs.count(),
         "commission_total": placements_qs.count() * commission_rate,
@@ -6388,24 +6478,54 @@ def api_consultancy_metrics(request):
         return JsonResponse({"error": "unauthorized"}, status=401)
 
     assigned_qs = AssignedJob.objects.filter(consultancy=consultancy)
+    posted_jobs_qs = _consultancy_posted_jobs_queryset(consultancy)
+    assigned_job_ids = list(assigned_qs.values_list("job_id", flat=True))
+    applications_qs = (
+        Application.objects.filter(
+            Q(consultancy=consultancy)
+            | Q(job__in=posted_jobs_qs)
+            | Q(job_id__in=assigned_job_ids)
+        )
+        .distinct()
+    )
     candidate_pool_qs = Candidate.objects.filter(source_consultancy=consultancy)
-    applications_qs = Application.objects.filter(consultancy=consultancy)
+    pool_candidate_count = candidate_pool_qs.count()
+    applied_candidate_count = (
+        applications_qs.exclude(candidate_email__exact="")
+        .values("candidate_email")
+        .distinct()
+        .count()
+    )
     today = timezone.localdate()
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
-    interviews_qs = Interview.objects.filter(
-        status__in=["scheduled", "rescheduled"],
-        application__consultancy=consultancy,
-        interview_date__range=(week_start, week_end),
+    interviews_qs = (
+        Interview.objects.filter(
+            status__in=["scheduled", "rescheduled"],
+            interview_date__range=(week_start, week_end),
+        )
+        .filter(
+            Q(application__consultancy=consultancy)
+            | Q(application__job__in=posted_jobs_qs)
+            | Q(company__iexact=consultancy.name)
+        )
+        .distinct()
     )
     placements_qs = applications_qs.filter(status__in=SELECTED_STATUSES)
     commission_rate = _consultancy_commission_defaults(consultancy)["fixed_fee"]
     placements_count = placements_qs.count()
+    active_assigned_job_ids = list(
+        assigned_qs.filter(status__in=["Active", "Urgent"]).values_list("job_id", flat=True)
+    )
+    active_posted_job_ids = list(
+        posted_jobs_qs.filter(lifecycle_status="Active").values_list("id", flat=True)
+    )
+    active_jobs_count = len(set(active_assigned_job_ids).union(active_posted_job_ids))
 
     metrics = {
         "assigned_jobs": assigned_qs.count(),
-        "active_jobs": assigned_qs.filter(status__in=["Active", "Urgent"]).count(),
-        "candidates": candidate_pool_qs.count(),
+        "active_jobs": active_jobs_count,
+        "candidates": max(pool_candidate_count, applied_candidate_count),
         "interviews": interviews_qs.count(),
         "placements": placements_count,
         "pending_payments": placements_count * commission_rate,
@@ -7306,6 +7426,9 @@ def consultancy_applications_view(request):
                 existing.interviewer = interviewer
                 existing.notes = interview_feedback
                 existing.status = "rescheduled" if existing.status in {"scheduled", "rescheduled"} else "scheduled"
+                existing.candidate_confirmation = "pending"
+                existing.candidate_confirmation_note = ""
+                existing.candidate_confirmed_at = None
                 existing.save(
                     update_fields=[
                         "interview_date",
@@ -7316,6 +7439,9 @@ def consultancy_applications_view(request):
                         "interviewer",
                         "notes",
                         "status",
+                        "candidate_confirmation",
+                        "candidate_confirmation_note",
+                        "candidate_confirmed_at",
                         "updated_at",
                     ]
                 )
@@ -7334,6 +7460,9 @@ def consultancy_applications_view(request):
                     interviewer=interviewer,
                     notes=interview_feedback,
                     status="scheduled",
+                    candidate_confirmation="pending",
+                    candidate_confirmation_note="",
+                    candidate_confirmed_at=None,
                 )
                 if not interview.interview_id:
                     interview.interview_id = _generate_prefixed_id("INT", 3001, Interview, "interview_id")
@@ -7644,6 +7773,9 @@ def consultancy_interviews_view(request):
                 round=round_name,
                 notes=notes,
                 status="scheduled",
+                candidate_confirmation="pending",
+                candidate_confirmation_note="",
+                candidate_confirmed_at=None,
             )
             Application.objects.filter(pk=application.pk).update(
                 status="Interview Scheduled",
@@ -7664,7 +7796,16 @@ def consultancy_interviews_view(request):
             new_status = (request.POST.get("status") or "").strip()
             interview = Interview.objects.filter(id=interview_id, application__consultancy=consultancy).first()
             if interview and new_status:
-                Interview.objects.filter(pk=interview.pk).update(status=new_status, updated_at=timezone.now())
+                update_payload = {"status": new_status, "updated_at": timezone.now()}
+                if new_status == "rescheduled":
+                    update_payload.update(
+                        {
+                            "candidate_confirmation": "pending",
+                            "candidate_confirmation_note": "",
+                            "candidate_confirmed_at": None,
+                        }
+                    )
+                Interview.objects.filter(pk=interview.pk).update(**update_payload)
                 messages.success(request, "Interview status updated.")
             else:
                 messages.error(request, "Unable to update interview status.")
@@ -7735,6 +7876,12 @@ def consultancy_interviews_view(request):
                 "location": interview.location or "",
                 "interviewer": interview.interviewer or "--",
                 "status": interview.get_status_display() if hasattr(interview, "get_status_display") else interview.status,
+                "candidate_confirmation": interview.get_candidate_confirmation_display(),
+                "candidate_confirmation_key": interview.candidate_confirmation,
+                "candidate_confirmation_note": interview.candidate_confirmation_note or "",
+                "candidate_confirmed_at": timezone.localtime(interview.candidate_confirmed_at).strftime("%d %b %Y, %I:%M %p")
+                if interview.candidate_confirmed_at
+                else "--",
             }
         )
 
@@ -8790,12 +8937,110 @@ def consultancy_support_view(request, section="create", ticket_id=None):
         },
     )
 
+def _has_profile_value(value):
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (int, float)):
+        return value > 0
+    return bool(value)
+
+
+def _calculate_company_completion(company):
+    fields = [
+        company.name,
+        company.email,
+        company.phone,
+        company.location,
+        company.address,
+        company.company_type,
+        company.industry_type,
+        company.company_size,
+        company.website_url,
+        company.address_line1,
+        company.address_line2,
+        company.city,
+        company.state,
+        company.country,
+        company.pincode,
+        company.gst_number,
+        company.cin_number,
+        company.pan_number,
+        company.registration_document,
+        company.company_description,
+        company.year_established,
+        company.employee_count,
+        company.contact_position,
+        company.hr_name,
+        company.hr_designation,
+        company.hr_phone,
+        company.hr_email,
+        company.profile_image,
+    ]
+    related_flags = [
+        company.kyc_documents.exists(),
+    ]
+    fields.extend(related_flags)
+    completed = sum(1 for value in fields if _has_profile_value(value))
+    total = len(fields)
+    return round((completed / total) * 100) if total else 0
+
+
+def _calculate_consultancy_completion(consultancy):
+    fields = [
+        consultancy.name,
+        consultancy.email,
+        consultancy.phone,
+        consultancy.location,
+        consultancy.address,
+        consultancy.company_type,
+        consultancy.registration_number,
+        consultancy.gst_number,
+        consultancy.year_established,
+        consultancy.website_url,
+        consultancy.alt_phone,
+        consultancy.office_landline,
+        consultancy.address_line1,
+        consultancy.address_line2,
+        consultancy.city,
+        consultancy.state,
+        consultancy.pin_code,
+        consultancy.country,
+        consultancy.owner_name,
+        consultancy.owner_designation,
+        consultancy.owner_phone,
+        consultancy.owner_email,
+        consultancy.owner_pan,
+        consultancy.owner_aadhaar,
+        consultancy.consultancy_type,
+        consultancy.industries_served,
+        consultancy.service_charges,
+        consultancy.areas_of_operation,
+        consultancy.license_number,
+        consultancy.registration_certificate,
+        consultancy.gst_certificate,
+        consultancy.pan_card,
+        consultancy.address_proof,
+        consultancy.contact_position,
+        consultancy.profile_image,
+    ]
+    related_flags = [
+        consultancy.kyc_documents.exists(),
+    ]
+    fields.extend(related_flags)
+    completed = sum(1 for value in fields if _has_profile_value(value))
+    total = len(fields)
+    return round((completed / total) * 100) if total else 0
+
+
 def _calculate_candidate_completion(candidate):
     fields = [
         candidate.name,
         candidate.email,
         candidate.phone,
         candidate.location,
+        candidate.date_of_birth,
         candidate.gender,
         candidate.preferred_job_location,
         candidate.marital_status,
@@ -8816,7 +9061,6 @@ def _calculate_candidate_completion(candidate):
         candidate.expected_salary,
         candidate.notice_period,
         candidate.preferred_industry,
-        candidate.willing_to_relocate,
         candidate.education,
         candidate.education_10th,
         candidate.education_12th,
@@ -8829,6 +9073,9 @@ def _calculate_candidate_completion(candidate):
         candidate.github_url,
         candidate.portfolio_url,
         candidate.resume,
+        candidate.id_proof,
+        candidate.portfolio_file,
+        candidate.video_resume,
         candidate.profile_image,
     ]
     related_flags = [
@@ -8837,9 +9084,10 @@ def _calculate_candidate_completion(candidate):
         candidate.skill_entries.exists(),
         candidate.project_entries.exists(),
         candidate.certification_files.exists(),
+        candidate.resumes.exists(),
     ]
     fields.extend(related_flags)
-    completed = sum(1 for value in fields if value)
+    completed = sum(1 for value in fields if _has_profile_value(value))
     total = len(fields)
     return round((completed / total) * 100) if total else 0
 
@@ -11372,6 +11620,38 @@ def candidate_interviews_view(request):
     if not candidate:
         return redirect("dashboard:login")
 
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "submit_confirmation":
+            interview_id = (request.POST.get("interview_id") or "").strip()
+            candidate_confirmation = (request.POST.get("candidate_confirmation") or "").strip().lower()
+            candidate_note = (request.POST.get("candidate_confirmation_note") or "").strip()
+            interview = Interview.objects.filter(
+                id=interview_id,
+                candidate_email__iexact=candidate.email,
+            ).first()
+            if not interview:
+                messages.error(request, "Interview record not found.")
+                return redirect("dashboard:candidate_interviews")
+            if candidate_confirmation not in {"accepted", "declined"}:
+                messages.error(request, "Please choose Yes or No for interview confirmation.")
+                return redirect("dashboard:candidate_interviews")
+            if candidate_confirmation == "declined" and not candidate_note:
+                messages.error(request, "Please share a reason when selecting No.")
+                return redirect("dashboard:candidate_interviews")
+
+            Interview.objects.filter(pk=interview.pk).update(
+                candidate_confirmation=candidate_confirmation,
+                candidate_confirmation_note=candidate_note,
+                candidate_confirmed_at=timezone.now(),
+                updated_at=timezone.now(),
+            )
+            if candidate_confirmation == "accepted":
+                messages.success(request, "Thanks! Your interview confirmation has been shared.")
+            else:
+                messages.success(request, "Your response has been shared with recruiter.")
+            return redirect("dashboard:candidate_interviews")
+
     interviews = Interview.objects.filter(candidate_email__iexact=candidate.email).order_by("-interview_date")
     return render(
         request,
@@ -11468,8 +11748,7 @@ def candidate_notifications_view(request):
     )
     advertisement = _active_advertisement_for("candidate", ad_segment)
 
-    mark_panel_notifications_seen(request, role="candidate")
-    payload = build_panel_notifications(request, limit=40, only_unread=True)
+    payload = build_panel_notifications(request, limit=60, only_unread=False)
     notifications = payload.get("items", [])
     return render(
         request,
@@ -12037,6 +12316,7 @@ def company_dashboard_view(request):
             {
                 "title": f"{row.job_title or 'Interview'}",
                 "with": row.candidate_name or row.candidate_email or "Candidate",
+                "date": date_label,
                 "time": f"{date_label} - {time_label}",
             }
         )
@@ -12608,7 +12888,7 @@ def company_applications_view(request):
                     interview_location=effective_location,
                     interviewer=interviewer,
                     interview_feedback=feedback,
-                    status="Interview",
+                    status="Interview Scheduled",
                     updated_at=timezone.now(),
                 )
                 app = Application.objects.filter(
@@ -12626,6 +12906,9 @@ def company_applications_view(request):
                         existing.interviewer = interviewer
                         existing.notes = feedback
                         existing.status = "rescheduled" if existing.status in ["scheduled", "rescheduled"] else "scheduled"
+                        existing.candidate_confirmation = "pending"
+                        existing.candidate_confirmation_note = ""
+                        existing.candidate_confirmed_at = None
                         existing.save(update_fields=[
                             "interview_date",
                             "interview_time",
@@ -12635,6 +12918,9 @@ def company_applications_view(request):
                             "interviewer",
                             "notes",
                             "status",
+                            "candidate_confirmation",
+                            "candidate_confirmation_note",
+                            "candidate_confirmed_at",
                             "updated_at",
                         ])
                     else:
@@ -12652,6 +12938,9 @@ def company_applications_view(request):
                             interviewer=interviewer,
                             notes=feedback,
                             status="scheduled",
+                            candidate_confirmation="pending",
+                            candidate_confirmation_note="",
+                            candidate_confirmed_at=None,
                         )
                         if not interview.interview_id:
                             interview.interview_id = _generate_prefixed_id("INT", 2001, Interview, "interview_id")
@@ -13333,13 +13622,16 @@ def company_interviews_view(request, section="schedule"):
                 panel_interviewers=panel_interviewers,
                 notes=notes,
                 status="scheduled",
+                candidate_confirmation="pending",
+                candidate_confirmation_note="",
+                candidate_confirmed_at=None,
             )
             if not interview.interview_id:
                 interview.interview_id = _generate_prefixed_id("INT", 2001, Interview, "interview_id")
                 interview.save(update_fields=["interview_id"])
 
             if linked_app:
-                linked_app.status = "Interview"
+                linked_app.status = "Interview Scheduled"
                 linked_app.interview_date = interview_date
                 if interview_time:
                     linked_app.interview_time = interview_time.strftime("%H:%M")
@@ -13373,6 +13665,9 @@ def company_interviews_view(request, section="schedule"):
                 interview_date=new_date,
                 interview_time=new_time,
                 status="rescheduled",
+                candidate_confirmation="pending",
+                candidate_confirmation_note="",
+                candidate_confirmed_at=None,
                 updated_at=timezone.now(),
             )
             if updated:
@@ -15429,6 +15724,22 @@ def _subscription_snapshot_for_account(account_type, email, obj=None):
     }
 
 
+def _resolved_profile_completion(obj, user_type: str):
+    if user_type == "companies":
+        completion = _calculate_company_completion(obj)
+    elif user_type == "consultancies":
+        completion = _calculate_consultancy_completion(obj)
+    elif user_type == "candidates":
+        completion = _calculate_candidate_completion(obj)
+    else:
+        completion = int(getattr(obj, "profile_completion", 0) or 0)
+
+    if completion != int(getattr(obj, "profile_completion", 0) or 0):
+        type(obj).objects.filter(pk=obj.pk).update(profile_completion=completion)
+        obj.profile_completion = completion
+    return completion
+
+
 def _serialize_user(obj, user_type: str, request=None):
     account_type = {
         "companies": "Company",
@@ -15482,6 +15793,7 @@ def _serialize_user_detail(obj, user_type: str):
         "consultancies": "Consultancy",
     }.get(user_type, "")
     snapshot = _subscription_snapshot_for_account(account_type, obj.email, obj=obj) if account_type else None
+    profile_completion = _resolved_profile_completion(obj, user_type)
     payload = {
         "id": obj.id,
         "name": obj.name,
@@ -15490,7 +15802,7 @@ def _serialize_user_detail(obj, user_type: str):
         "location": obj.location,
         "address": obj.address,
         "account_type": obj.account_type,
-        "profile_completion": obj.profile_completion,
+        "profile_completion": profile_completion,
         "kyc_status": obj.kyc_status,
         "account_status": obj.account_status,
         "warning_count": obj.warning_count,
@@ -16636,7 +16948,24 @@ def api_jobs_export(request):
     return response
 
 
-def _serialize_application(app):
+def _serialize_application(app, linked_interview=None):
+    interview = linked_interview
+    if interview is None:
+        interview = (
+            Interview.objects.filter(application=app)
+            .order_by("-updated_at", "-created_at", "-id")
+            .first()
+        )
+    candidate_confirmation = "pending"
+    candidate_confirmation_label = "Pending"
+    candidate_confirmation_note = ""
+    candidate_confirmed_at = ""
+    if interview:
+        candidate_confirmation = (interview.candidate_confirmation or "pending").strip().lower() or "pending"
+        candidate_confirmation_label = interview.get_candidate_confirmation_display()
+        candidate_confirmation_note = (interview.candidate_confirmation_note or "").strip()
+        if interview.candidate_confirmed_at:
+            candidate_confirmed_at = timezone.localtime(interview.candidate_confirmed_at).strftime("%d %b %Y, %I:%M %p")
     return {
         "id": app.application_id,
         "candidate_name": app.candidate_name,
@@ -16666,6 +16995,10 @@ def _serialize_application(app):
         "internal_notes": app.internal_notes,
         "interview_feedback": app.interview_feedback,
         "rating": app.rating,
+        "candidate_confirmation": candidate_confirmation_label,
+        "candidate_confirmation_key": candidate_confirmation,
+        "candidate_confirmation_note": candidate_confirmation_note,
+        "candidate_confirmed_at": candidate_confirmed_at,
     }
 
 
@@ -16739,7 +17072,21 @@ def api_applications_list(request):
     page_size = int(request.GET.get("page_size", 8))
     paginator = Paginator(qs, page_size)
     page_obj = paginator.get_page(page)
-    results = [_serialize_application(app) for app in page_obj.object_list]
+    page_rows = list(page_obj.object_list)
+    interview_map = {}
+    if page_rows:
+        app_ids = [item.id for item in page_rows]
+        related_interviews = (
+            Interview.objects.filter(application_id__in=app_ids)
+            .order_by("-updated_at", "-created_at", "-id")
+        )
+        for interview in related_interviews:
+            if interview.application_id and interview.application_id not in interview_map:
+                interview_map[interview.application_id] = interview
+    results = [
+        _serialize_application(app, linked_interview=interview_map.get(app.id))
+        for app in page_rows
+    ]
 
     stats = {
         "total": base_qs.count(),

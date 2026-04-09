@@ -130,13 +130,14 @@
           <th>Meeting / Location</th>
           <th>Interviewer</th>
           <th>Status</th>
+          <th>Candidate Response</th>
           <th>Action</th>
         </tr>
       </thead>
       <tbody>
         {% if interviews %}
           {% for interview in interviews %}
-          <tr>
+          <tr id="consultancy-interview-{{ interview.id }}">
             <td><strong>{{ interview.candidate }}</strong></td>
             <td>{{ interview.company }}</td>
             <td>{{ interview.job }}</td>
@@ -154,6 +155,17 @@
             </td>
             <td>{{ interview.interviewer }}</td>
             <td><span class="badge info">{{ interview.status }}</span></td>
+            <td>
+              <span class="badge {% if interview.candidate_confirmation_key == 'accepted' %}success{% elif interview.candidate_confirmation_key == 'declined' %}danger{% else %}neutral{% endif %}">
+                {{ interview.candidate_confirmation }}
+              </span>
+              {% if interview.candidate_confirmation_note %}
+                <div class="muted" style="margin-top:4px;">{{ interview.candidate_confirmation_note }}</div>
+              {% endif %}
+              {% if interview.candidate_confirmed_at != "--" %}
+                <div class="muted">{{ interview.candidate_confirmed_at }}</div>
+              {% endif %}
+            </td>
             <td>
               <div class="table-actions">
                 <form method="post">
@@ -176,7 +188,7 @@
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="10" class="muted" style="text-align:center; padding: 16px;">No interviews available for this section.</td>
+            <td colspan="11" class="muted" style="text-align:center; padding: 16px;">No interviews available for this section.</td>
           </tr>
         {% endif %}
       </tbody>

@@ -186,6 +186,7 @@
           <th>Time</th>
           <th>Mode</th>
           <th>Status</th>
+          <th>Candidate Response</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -204,6 +205,17 @@
             <span class="badge {% if interview.status == 'scheduled' %}info{% elif interview.status == 'rescheduled' %}warning{% else %}neutral{% endif %}">
               {{ interview.get_status_display }}
             </span>
+          </td>
+          <td>
+            <span class="badge {% if interview.candidate_confirmation == 'accepted' %}success{% elif interview.candidate_confirmation == 'declined' %}danger{% else %}neutral{% endif %}">
+              {{ interview.get_candidate_confirmation_display }}
+            </span>
+            {% if interview.candidate_confirmation_note %}
+              <div class="muted" style="margin-top:4px;">{{ interview.candidate_confirmation_note }}</div>
+            {% endif %}
+            {% if interview.candidate_confirmed_at %}
+              <div class="muted">{{ interview.candidate_confirmed_at|date:"d M Y, g:i A" }}</div>
+            {% endif %}
           </td>
           <td>
             <div class="table-actions">
@@ -241,7 +253,7 @@
         </tr>
         {% empty %}
         <tr>
-          <td colspan="7" class="muted" style="text-align:center; padding: 20px;">No upcoming interviews.</td>
+          <td colspan="8" class="muted" style="text-align:center; padding: 20px;">No upcoming interviews.</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -308,6 +320,7 @@
           <th>Candidate</th>
           <th>Feedback Submitted</th>
           <th>Final Decision</th>
+          <th>Candidate Response</th>
         </tr>
       </thead>
       <tbody>
@@ -317,10 +330,18 @@
           <td>{{ interview.candidate_name }}</td>
           <td>{% if interview.feedback_submitted_at %}Yes{% else %}No{% endif %}</td>
           <td>{{ interview.get_final_decision_display|default:"--" }}</td>
+          <td>
+            <span class="badge {% if interview.candidate_confirmation == 'accepted' %}success{% elif interview.candidate_confirmation == 'declined' %}danger{% else %}neutral{% endif %}">
+              {{ interview.get_candidate_confirmation_display }}
+            </span>
+            {% if interview.candidate_confirmation_note %}
+            <div class="muted" style="margin-top:4px;">{{ interview.candidate_confirmation_note }}</div>
+            {% endif %}
+          </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="4" class="muted" style="text-align:center; padding: 20px;">No completed interviews yet.</td>
+          <td colspan="5" class="muted" style="text-align:center; padding: 20px;">No completed interviews yet.</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -344,6 +365,7 @@
           <th>Date</th>
           <th>Candidate</th>
           <th>Status</th>
+          <th>Candidate Response</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -358,12 +380,17 @@
             </span>
           </td>
           <td>
+            <span class="badge {% if interview.candidate_confirmation == 'accepted' %}success{% elif interview.candidate_confirmation == 'declined' %}danger{% else %}neutral{% endif %}">
+              {{ interview.get_candidate_confirmation_display }}
+            </span>
+          </td>
+          <td>
             <button class="action-btn" type="button" data-bs-toggle="modal" data-bs-target="#rescheduleModal" data-interview-id="{{ interview.id }}" data-interview-date="{{ interview.interview_date|date:'Y-m-d' }}" data-interview-time="{{ interview.interview_time|time:'H:i' }}">Reschedule</button>
           </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="4" class="muted" style="text-align:center; padding: 20px;">No cancelled interviews.</td>
+          <td colspan="5" class="muted" style="text-align:center; padding: 20px;">No cancelled interviews.</td>
         </tr>
         {% endfor %}
       </tbody>

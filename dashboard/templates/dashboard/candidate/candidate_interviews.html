@@ -8,32 +8,7 @@
   <div>
     <p class="eyebrow">Interviews</p>
     <h2>Interview Schedule</h2>
-    <p class="muted">Manage upcoming interviews and reminders.</p>
-  </div>
-</section>
-
-<section class="card section-block">
-  <div class="card-header">
-    <div>
-      <h3>Reminder System</h3>
-      <p class="muted">Get notified 24h and 1h before interviews.</p>
-    </div>
-  </div>
-  <div class="status-controls">
-    <label class="d-flex justify-content-between align-items-center">
-      <span>24 Hours Reminder</span>
-      <span class="switch">
-        <input type="checkbox" checked />
-        <span class="slider"></span>
-      </span>
-    </label>
-    <label class="d-flex justify-content-between align-items-center">
-      <span>1 Hour Reminder</span>
-      <span class="switch">
-        <input type="checkbox" checked />
-        <span class="slider"></span>
-      </span>
-    </label>
+    <p class="muted">Manage upcoming interviews, confirm availability, and share your response instantly.</p>
   </div>
 </section>
 
@@ -56,6 +31,7 @@
           <th>Meeting / Location</th>
           <th>Interviewer</th>
           <th>Status</th>
+          <th>Your Response</th>
         </tr>
       </thead>
       <tbody>
@@ -82,15 +58,86 @@
                 {{ interview.get_status_display }}
               </span>
             </td>
+            <td>
+              <div class="interview-response-box">
+                <p class="muted" style="margin-bottom:8px;">Can you attend this interview on the scheduled date and time?</p>
+                {% if interview.status == "scheduled" or interview.status == "rescheduled" %}
+                <form method="post" class="interview-confirmation-form" data-interview-confirm-form>
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="submit_confirmation" />
+                  <input type="hidden" name="interview_id" value="{{ interview.id }}" />
+                  <div class="status-controls" style="display:flex; gap:12px; align-items:center; margin-bottom:8px;">
+                    <label style="display:flex; align-items:center; gap:6px;">
+                      <input type="radio" name="candidate_confirmation" value="accepted" {% if interview.candidate_confirmation == "accepted" %}checked{% endif %} required />
+                      <span>Yes</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px;">
+                      <input type="radio" name="candidate_confirmation" value="declined" {% if interview.candidate_confirmation == "declined" %}checked{% endif %} required />
+                      <span>No</span>
+                    </label>
+                  </div>
+                  <textarea
+                    rows="2"
+                    name="candidate_confirmation_note"
+                    data-confirmation-reason
+                    placeholder="If no, please tell us what happened..."
+                    {% if interview.candidate_confirmation != "declined" %}style="display:none;"{% endif %}
+                  >{{ interview.candidate_confirmation_note }}</textarea>
+                  {% if interview.candidate_confirmed_at %}
+                  <div class="muted" style="margin:6px 0;">Last response: {{ interview.candidate_confirmed_at|date:"d M Y, g:i A" }}</div>
+                  {% endif %}
+                  <button type="submit" class="btn ghost" style="margin-top:8px;">Submit Response</button>
+                </form>
+                {% else %}
+                <div class="muted">
+                  {% if interview.candidate_confirmation == "accepted" %}
+                    Marked Yes
+                  {% elif interview.candidate_confirmation == "declined" %}
+                    Marked No
+                  {% else %}
+                    No response needed.
+                  {% endif %}
+                </div>
+                {% if interview.candidate_confirmation_note %}
+                <div class="muted" style="margin-top:6px;">Reason: {{ interview.candidate_confirmation_note }}</div>
+                {% endif %}
+                {% endif %}
+              </div>
+            </td>
           </tr>
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="8" class="muted" style="text-align:center; padding: 16px;">No interviews scheduled yet.</td>
+            <td colspan="9" class="muted" style="text-align:center; padding: 16px;">No interviews scheduled yet.</td>
           </tr>
         {% endif %}
       </tbody>
     </table>
   </div>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    const forms = Array.from(document.querySelectorAll('[data-interview-confirm-form]'));
+    forms.forEach((form) => {
+      const reasonBox = form.querySelector('[data-confirmation-reason]');
+      if (!reasonBox) return;
+      const syncReasonVisibility = () => {
+        const selected = form.querySelector('input[name="candidate_confirmation"]:checked');
+        const showReason = selected && selected.value === 'declined';
+        reasonBox.style.display = showReason ? 'block' : 'none';
+        reasonBox.required = Boolean(showReason);
+        if (!showReason) {
+          reasonBox.value = '';
+        }
+      };
+      form.querySelectorAll('input[name="candidate_confirmation"]').forEach((input) => {
+        input.addEventListener('change', syncReasonVisibility);
+      });
+      syncReasonVisibility();
+    });
+  })();
+</script>
 {% endblock %}

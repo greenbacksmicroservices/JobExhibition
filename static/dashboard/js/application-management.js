@@ -14,6 +14,9 @@
   if (!tableBody) {
     return;
   }
+  const tableHasCandidateResponseColumn = Array.from(
+    document.querySelectorAll('#dataTable thead th')
+  ).some((cell) => (cell.textContent || '').trim().toLowerCase() === 'candidate response');
 
   const searchInput = document.getElementById('searchInput');
   const filterStatus = document.getElementById('filterStatus');
@@ -484,9 +487,28 @@
     return app.interview_date || app.interview_time;
   };
 
+  const formatCandidateResponse = (app) => {
+    const responseKey = String(app.candidate_confirmation_key || '').toLowerCase();
+    const responseLabel = String(app.candidate_confirmation || 'Pending');
+    let badgeClass = 'neutral';
+    if (responseKey === 'accepted') {
+      badgeClass = 'success';
+    } else if (responseKey === 'declined') {
+      badgeClass = 'danger';
+    }
+    const noteHtml = app.candidate_confirmation_note
+      ? `<div class="muted">${app.candidate_confirmation_note}</div>`
+      : '';
+    const timeHtml = app.candidate_confirmed_at
+      ? `<div class="muted">${app.candidate_confirmed_at}</div>`
+      : '';
+    return `<span class="badge ${badgeClass}">${responseLabel}</span>${noteHtml}${timeHtml}`;
+  };
+
   const renderTableRows = (rows) => {
+    const emptyColspan = tableHasCandidateResponseColumn ? 9 : 8;
     if (!rows.length) {
-      tableBody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No applications found.</td></tr>';
+      tableBody.innerHTML = `<tr><td colspan="${emptyColspan}" class="text-center text-muted py-4">No applications found.</td></tr>`;
       return;
     }
 
@@ -508,6 +530,7 @@
   <td><span class="badge ${badgeClass}">${app.status}</span></td>
   <td>${app.applied_date || '-'}</td>
   <td>${formatSchedule(app)}</td>
+  ${tableHasCandidateResponseColumn ? `<td>${formatCandidateResponse(app)}</td>` : ''}
   <td>
     <div class="table-actions">
       <button class="action-btn" data-action="view" data-id="${app.id}"><i class="fa-solid fa-eye"></i> View</button>
@@ -652,6 +675,9 @@
       <div><span>Date</span> <strong>${app.interview_date || '-'}</strong></div>
       <div><span>Time</span> <strong>${app.interview_time || '-'}</strong></div>
       <div><span>Interviewer</span> <strong>${app.interviewer || '-'}</strong></div>
+      <div><span>Candidate Response</span> <strong>${app.candidate_confirmation || 'Pending'}</strong></div>
+      <div><span>Response Note</span> <strong>${app.candidate_confirmation_note || '-'}</strong></div>
+      <div><span>Response Time</span> <strong>${app.candidate_confirmed_at || '-'}</strong></div>
     </div>
   </div>
   <div class="details-card">

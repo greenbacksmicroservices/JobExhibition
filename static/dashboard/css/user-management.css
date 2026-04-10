@@ -218,6 +218,55 @@ body.dark-mode .user-management .user-meta span {
   font-size: 12px;
 }
 
+.user-management .doc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.user-management .doc-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.user-management .doc-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.user-management .doc-meta span {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.user-management .doc-meta strong {
+  font-size: 12px;
+  color: #0f172a;
+  word-break: break-all;
+}
+
+.user-management .doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.user-management .doc-action-btn {
+  border: 1px solid #2563eb;
+  background: #ffffff;
+  color: #1d4ed8;
+}
+
+.user-management .doc-action-btn:hover {
+  background: #eff6ff;
+}
+
 .user-management .details-list {
   display: grid;
   gap: 6px;
@@ -1700,6 +1749,20 @@ body.dark-mode .badge.neutral {
 body.dark-mode .details-card {
   background: #0f172a;
   border-color: #1f2937;
+}
+
+body.dark-mode .user-management .doc-row {
+  border-bottom-color: #1f2937;
+}
+
+body.dark-mode .user-management .doc-meta strong {
+  color: #e2e8f0;
+}
+
+body.dark-mode .user-management .doc-action-btn {
+  background: #0f172a;
+  border-color: #3b82f6;
+  color: #93c5fd;
 }
 
 body.dark-mode .modal-header,

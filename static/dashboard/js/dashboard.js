@@ -1560,6 +1560,645 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const tourDescriptionMap = {
+    dashboard:
+      'Use this dashboard to monitor platform activity at a glance. You can review key KPIs, check trend charts, and jump to the most-used actions without opening multiple pages.',
+    'job search':
+      'Search jobs using role, skills, experience, location, and salary filters. Open each result to review details, save it for later, or continue directly to the application flow.',
+    'saved jobs':
+      'This section keeps your shortlisted opportunities in one place. It is useful for comparing roles, tracking priorities, and applying when your profile is ready.',
+    'my applications':
+      'Track every submitted application with its current stage. You can quickly identify pending responses, interview calls, selected outcomes, and rejected entries.',
+    interviews:
+      'Review upcoming and completed interviews, along with dates and statuses. Use it to stay prepared, avoid missed schedules, and follow outcomes after each round.',
+    messages:
+      'Manage your hiring conversations in a single inbox. You can respond to recruiters, share updates, and keep communication history organized by thread.',
+    'my profile':
+      'Update your personal information, headline, bio, preferences, and contact details. A complete profile improves visibility and increases trust with recruiters.',
+    'resume manager':
+      'Upload, replace, and maintain multiple resume versions for different roles. You can keep documents current and switch to the most relevant version quickly.',
+    feedbacks:
+      'Read structured feedback from users and internal teams. This helps you spot quality issues, prioritize fixes, and improve hiring outcomes over time.',
+    subscription:
+      'Check your current plan, usage limits, renewal timeline, and upgrade options. You can also verify billing status and avoid service interruptions.',
+    settings:
+      'Control account preferences, privacy behavior, notification settings, and security options. Use this section to personalize your panel experience safely.',
+    support:
+      'Create and track support requests with clear status updates. You can follow resolution progress, add context, and continue communication in one place.',
+    'company profile':
+      'Maintain company branding, business details, and public profile information. Keeping this section accurate improves trust and application quality.',
+    'job management':
+      'This is your central workspace for creating, editing, and monitoring jobs. You can manage lifecycle states, review responses, and keep hiring pipelines active.',
+    'post new job':
+      'Create a new vacancy by defining role details, requirements, and screening information. Clear and complete job data improves candidate relevance.',
+    'all jobs':
+      'Review your complete job inventory across all statuses. Use filters and quick actions to inspect performance, edit details, or update job state.',
+    'all posted jobs':
+      'See every published job in one list with status and response signals. This helps you compare campaigns and decide where immediate action is needed.',
+    'active jobs':
+      'Focus on currently live jobs receiving applications. Monitor engagement and update content to keep hiring momentum strong.',
+    'draft jobs':
+      'Continue incomplete job drafts before publishing. This section is useful when multiple stakeholders review job details before launch.',
+    'paused jobs':
+      'Manage paused openings and restart them whenever hiring resumes. It helps preserve previous setup without rebuilding the job from scratch.',
+    'rejected jobs':
+      'Review rejected listings with remarks and required corrections. Update details as suggested and submit again for approval.',
+    'expired jobs':
+      'Check jobs that ended due to timeline or plan limits. Re-open relevant roles or duplicate them for a fresh campaign.',
+    'closed jobs':
+      'Access closed positions for historical review and audit. Useful when comparing hiring timelines and documenting completed mandates.',
+    'archived jobs':
+      'Store inactive jobs for compliance and reporting reference. Archived records remain available without cluttering active lists.',
+    applications:
+      'Review candidate applications with profile data, notes, and status actions. This is where you move applicants through each hiring stage.',
+    'communication center':
+      'Launch outbound communication campaigns from one place. Manage email, SMS, and WhatsApp outreach with trackable delivery flow.',
+    'bulk email':
+      'Create and send rich email campaigns to selected audiences. Ideal for interview invites, announcements, and structured hiring updates.',
+    'bulk sms':
+      'Send concise SMS messages for urgent alerts and reminders. Great for time-sensitive communication when instant visibility is needed.',
+    notifications:
+      'Publish in-panel notifications so users see updates after login. Use this for product changes, operational alerts, or important announcements.',
+    'whatsapp alerts':
+      'Deliver candidate and user updates through approved WhatsApp messaging flows. This channel improves reach for high-priority reminders.',
+    'in-app notifications':
+      'Manage alerts displayed inside the product interface. You can target specific audiences and control messaging frequency.',
+    'message templates':
+      'Create reusable communication templates for faster execution and consistency. Templates reduce manual effort and lower messaging errors.',
+    'sent history':
+      'Audit previously sent campaigns with time, channel, and delivery context. Use it for compliance checks and campaign optimization.',
+    'scheduled messages':
+      'Plan campaigns in advance and trigger them at the ideal time. This improves coordination and keeps outreach consistent.',
+    reports:
+      'Analyze recruitment trends, funnel movement, and operational performance. Use report insights to make data-backed decisions.',
+    'reports & analytics':
+      'Deep-dive into conversion metrics, source quality, and hiring bottlenecks. This section supports strategic planning and performance reviews.',
+    'billing / subscription':
+      'Manage invoices, plan status, payment cycles, and billing history. Keep billing details current to ensure uninterrupted platform access.',
+    grievance:
+      'Track reported issues from users and monitor investigation progress. This helps maintain platform safety and policy adherence.',
+    security:
+      'Review account access patterns, login signals, and security controls. Use this area to strengthen account protection and audit readiness.',
+    'customer support':
+      'Handle support workflows from ticket intake to closure. Prioritize urgent requests and maintain response quality with clear ownership.',
+    'assigned jobs':
+      'Review jobs assigned to your team and update progress quickly. This view helps coordinate responsibilities across hiring partners.',
+    'candidate pool':
+      'Manage candidate records, shortlist quality talent, and prepare submissions. Keep profiles updated to improve placement speed.',
+    shortlisted:
+      'Access shortlisted candidates ready for evaluation or interview scheduling. This reduces search time during active hiring phases.',
+    placements:
+      'Track selected candidates through offer, joining, and final placement status. Use this to monitor delivery performance end to end.',
+    'earnings / commission':
+      'Monitor commission entries, payout timelines, and earnings summaries. Useful for finance tracking and reconciliation.',
+    'profile & settings':
+      'Update organization profile details, branding, and operational preferences. This keeps your panel accurate and aligned with team needs.',
+    'user management':
+      'Manage all registered user segments from a single section. You can review account status, take admin actions, and maintain data quality.',
+    companies:
+      'View all registered company accounts with their key details and activity context. Use this page for account oversight and verification.',
+    consultancies:
+      'Review consultancy accounts, partnership status, and profile completeness. This helps maintain a strong and compliant partner network.',
+    candidates:
+      'Access candidate account records, profile quality, and engagement status. Use it to support users and maintain a healthy talent database.',
+    'application management':
+      'Track platform-wide application flow from submission to final outcome. This gives you a complete view of hiring pipeline health.',
+    'all applications':
+      'See every application in one queue with status and user context. Filter quickly to process approvals, follow-ups, and escalations.',
+    'interview scheduled':
+      'Focus on applications with confirmed interview timelines. Use this view to monitor no-shows, reschedules, and candidate progression.',
+    selected:
+      'Review candidates marked as selected in the hiring workflow. Verify final actions and move forward with onboarding or offers.',
+    rejected:
+      'Track rejected applications and maintain proper records for audit. You can also use trends here to improve future shortlisting quality.',
+    'offer issued':
+      'Monitor applications where offers have been generated and shared. This helps track conversion from selection to joining.',
+    'subscription & billing':
+      'Control subscription plans, pricing structures, and billing policies across the platform. Keep plan logic aligned with business strategy.',
+    overview:
+      'Get a summary of plan distribution, billing health, and top-level subscription metrics. Use this as the starting point for billing reviews.',
+    'who is free / paid':
+      'Segment users by plan type to understand monetization coverage. This helps identify upgrade opportunities and retention focus areas.',
+    'expiry alerts':
+      'Track upcoming subscription expiries to trigger timely reminders. Proactive follow-up reduces churn and service disruption.',
+    'revenue charts':
+      'Analyze revenue trends and recurring income performance with visual breakdowns. Useful for monthly and quarterly reviews.',
+    'manual plan assign':
+      'Assign or adjust subscription plans manually in approved scenarios. Use carefully to support operations and exceptions.',
+    'advertisement management':
+      'Manage advertisement inventory, visibility rules, and campaign activity from one place. This supports promotion strategy and monetization.',
+    'communication management':
+      'Control communication tools, delivery workflows, and reusable messaging resources. Keep outbound communication consistent and compliant.',
+    'support center':
+      'This section groups all support workflows, queues, and service insights. Use it to manage load, response time, and quality.',
+    'support dashboard':
+      'Monitor live support health with ticket volume, SLA posture, and queue movement. It gives a quick operational snapshot.',
+    'all tickets':
+      'View the complete support ticket list with filters and status controls. Useful for bulk review and team coordination.',
+    'high priority':
+      'Focus on urgent tickets that need immediate attention. This helps reduce critical delays and escalation risk.',
+    'assigned tickets':
+      'Track tickets currently owned by support team members. Use this to balance workload and avoid missed follow-up.',
+    unassigned:
+      'Review tickets waiting for ownership and route them quickly. Fast assignment improves first response performance.',
+    closed:
+      'Access resolved tickets for audits, quality review, and knowledge reuse. Closed history helps improve support playbooks.',
+    'support analytics':
+      'Analyze support performance trends, resolution times, and customer outcomes. Use insights to refine staffing and workflows.',
+    'grievance reports':
+      'Review sensitive reports and policy violations in a structured queue. This section supports fair investigation and resolution tracking.',
+    'grievance / reports':
+      'Handle complaints and abuse reports with clear status movement and audit traceability. This protects user trust and platform integrity.',
+    'user complaints':
+      'Review complaints submitted by users and update each case with actions taken. Keep communication and resolution notes clear.',
+    'job reports':
+      'Investigate jobs reported for policy issues, spam, or misleading content. Take corrective action and document outcomes.',
+    'abuse / fraud':
+      'Track abuse and fraud signals requiring stricter review. This section supports rapid enforcement and risk reduction.',
+    'resolution log':
+      'Maintain an auditable record of grievance decisions and closure notes. Useful for compliance and internal review.',
+    'security & audit':
+      'Monitor security signals and admin actions across the platform. This section helps enforce governance and maintain accountability.',
+    'login history':
+      'Review login timelines and device patterns to detect unusual access. Use this for proactive account safety checks.',
+    'ip logs':
+      'Inspect IP-level activity records for diagnostics and security monitoring. Useful during investigations and access validation.',
+    'admin activity logs':
+      'Track who changed what and when at the admin level. This supports transparent operations and forensic auditing.',
+    'role permissions':
+      'Manage role-based access controls for sub-admins and internal teams. Keep permissions least-privilege and role-appropriate.',
+    'platform settings':
+      'Configure global platform behavior, defaults, and governance options. Changes here affect broad system behavior, so review carefully.',
+    'job categories':
+      'Maintain standardized job category taxonomy used across postings and filters. Clean categories improve search accuracy.',
+    locations:
+      'Manage location master data for jobs and user preferences. Accurate locations improve matching and reporting quality.',
+    'skills library':
+      'Curate the central skills catalog used in profiles and job requirements. A clean skills library improves matching precision.',
+    'experience levels':
+      'Define experience bands for consistent role tagging and candidate screening. This improves filtering and decision quality.',
+    'sub-admin':
+      'Manage sub-admin setup and access governance from this section. It keeps delegated operations controlled and auditable.',
+    'add new sub-admin':
+      'Create a new sub-admin account with the correct role and permissions. Use this for controlled delegation of admin responsibilities.',
+    'sub-admin table':
+      'Review existing sub-admin users, assigned roles, and access posture. This helps maintain permission hygiene over time.',
+    'delete data':
+      'Use controlled data cleanup tools for approved privacy and maintenance tasks. Always verify scope before executing deletion actions.',
+  };
+
+  const normalizeTourKey = (value) =>
+    (value || '')
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+
+  const sidebarTourDescription = (label, node) => {
+    const normalized = normalizeTourKey(label);
+    if (tourDescriptionMap[normalized]) {
+      return tourDescriptionMap[normalized];
+    }
+    if (node?.classList?.contains('nav-toggle')) {
+      const sectionBody = node.closest('.nav-section')?.querySelector(':scope > .nav-accordion-body');
+      const sectionLinks = sectionBody
+        ? Array.from(sectionBody.querySelectorAll(':scope > .nav-sub'))
+            .map((link) => (link.textContent || '').replace(/\s+/g, ' ').trim())
+            .filter(Boolean)
+        : [];
+      if (sectionLinks.length) {
+        const preview = sectionLinks.slice(0, 3).join(', ');
+        const extraCount = Math.max(0, sectionLinks.length - 3);
+        const suffix = extraCount > 0 ? `, and ${extraCount} more pages` : '';
+        return `This section groups related tools under ${label}. Open it to access ${preview}${suffix}, then manage tasks without leaving the sidebar workflow.`;
+      }
+      return `This section groups related tools under ${label}. Expand it to review all available actions and quickly open the page you need.`;
+    }
+    if (node?.classList?.contains('nav-sub')) {
+      return `Open ${label} to manage this workflow with full controls, filters, and status updates. This page is designed for detailed operations rather than quick shortcuts.`;
+    }
+    return `Open ${label} to access the complete workspace for this feature. You can review data, take actions, and continue related tasks from this section.`;
+  };
+
+  const getSidebarTourLabel = (node) => {
+    if (!node) return '';
+    if (node.classList.contains('nav-sub')) {
+      return (node.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+    if (node.classList.contains('nav-toggle')) {
+      const labelNode = node.querySelector('.nav-label > span:not(.nav-icon):not(.nav-count-badge)');
+      return (labelNode?.textContent || node.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+    const directLabel = node.querySelector(':scope > span:not(.nav-icon):not(.nav-count-badge)');
+    return (directLabel?.textContent || node.textContent || '').replace(/\s+/g, ' ').trim();
+  };
+
+  const buildProfileTourDescription = () => {
+    const sidebarProfileNode = document.querySelector('.sidebar .company-user');
+    const profileSummaryNode = document.querySelector('.profile-summary');
+    const profileName = (
+      sidebarProfileNode?.querySelector('.company-user-meta strong')?.textContent ||
+      profileSummaryNode?.querySelector('.profile-meta strong')?.textContent ||
+      ''
+    )
+      .replace(/\s+/g, ' ')
+      .trim();
+    const profileRole = (
+      sidebarProfileNode?.querySelector('.company-user-meta span')?.textContent ||
+      profileSummaryNode?.querySelector('.profile-meta span')?.textContent ||
+      ''
+    )
+      .replace(/\s+/g, ' ')
+      .trim();
+    const profileCompletion = (sidebarProfileNode?.querySelector('.profile-progress-text')?.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const profileMenuActions = Array.from(document.querySelectorAll('.profile-menu .menu-item'))
+      .map((node) => (node.textContent || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .slice(0, 4);
+
+    const details = [
+      profileName
+        ? `Welcome ${profileName}! This profile area is your personal control center where you can verify account identity, monitor profile completeness, and access account-level actions securely.`
+        : 'Welcome to your profile! This profile area is your personal control center where you can verify account identity, monitor profile completeness, and access account-level actions securely.',
+    ];
+    if (profileRole) {
+      details.push(`Your current role is shown as ${profileRole}, so you always know which panel permissions are active.`);
+    }
+    if (profileCompletion) {
+      details.push(`The completion indicator currently shows ${profileCompletion}, which helps you understand how ready your account setup is.`);
+    }
+    if (profileMenuActions.length) {
+      details.push(`From the profile menu you can quickly use options like ${profileMenuActions.join(', ')} without searching in multiple pages.`);
+    }
+    details.push(
+      'Start the tour from here to understand every section in order, then use the sidebar menu to move between modules with full context.'
+    );
+    return details.join(' ');
+  };
+
+  const collectProfileTourStep = () => {
+    const targetNode =
+      document.querySelector('.sidebar .company-user') ||
+      document.querySelector('.topbar .profile-summary') ||
+      document.querySelector('.profile-summary');
+    if (!targetNode) return null;
+    return {
+      node: targetNode,
+      label: 'Explore Your Profile',
+      description: buildProfileTourDescription(),
+    };
+  };
+
+  const collectSidebarTourSteps = () => {
+    const sidebarNav = document.querySelector('.sidebar .sidebar-nav');
+    const steps = [];
+    const profileStep = collectProfileTourStep();
+    if (profileStep) {
+      steps.push(profileStep);
+    }
+    if (!sidebarNav) return steps;
+    const nodes = Array.from(sidebarNav.querySelectorAll('.nav-item, .nav-sub'));
+    nodes.forEach((node) => {
+      const label = getSidebarTourLabel(node);
+      if (!label) return;
+      if (label.toLowerCase() === 'v') return;
+      steps.push({
+        node,
+        label,
+        description: sidebarTourDescription(label, node),
+      });
+    });
+    return steps;
+  };
+
+  const ensureTakeTourButton = () => {
+    const actionBar = document.querySelector('.top-actions');
+    if (!actionBar) return null;
+    let button = actionBar.querySelector('[data-take-tour-trigger]');
+    if (button) return button;
+    button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'take-tour-btn';
+    button.setAttribute('data-take-tour-trigger', '');
+    button.setAttribute('aria-label', 'Take a Tour');
+    button.textContent = 'Take a Tour';
+    const anchor = actionBar.querySelector('.fullscreen-toggle') || actionBar.firstElementChild || null;
+    if (anchor && anchor.nextSibling) {
+      actionBar.insertBefore(button, anchor.nextSibling);
+    } else {
+      actionBar.appendChild(button);
+    }
+    return button;
+  };
+
+  const ensureTourOverlay = () => {
+    let overlayNode = document.querySelector('[data-sidebar-tour-overlay]');
+    if (overlayNode) return overlayNode;
+    overlayNode = document.createElement('div');
+    overlayNode.className = 'sidebar-tour-overlay';
+    overlayNode.setAttribute('data-sidebar-tour-overlay', '');
+    overlayNode.setAttribute('hidden', '');
+    overlayNode.innerHTML = `
+      <div class="sidebar-tour-modal" role="dialog" aria-modal="true" aria-live="polite">
+        <button type="button" class="sidebar-tour-close" data-tour-close aria-label="Close tour">&times;</button>
+        <h3 class="sidebar-tour-title" data-tour-title>Section Title</h3>
+        <p class="sidebar-tour-text" data-tour-text>Section details</p>
+        <div class="sidebar-tour-progress-track">
+          <span data-tour-progress></span>
+        </div>
+        <div class="sidebar-tour-footer">
+          <button type="button" class="sidebar-tour-skip" data-tour-skip>Skip tour</button>
+          <span class="sidebar-tour-step" data-tour-step>1/1</span>
+          <div class="sidebar-tour-actions">
+            <button type="button" class="tour-btn tour-btn-ghost" data-tour-prev>Previous</button>
+            <button type="button" class="tour-btn tour-btn-primary" data-tour-next>Next</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlayNode);
+    return overlayNode;
+  };
+
+  const startSidebarTour = (() => {
+    let steps = [];
+    let index = 0;
+    let overlayNode = null;
+    let highlightedNode = null;
+    let openedPeekByTour = false;
+    let openedMobileSidebarByTour = false;
+    let sectionStateSnapshot = [];
+    const tourPlacementClasses = ['placement-right', 'placement-left', 'placement-top', 'placement-bottom', 'placement-mobile'];
+
+    const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
+
+    const clearTourModalPlacement = () => {
+      if (!overlayNode) return;
+      const modalNode = overlayNode.querySelector('.sidebar-tour-modal');
+      if (!modalNode) return;
+      modalNode.classList.remove(...tourPlacementClasses);
+      modalNode.style.removeProperty('left');
+      modalNode.style.removeProperty('top');
+      modalNode.style.removeProperty('bottom');
+      modalNode.style.removeProperty('--tour-arrow-offset');
+    };
+
+    const positionTourModal = (targetNode) => {
+      if (!overlayNode || !targetNode) return;
+      const modalNode = overlayNode.querySelector('.sidebar-tour-modal');
+      if (!modalNode) return;
+
+      modalNode.classList.remove(...tourPlacementClasses);
+      modalNode.style.removeProperty('left');
+      modalNode.style.removeProperty('top');
+      modalNode.style.removeProperty('bottom');
+      modalNode.style.removeProperty('--tour-arrow-offset');
+
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const viewportPadding = 14;
+      const gap = 18;
+
+      if (isMobile()) {
+        modalNode.classList.add('placement-mobile');
+        modalNode.style.left = `${viewportPadding}px`;
+        modalNode.style.bottom = `${viewportPadding}px`;
+        return;
+      }
+
+      const targetRect = targetNode.getBoundingClientRect();
+      const modalRect = modalNode.getBoundingClientRect();
+      const modalWidth = modalRect.width;
+      const modalHeight = modalRect.height;
+
+      const availableSpace = {
+        right: viewportWidth - targetRect.right - viewportPadding - gap,
+        left: targetRect.left - viewportPadding - gap,
+        bottom: viewportHeight - targetRect.bottom - viewportPadding - gap,
+        top: targetRect.top - viewportPadding - gap,
+      };
+      const fits = {
+        right: availableSpace.right >= modalWidth,
+        left: availableSpace.left >= modalWidth,
+        bottom: availableSpace.bottom >= modalHeight,
+        top: availableSpace.top >= modalHeight,
+      };
+
+      const preferredPlacements = ['right', 'left', 'bottom', 'top'];
+      let placement = preferredPlacements.find((candidate) => fits[candidate]);
+      if (!placement) {
+        placement = preferredPlacements.reduce((best, current) =>
+          availableSpace[current] > availableSpace[best] ? current : best
+        );
+      }
+
+      let left = viewportPadding;
+      let top = viewportPadding;
+      if (placement === 'right') {
+        left = targetRect.right + gap;
+        top = targetRect.top + targetRect.height / 2 - modalHeight / 2;
+      } else if (placement === 'left') {
+        left = targetRect.left - modalWidth - gap;
+        top = targetRect.top + targetRect.height / 2 - modalHeight / 2;
+      } else if (placement === 'bottom') {
+        left = targetRect.left + targetRect.width / 2 - modalWidth / 2;
+        top = targetRect.bottom + gap;
+      } else {
+        left = targetRect.left + targetRect.width / 2 - modalWidth / 2;
+        top = targetRect.top - modalHeight - gap;
+      }
+
+      const maxLeft = Math.max(viewportPadding, viewportWidth - modalWidth - viewportPadding);
+      const maxTop = Math.max(viewportPadding, viewportHeight - modalHeight - viewportPadding);
+      left = clamp(left, viewportPadding, maxLeft);
+      top = clamp(top, viewportPadding, maxTop);
+
+      modalNode.style.left = `${left}px`;
+      modalNode.style.top = `${top}px`;
+      modalNode.classList.add(`placement-${placement}`);
+
+      if (placement === 'right' || placement === 'left') {
+        const arrowOffset = clamp(targetRect.top + targetRect.height / 2 - top, 24, modalHeight - 24);
+        modalNode.style.setProperty('--tour-arrow-offset', `${arrowOffset}px`);
+      } else {
+        const arrowOffset = clamp(targetRect.left + targetRect.width / 2 - left, 24, modalWidth - 24);
+        modalNode.style.setProperty('--tour-arrow-offset', `${arrowOffset}px`);
+      }
+    };
+
+    const handleTourViewportChange = () => {
+      if (!steps.length) return;
+      const step = steps[index];
+      if (!step) return;
+      positionTourModal(step.node);
+    };
+
+    const captureSectionState = () => {
+      sectionStateSnapshot = Array.from(document.querySelectorAll('.nav-section')).map((section) => ({
+        section,
+        open: section.classList.contains('open'),
+      }));
+    };
+
+    const restoreSectionState = () => {
+      sectionStateSnapshot.forEach(({ section, open }) => {
+        if (!section || !section.isConnected) return;
+        const toggleButton = section.querySelector(':scope > .nav-toggle');
+        const body = section.querySelector(':scope > .nav-accordion-body');
+        section.classList.toggle('open', open);
+        if (toggleButton) {
+          toggleButton.setAttribute('aria-expanded', String(open));
+        }
+        if (body) {
+          body.style.display = open ? 'block' : '';
+          body.style.maxHeight = '';
+          body.style.overflow = '';
+        }
+      });
+    };
+
+    const clearHighlight = () => {
+      if (!highlightedNode) return;
+      highlightedNode.classList.remove('tour-highlight-target');
+      highlightedNode = null;
+    };
+
+    const closeTour = () => {
+      clearHighlight();
+      if (overlayNode) {
+        overlayNode.classList.remove('open');
+        overlayNode.setAttribute('hidden', '');
+      }
+      window.removeEventListener('resize', handleTourViewportChange);
+      window.removeEventListener('orientationchange', handleTourViewportChange);
+      document.removeEventListener('scroll', handleTourViewportChange, true);
+      clearTourModalPlacement();
+      if (openedPeekByTour) {
+        setSidebarPeekOpen(false);
+      }
+      if (openedMobileSidebarByTour) {
+        closeMobileSidebar();
+      }
+      restoreSectionState();
+      openedPeekByTour = false;
+      openedMobileSidebarByTour = false;
+      document.body.classList.remove('sidebar-tour-active');
+      steps = [];
+      index = 0;
+    };
+
+    const ensureNodeVisible = (node) => {
+      if (!node) return;
+      const parentSection = node.closest('.nav-section');
+      if (parentSection && !parentSection.classList.contains('open')) {
+        const toggleButton = parentSection.querySelector(':scope > .nav-toggle');
+        parentSection.classList.add('open');
+        if (toggleButton) {
+          toggleButton.setAttribute('aria-expanded', 'true');
+        }
+        animateAccordion(parentSection, true);
+      }
+      node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    };
+
+    const renderStep = () => {
+      if (!overlayNode || !steps.length) return;
+      const step = steps[index];
+      const titleEl = overlayNode.querySelector('[data-tour-title]');
+      const textEl = overlayNode.querySelector('[data-tour-text]');
+      const stepEl = overlayNode.querySelector('[data-tour-step]');
+      const progressEl = overlayNode.querySelector('[data-tour-progress]');
+      const prevBtn = overlayNode.querySelector('[data-tour-prev]');
+      const nextBtn = overlayNode.querySelector('[data-tour-next]');
+      if (!step || !titleEl || !textEl || !stepEl || !progressEl || !prevBtn || !nextBtn) return;
+
+      clearHighlight();
+      ensureNodeVisible(step.node);
+      step.node.classList.add('tour-highlight-target');
+      highlightedNode = step.node;
+
+      titleEl.textContent = step.label;
+      textEl.textContent = step.description;
+      stepEl.textContent = `${index + 1}/${steps.length}`;
+      progressEl.style.width = `${((index + 1) / steps.length) * 100}%`;
+      prevBtn.disabled = index === 0;
+      nextBtn.textContent = index === steps.length - 1 ? 'Finish' : 'Next';
+      positionTourModal(step.node);
+      window.setTimeout(() => {
+        const activeStep = steps[index];
+        if (!activeStep || activeStep.node !== step.node) return;
+        positionTourModal(step.node);
+      }, 260);
+    };
+
+    const goNext = () => {
+      if (!steps.length) return;
+      if (index >= steps.length - 1) {
+        closeTour();
+        return;
+      }
+      index += 1;
+      renderStep();
+    };
+
+    const goPrev = () => {
+      if (!steps.length || index === 0) return;
+      index -= 1;
+      renderStep();
+    };
+
+    return () => {
+      steps = collectSidebarTourSteps();
+      if (!steps.length) return;
+      overlayNode = ensureTourOverlay();
+      if (!overlayNode) return;
+
+      captureSectionState();
+      document.body.classList.add('sidebar-tour-active');
+      if (isMobile() && !document.body.classList.contains('sidebar-open')) {
+        document.body.classList.add('sidebar-open');
+        toggles.forEach((btn) => btn.setAttribute('aria-expanded', 'true'));
+        openedMobileSidebarByTour = true;
+      }
+      if (!isMobile() && document.body.classList.contains('sidebar-collapsed') && !document.body.classList.contains('sidebar-peek-open')) {
+        setSidebarPeekOpen(true);
+        openedPeekByTour = true;
+      }
+
+      overlayNode.removeAttribute('hidden');
+      overlayNode.classList.add('open');
+      index = 0;
+      window.addEventListener('resize', handleTourViewportChange);
+      window.addEventListener('orientationchange', handleTourViewportChange);
+      document.addEventListener('scroll', handleTourViewportChange, true);
+      renderStep();
+
+      const closeBtn = overlayNode.querySelector('[data-tour-close]');
+      const skipBtn = overlayNode.querySelector('[data-tour-skip]');
+      const nextBtn = overlayNode.querySelector('[data-tour-next]');
+      const prevBtn = overlayNode.querySelector('[data-tour-prev]');
+      if (closeBtn) closeBtn.onclick = closeTour;
+      if (skipBtn) skipBtn.onclick = closeTour;
+      if (nextBtn) nextBtn.onclick = goNext;
+      if (prevBtn) prevBtn.onclick = goPrev;
+
+      overlayNode.onclick = (event) => {
+        if (event.target === overlayNode) {
+          closeTour();
+        }
+      };
+    };
+  })();
+
+  const takeTourButton = ensureTakeTourButton();
+  if (takeTourButton) {
+    takeTourButton.addEventListener('click', () => {
+      startSidebarTour();
+    });
+  }
+
   // Lightweight same-origin prefetch for faster panel navigation.
   const prefetchedUrls = new Set();
   const shouldPrefetch = (url) => {

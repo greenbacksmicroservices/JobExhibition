@@ -25,7 +25,16 @@
       <div class="activity-item">
         <div>
           {% if note.url %}
-          <strong><a href="{{ note.url }}" class="action-link">{{ note.title }}</a></strong>
+          <strong>
+            <a
+              href="{{ note.url }}"
+              class="action-link"
+              data-candidate-note-link
+              data-note-id="{{ note.id|default:'' }}"
+            >
+              {{ note.title }}
+            </a>
+          </strong>
           {% else %}
           <strong>{{ note.title }}</strong>
           {% endif %}
@@ -48,4 +57,44 @@
     {% endif %}
   </div>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (() => {
+    const links = Array.from(document.querySelectorAll('[data-candidate-note-link][data-note-id]'));
+    if (!links.length) return;
+    const markApiUrl = "{% url 'dashboard:panel_notifications_api' %}";
+
+    links.forEach((link) => {
+      link.addEventListener('click', (event) => {
+        if (event.defaultPrevented) return;
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+        const noteId = (link.dataset.noteId || '').trim();
+        if (!noteId) return;
+        const href = link.getAttribute('href') || '';
+        if (!href) return;
+        event.preventDefault();
+        const url = `${markApiUrl}?mark_item_id=${encodeURIComponent(noteId)}`;
+        const fallbackTimer = window.setTimeout(() => {
+          window.location.assign(href);
+        }, 250);
+
+        fetch(url, {
+          method: 'GET',
+          credentials: 'same-origin',
+          keepalive: true,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        })
+          .catch(() => null)
+          .finally(() => {
+            window.clearTimeout(fallbackTimer);
+            window.location.assign(href);
+          });
+      });
+    });
+  })();
+</script>
 {% endblock %}

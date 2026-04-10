@@ -168,8 +168,8 @@ class Command(BaseCommand):
             "Logistics",
             "EdTech",
         ]
-        cities = ["Mumbai", "Delhi", "Bengaluru", "Pune", "Hyderabad", "Chennai", "Kolkata", "Gurugram"]
-        states = ["Maharashtra", "Delhi", "Karnataka", "Telangana", "Tamil Nadu", "West Bengal", "Haryana"]
+        cities = ["Mumbai", "Delhi", "Bengaluru", "Pune", "Hyderabad", "Chennai", "Kolkata", "Gurugram", "Bhubaneswar" , "Cuttack", "Rourkela", "Sambalpur", "Puri", "Konark", "Paradeep", "Balasore", "Jajpur", "Bhadrak", "Baripada", "Noida"]
+        states = ["Maharashtra", "Delhi", "Karnataka", "Telangana", "Tamil Nadu", "West Bengal", "Haryana", "Odisha", "Uttar Pradesh"]
         plans = ["Free", "Premium", "Enterprise"]
         plan_names = ["Starter", "Growth", "Scale", "Enterprise"]
         payment_status = ["Paid", "Due", "Failed"]
@@ -246,7 +246,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Consultancies created: {len(consultancies)}"))
 
     def _seed_candidates(self, count):
-        locations = ["Mumbai", "Delhi", "Bengaluru", "Pune", "Hyderabad", "Chennai", "Kolkata", "Ahmedabad"]
+        locations = ["Mumbai", "Delhi", "Bengaluru", "Pune", "Hyderabad", "Chennai", "Kolkata", "Ahmedabad", "Gurugram", "Noida", "Bhubaneswar" , "Cuttack", "Rourkela", "Sambalpur", "Puri", "Konark", "Paradeep", "Balasore", "Jajpur", "Bhadrak", "Baripada"]
         industries = ["IT", "Finance", "Healthcare", "Retail", "Manufacturing", "Consulting"]
         education_levels = ["B.Tech", "BCA", "BBA", "MBA", "M.Tech", "B.Sc", "MCA"]
         employment_status = ["Employed", "Notice Period", "Actively Looking"]
@@ -316,7 +316,7 @@ class Command(BaseCommand):
                     education_graduation=random.choice(education_levels),
                     education_post_graduation=random.choice(["MBA", "M.Tech", "MCA", ""]),
                     certifications="Scrum Master, AWS Practitioner",
-                    languages="English, Hindi",
+                    languages="English, Hindi , Odia",
                     linkedin_url=f"https://linkedin.com/in/{first.lower()}{last.lower()}{start_index + idx}",
                     github_url=f"https://github.com/{first.lower()}{last.lower()}{start_index + idx}",
                     portfolio_url=f"https://portfolio.{first.lower()}{last.lower()}.com",
@@ -352,7 +352,7 @@ class Command(BaseCommand):
             "Operations",
             "Analytics",
         ]
-        locations = ["Mumbai", "Delhi", "Bengaluru", "Pune", "Hyderabad", "Chennai", "Kolkata", "Remote"]
+        locations = ["Mumbai", "Delhi", "Bengaluru", "Pune", "Hyderabad", "Chennai", "Kolkata", "Remote", "Gurugram", "Noida", "Bhubaneswar" , "Cuttack", "Rourkela", "Sambalpur", "Puri", "Konark", "Paradeep", "Balasore", "Jajpur", "Bhadrak", "Baripada"]
         job_types = ["Full-time", "Part-time", "Contract", "Remote"]
         statuses = ["Approved", "Approved", "Approved", "Pending", "Rejected"]
         verifications = ["Verified", "Pending", "Flagged"]
@@ -411,6 +411,7 @@ class Command(BaseCommand):
         return [
             "Aarav",
             "Vivaan",
+            "Binayak",
             "Aditya",
             "Vihaan",
             "Arjun",
@@ -432,16 +433,16 @@ class Command(BaseCommand):
         return [
             "Sharma",
             "Verma",
-            "Iyer",
-            "Patel",
+            "Sethy",
+            "Dash",
             "Khan",
             "Kapoor",
             "Gupta",
-            "Nair",
-            "Mehta",
+            "Sahu",
+            "sahoo",
             "Reddy",
-            "Sen",
-            "Malhotra",
+            "Nayak",
+            "Naik",
         ]
 
     @property

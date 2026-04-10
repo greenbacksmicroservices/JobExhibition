@@ -8,6 +8,46 @@
   const locationGroup = document.getElementById('interviewLocationGroup');
   const meetingLinkInput = linkGroup ? linkGroup.querySelector('input[name="meeting_link"]') : null;
   const locationInput = locationGroup ? locationGroup.querySelector('input[name="location"]') : null;
+  const scheduleForm = document.querySelector('form.interview-form input[name="action"][value="schedule"]')?.closest('form') || null;
+  const scheduleDateInput = scheduleForm ? scheduleForm.querySelector('input[name="interview_date"]') : null;
+  const rescheduleForm = document.querySelector('#rescheduleModal form');
+  const rescheduleDateInput = document.getElementById('rescheduleDate');
+
+  const todayIsoDate = () => {
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  };
+
+  const applyDateBoundary = (input) => {
+    if (!input) return '';
+    const minDate = todayIsoDate();
+    input.min = minDate;
+    return minDate;
+  };
+
+  const clearDateError = (input) => {
+    if (!input) return;
+    input.classList.remove('field-error');
+    input.setCustomValidity('');
+  };
+
+  const validateDateInput = (input) => {
+    if (!input) return true;
+    const minDate = applyDateBoundary(input);
+    const selectedDate = (input.value || '').trim();
+    if (!selectedDate) {
+      clearDateError(input);
+      return true;
+    }
+    if (selectedDate < minDate) {
+      input.classList.add('field-error');
+      input.setCustomValidity('Past interview date is not allowed. Please choose today or a future date.');
+      return false;
+    }
+    clearDateError(input);
+    return true;
+  };
 
   const syncCandidateFields = (option) => {
     if (!option) return;
@@ -45,6 +85,20 @@
     syncModeFields();
   }
 
+  if (scheduleDateInput) {
+    applyDateBoundary(scheduleDateInput);
+    scheduleDateInput.addEventListener('input', () => validateDateInput(scheduleDateInput));
+    scheduleDateInput.addEventListener('change', () => validateDateInput(scheduleDateInput));
+  }
+
+  if (scheduleForm && scheduleDateInput) {
+    scheduleForm.addEventListener('submit', (event) => {
+      if (validateDateInput(scheduleDateInput)) return;
+      event.preventDefault();
+      scheduleDateInput.reportValidity();
+    });
+  }
+
   const modal = document.getElementById('rescheduleModal');
   if (modal) {
     modal.addEventListener('show.bs.modal', (event) => {
@@ -59,6 +113,21 @@
       if (idInput) idInput.value = interviewId;
       if (dateInput) dateInput.value = interviewDate;
       if (timeInput) timeInput.value = interviewTime;
+      validateDateInput(dateInput);
+    });
+  }
+
+  if (rescheduleDateInput) {
+    applyDateBoundary(rescheduleDateInput);
+    rescheduleDateInput.addEventListener('input', () => validateDateInput(rescheduleDateInput));
+    rescheduleDateInput.addEventListener('change', () => validateDateInput(rescheduleDateInput));
+  }
+
+  if (rescheduleForm && rescheduleDateInput) {
+    rescheduleForm.addEventListener('submit', (event) => {
+      if (validateDateInput(rescheduleDateInput)) return;
+      event.preventDefault();
+      rescheduleDateInput.reportValidity();
     });
   }
 

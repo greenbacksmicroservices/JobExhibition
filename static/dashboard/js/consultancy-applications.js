@@ -141,6 +141,45 @@
     }
   };
 
+  const scheduleForm = document.getElementById('scheduleForm');
+  const scheduleDateInput = document.getElementById('scheduleDate');
+
+  const todayIsoDate = () => {
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  };
+
+  const clearScheduleDateError = () => {
+    if (!scheduleDateInput) return;
+    scheduleDateInput.classList.remove('field-error');
+    scheduleDateInput.setCustomValidity('');
+  };
+
+  const applyScheduleDateBoundary = () => {
+    if (!scheduleDateInput) return '';
+    const minDate = todayIsoDate();
+    scheduleDateInput.min = minDate;
+    return minDate;
+  };
+
+  const validateScheduleDate = () => {
+    if (!scheduleDateInput) return true;
+    const minDate = applyScheduleDateBoundary();
+    const selectedDate = (scheduleDateInput.value || '').trim();
+    if (!selectedDate) {
+      clearScheduleDateError();
+      return true;
+    }
+    if (selectedDate < minDate) {
+      scheduleDateInput.classList.add('field-error');
+      scheduleDateInput.setCustomValidity('Past interview date is not allowed. Please choose today or a future date.');
+      return false;
+    }
+    clearScheduleDateError();
+    return true;
+  };
+
   const openDetailModal = (row) => {
     if (!row || !detailModal) return;
     const data = row.dataset;
@@ -214,6 +253,8 @@
     setValue('scheduleInterviewer', data.interviewer);
     setValue('scheduleFeedback', normalizeText(data.interviewFeedback));
     syncScheduleModeUI();
+    applyScheduleDateBoundary();
+    validateScheduleDate();
 
     scheduleModal.show();
   };
@@ -248,6 +289,20 @@
   if (scheduleModeSelect) {
     scheduleModeSelect.addEventListener('change', syncScheduleModeUI);
     syncScheduleModeUI();
+  }
+
+  if (scheduleDateInput) {
+    applyScheduleDateBoundary();
+    scheduleDateInput.addEventListener('input', validateScheduleDate);
+    scheduleDateInput.addEventListener('change', validateScheduleDate);
+  }
+
+  if (scheduleForm) {
+    scheduleForm.addEventListener('submit', (event) => {
+      if (validateScheduleDate()) return;
+      event.preventDefault();
+      scheduleDateInput.reportValidity();
+    });
   }
 
   document.addEventListener('click', (event) => {

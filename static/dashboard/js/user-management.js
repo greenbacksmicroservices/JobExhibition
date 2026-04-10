@@ -680,8 +680,21 @@
       return rows.map((row) => {
         const label = viewValue(row.label, 'Document');
         const name = viewValue(row.value, 'Document');
-        const link = row.url ? `<a href="${row.url}" target="_blank" rel="noopener">View</a>` : '';
-        return `<div><span>${label}:</span> ${name} ${link}</div>`;
+        const safeUrl = row.url ? escapeHtml(row.url) : '';
+        const actions = row.url
+          ? `
+            <div class="doc-actions">
+              <a class="action-btn doc-action-btn" href="${safeUrl}" target="_blank" rel="noopener">View</a>
+              <a class="action-btn doc-action-btn" href="${safeUrl}" download>Download</a>
+            </div>
+          `
+          : '<span class="muted">Not uploaded</span>';
+        return `
+          <div class="doc-row">
+            <div class="doc-meta"><span>${label}:</span> <strong>${name}</strong></div>
+            ${actions}
+          </div>
+        `;
       }).join('');
     };
 
@@ -774,11 +787,11 @@
       ? `
 <h6>Resume</h6>
 <div class="details-card" style="margin-bottom:16px;">
-  <div class="view-actions">
+  <div class="doc-actions">
     ${
       resumeDoc && resumeDoc.url
-        ? `<a class="btn ghost" href="${resumeDoc.url}" target="_blank" rel="noopener">View Resume</a>
-           <a class="btn primary" href="${resumeDoc.url}" download>Download Resume</a>`
+        ? `<a class="action-btn doc-action-btn" href="${resumeDoc.url}" target="_blank" rel="noopener">View Resume</a>
+           <a class="action-btn doc-action-btn" href="${resumeDoc.url}" download>Download Resume</a>`
         : '<span class="muted">No resume uploaded</span>'
     }
   </div>

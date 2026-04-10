@@ -69,11 +69,6 @@
             <span class="nav-icon"><i class="fa-solid fa-comments"></i></span>
             <span>Messages</span>
           </a>
-          <a class="nav-item {% if request.resolver_match.url_name == 'candidate_notifications' %}active{% endif %}" href="{% url 'dashboard:candidate_notifications' %}">
-            <span class="nav-icon"><i class="fa-solid fa-bell"></i></span>
-            <span>Notifications</span>
-            <span class="nav-count-badge" data-sidebar-notification-count {% if panel_sidebar_notification_count < 1 %}style="display:none"{% endif %}>{{ panel_sidebar_notification_count|default:0 }}</span>
-          </a>
           <a class="nav-item {% if request.resolver_match.url_name == 'candidate_profile' %}active{% endif %}" href="{% url 'dashboard:candidate_profile' %}">
             <span class="nav-icon"><i class="fa-solid fa-user"></i></span>
             <span>My Profile</span>

@@ -144,6 +144,8 @@ CANDIDATE_DELETE_OTP_SESSION_KEY = "candidate_delete_otp_payload"
 COMPANY_DELETE_OTP_SESSION_KEY = "company_delete_otp_payload"
 CONSULTANCY_DELETE_OTP_SESSION_KEY = "consultancy_delete_otp_payload"
 OTP_TTL_SECONDS = 10 * 60
+OTP_SMS_LIMIT_WINDOW_SECONDS = 24 * 60 * 60
+DEFAULT_OTP_SMS_DAILY_LIMIT = 3
 REGISTRATION_SUCCESS_SESSION_KEY = "registration_success_payload"
 FORGOT_PASSWORD_SUCCESS_SESSION_KEY = "forgot_password_success_payload"
 MIN_PROFILE_COMPLETION_TO_APPLY = 0
@@ -2830,6 +2832,18 @@ def _normalize_ampm_time(raw_time, period):
     return f"{hour:02d}:{minute:02d}"
 
 
+def _validate_interview_date_not_past(interview_date):
+    if not interview_date:
+        return False, "Please select a valid interview date."
+    today = timezone.localdate()
+    if interview_date < today:
+        return (
+            False,
+            f"Past interview dates are not allowed. Please select {today.strftime('%d %b %Y')} or a future date.",
+        )
+    return True, ""
+
+
 def _password_strength_errors(password):
     errors = []
     value = password or ""
@@ -2887,6 +2901,108 @@ def _mask_phone_number(phone):
     if len(digits) < 4:
         return "****"
     return f"{'*' * max(len(digits) - 4, 0)}{digits[-4:]}"
+
+
+def _normalize_phone_for_rate_limit(phone):
+    digits = re.sub(r"\D+", "", phone or "")
+    return digits[-15:] if digits else ""
+
+
+def _otp_sms_limit_config():
+    try:
+        limit = int(
+            getattr(settings, "OTP_SMS_DAILY_LIMIT", DEFAULT_OTP_SMS_DAILY_LIMIT)
+            or DEFAULT_OTP_SMS_DAILY_LIMIT
+        )
+    except (TypeError, ValueError):
+        limit = DEFAULT_OTP_SMS_DAILY_LIMIT
+
+    try:
+        window_seconds = int(
+            getattr(settings, "OTP_SMS_LIMIT_WINDOW_SECONDS", OTP_SMS_LIMIT_WINDOW_SECONDS)
+            or OTP_SMS_LIMIT_WINDOW_SECONDS
+        )
+    except (TypeError, ValueError):
+        window_seconds = OTP_SMS_LIMIT_WINDOW_SECONDS
+
+    if window_seconds < 60:
+        window_seconds = 60
+
+    return max(limit, 0), window_seconds
+
+
+def _otp_sms_limit_cache_key(phone):
+    normalized_phone = _normalize_phone_for_rate_limit(phone)
+    if not normalized_phone:
+        return ""
+    return f"otp_sms_limit:{normalized_phone}"
+
+
+def _prune_otp_sms_attempts(raw_attempts, cutoff_ts):
+    if not isinstance(raw_attempts, list):
+        return []
+    cleaned = []
+    for item in raw_attempts:
+        try:
+            ts = int(item)
+        except (TypeError, ValueError):
+            continue
+        if ts >= cutoff_ts:
+            cleaned.append(ts)
+    return cleaned
+
+
+def _check_sms_otp_rate_limit(phone):
+    normalized_phone = _normalize_phone_for_rate_limit(phone)
+    if not normalized_phone:
+        return False, "Enter a valid mobile number before requesting OTP.", []
+
+    limit, window_seconds = _otp_sms_limit_config()
+    if limit < 1:
+        return True, "", []
+
+    now = timezone.now()
+    now_ts = int(now.timestamp())
+    cutoff_ts = now_ts - window_seconds
+    cache_key = _otp_sms_limit_cache_key(normalized_phone)
+    existing_attempts = _prune_otp_sms_attempts(cache.get(cache_key), cutoff_ts)
+
+    if len(existing_attempts) >= limit:
+        oldest_attempt_ts = min(existing_attempts) if existing_attempts else now_ts
+        retry_after_seconds = max((oldest_attempt_ts + window_seconds) - now_ts, 1)
+        retry_at = timezone.localtime(now + timedelta(seconds=retry_after_seconds))
+        retry_label = retry_at.strftime("%d %b %Y, %I:%M %p")
+        return (
+            False,
+            f"SMS OTP limit reached. You can request only {limit} OTPs in 24 hours. Please try again after {retry_label}.",
+            existing_attempts,
+        )
+
+    return True, "", existing_attempts
+
+
+def _record_sms_otp_rate_limit_hit(phone, recent_attempts=None):
+    normalized_phone = _normalize_phone_for_rate_limit(phone)
+    if not normalized_phone:
+        return
+
+    limit, window_seconds = _otp_sms_limit_config()
+    if limit < 1:
+        return
+
+    now_ts = int(timezone.now().timestamp())
+    cutoff_ts = now_ts - window_seconds
+    cache_key = _otp_sms_limit_cache_key(normalized_phone)
+    attempts = (
+        list(recent_attempts)
+        if isinstance(recent_attempts, list)
+        else _prune_otp_sms_attempts(cache.get(cache_key), cutoff_ts)
+    )
+    attempts = [ts for ts in attempts if ts >= cutoff_ts]
+    attempts.append(now_ts)
+    if len(attempts) > (limit * 3):
+        attempts = attempts[-(limit * 3) :]
+    cache.set(cache_key, attempts, timeout=window_seconds + 600)
 
 
 def _maybe_show_debug_otp(request, otp_value, label="OTP"):
@@ -3054,6 +3170,11 @@ def _auto_approve_due_accounts():
 
 def _issue_session_otp(request, session_key, phone, extra_payload=None):
     clean_phone = (phone or "").strip()
+    can_send_sms, rate_limit_error, recent_attempts = _check_sms_otp_rate_limit(clean_phone)
+    if not can_send_sms:
+        request.session.pop(session_key, None)
+        return "", rate_limit_error
+
     otp_value = f"{random.randint(100000, 999999)}"
     sms_otp_purpose = _resolve_sms_otp_purpose(session_key)
     is_sent, error_message = send_otp_sms(clean_phone, otp_value, purpose=sms_otp_purpose)
@@ -3071,6 +3192,7 @@ def _issue_session_otp(request, session_key, phone, extra_payload=None):
     if extra_payload:
         payload.update(extra_payload)
     request.session[session_key] = payload
+    _record_sms_otp_rate_limit_hit(clean_phone, recent_attempts=recent_attempts)
     return otp_value, ""
 
 
@@ -6056,7 +6178,8 @@ def send_registration_otp(request):
 
         otp_value, otp_error = _issue_registration_otp(request, flow, phone)
         if otp_error:
-            return JsonResponse({"success": False, "error": otp_error}, status=500)
+            status_code = 429 if "limit reached" in otp_error.lower() else 500
+            return JsonResponse({"success": False, "error": otp_error}, status=status_code)
 
         payload = {
             "success": True,
@@ -7483,6 +7606,10 @@ def consultancy_applications_view(request):
             meeting_address = (request.POST.get("meeting_address") or "").strip()
             interviewer = (request.POST.get("interviewer") or "").strip()
             interview_feedback = (request.POST.get("interview_feedback") or "").strip()
+            is_valid_date, date_error = _validate_interview_date_not_past(interview_date)
+            if not is_valid_date:
+                messages.error(request, date_error)
+                return redirect(next_url)
 
             normalized_mode = (interview_mode or "").strip().lower()
             effective_link = meeting_link
@@ -7828,6 +7955,10 @@ def consultancy_interviews_view(request):
             interviewer = (request.POST.get("interviewer") or "").strip()
             round_name = (request.POST.get("round") or "").strip()
             notes = (request.POST.get("notes") or "").strip()
+            is_valid_date, date_error = _validate_interview_date_not_past(interview_date)
+            if not is_valid_date:
+                messages.error(request, date_error)
+                return redirect(f"{request.path}?section={section}")
 
             application = None
             if application_id:
@@ -11848,7 +11979,7 @@ def candidate_notifications_view(request):
     )
     advertisement = _active_advertisement_for("candidate", ad_segment)
 
-    payload = build_panel_notifications(request, limit=60, only_unread=False)
+    payload = build_panel_notifications(request, limit=60, only_unread=True)
     notifications = payload.get("items", [])
     return render(
         request,
@@ -12965,6 +13096,10 @@ def company_applications_view(request):
             meeting_address = (request.POST.get("meeting_address") or "").strip()
             interviewer = (request.POST.get("interviewer") or "").strip()
             feedback = (request.POST.get("interview_feedback") or "").strip()
+            is_valid_date, date_error = _validate_interview_date_not_past(interview_date)
+            if not is_valid_date:
+                messages.error(request, date_error)
+                return redirect(next_url)
             normalized_mode = (interview_mode or "").strip().lower()
             effective_link = meeting_link
             effective_location = meeting_address
@@ -13686,6 +13821,10 @@ def company_interviews_view(request, section="schedule"):
             interviewer = (request.POST.get("interviewer") or "").strip()
             panel_interviewers = (request.POST.get("panel_interviewers") or "").strip()
             notes = (request.POST.get("notes") or "").strip()
+            is_valid_date, date_error = _validate_interview_date_not_past(interview_date)
+            if not is_valid_date:
+                messages.error(request, date_error)
+                return redirect(next_url)
 
             normalized_mode = (mode or "").strip().lower()
             effective_link = meeting_link if normalized_mode != "offline" else ""
@@ -13758,6 +13897,10 @@ def company_interviews_view(request, section="schedule"):
             interview_id = request.POST.get("interview_id")
             new_date = parse_date(request.POST.get("interview_date") or "")
             new_time = parse_time(request.POST.get("interview_time") or "")
+            is_valid_date, date_error = _validate_interview_date_not_past(new_date)
+            if not is_valid_date:
+                messages.error(request, date_error)
+                return redirect(next_url)
             updated = Interview.objects.filter(
                 company__iexact=company_name,
                 id=interview_id,
@@ -17180,31 +17323,46 @@ def _serialize_feedback(feedback, request=None):
     }
 
 
+def _trim_job_char_field(job, field_name, raw_value):
+    value = (raw_value or "").strip()
+    try:
+        max_length = getattr(job._meta.get_field(field_name), "max_length", None)
+    except Exception:
+        return value
+    if isinstance(max_length, int) and max_length > 0:
+        return value[:max_length]
+    return value
+
+
 def _apply_job_fields(job, data):
-    job.title = data.get("title", "").strip()
-    job.company = data.get("company", "").strip()
-    job.category = data.get("category", "").strip()
-    job.location = data.get("location", "").strip()
-    job.job_type = data.get("job_type", "Full-time").strip()
-    job.salary = data.get("salary", "").strip()
-    job.experience = data.get("experience", "").strip()
-    job.skills = data.get("skills", "").strip()
+    job.title = _trim_job_char_field(job, "title", data.get("title", ""))
+    job.company = _trim_job_char_field(job, "company", data.get("company", ""))
+    job.category = _trim_job_char_field(job, "category", data.get("category", ""))
+    job.location = _trim_job_char_field(job, "location", data.get("location", ""))
+    job.job_type = _trim_job_char_field(job, "job_type", data.get("job_type", "Full-time"))
+    job.salary = _trim_job_char_field(job, "salary", data.get("salary", ""))
+    job.experience = _trim_job_char_field(job, "experience", data.get("experience", ""))
+    job.skills = _trim_job_char_field(job, "skills", data.get("skills", ""))
     job.posted_date = parse_date(data.get("posted_date")) if data.get("posted_date") else None
-    job.status = data.get("status", "Pending").strip()
+    job.status = _trim_job_char_field(job, "status", data.get("status", "Pending"))
     if "applicants" in data:
-        job.applicants = int(data.get("applicants") or 0)
+        try:
+            job.applicants = max(int(data.get("applicants") or 0), 0)
+        except (TypeError, ValueError):
+            job.applicants = 0
     elif not job.pk:
         job.applicants = 0
-    job.verification = data.get("verification", "Pending").strip()
+    job.verification = _trim_job_char_field(job, "verification", data.get("verification", "Pending"))
     job.featured = data.get("featured") in ["on", "true", "1"]
-    job.recruiter_name = data.get("recruiter_name", "").strip()
-    job.recruiter_email = data.get("recruiter_email", "").strip()
-    job.recruiter_phone = data.get("recruiter_phone", "").strip()
-    job.summary = data.get("summary", "").strip()
+    job.recruiter_name = _trim_job_char_field(job, "recruiter_name", data.get("recruiter_name", ""))
+    job.recruiter_email = _trim_job_char_field(job, "recruiter_email", data.get("recruiter_email", ""))
+    job.recruiter_phone = _trim_job_char_field(job, "recruiter_phone", data.get("recruiter_phone", ""))
+    job.summary = _trim_job_char_field(job, "summary", data.get("summary", ""))
     job.description = data.get("description", "").strip()
     job.requirements = data.get("requirements", "").strip()
     if not job.summary and job.description:
-        job.summary = re.sub(r"\s+", " ", job.description).strip()[:255]
+        auto_summary = re.sub(r"\s+", " ", job.description).strip()
+        job.summary = _trim_job_char_field(job, "summary", auto_summary)
     lifecycle_status = data.get("lifecycle_status")
     if lifecycle_status:
         job.lifecycle_status = _normalize_consultancy_job_lifecycle(lifecycle_status)
